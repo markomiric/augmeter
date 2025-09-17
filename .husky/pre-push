@@ -1,0 +1,3 @@
+# Fast checks before pushing
+npm run lint && npm run compile
+

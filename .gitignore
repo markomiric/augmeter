@@ -1,0 +1,220 @@
+# =============================================================================
+# Augmeter VS Code Extension - .gitignore
+# =============================================================================
+# This file specifies intentionally untracked files that Git should ignore.
+# See: https://git-scm.com/docs/gitignore
+
+# =============================================================================
+# Build Output & Distribution
+# =============================================================================
+out/
+dist/
+build/
+lib/
+*.vsix
+*.tgz
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+node_modules/
+jspm_packages/
+
+# =============================================================================
+# Testing & Coverage
+# =============================================================================
+coverage/
+.nyc_output/
+.coverage/
+*.lcov
+junit.xml
+test-results/
+test-reports/
+
+# VS Code Test Runner
+.vscode-test/
+.vscode-test-web/
+
+# =============================================================================
+# Environment & Configuration
+# =============================================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# =============================================================================
+# Runtime & Temporary Files
+# =============================================================================
+*.pid
+*.seed
+*.pid.lock
+.tmp/
+.temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# =============================================================================
+# OS Generated Files
+# =============================================================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# =============================================================================
+# IDE & Editor Files
+# =============================================================================
+# VS Code workspace settings (keep shared settings, ignore personal ones)
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+.vimrc.local
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# Package Manager Files
+# =============================================================================
+# npm
+.npm
+.npmrc.local
+
+# Yarn
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# pnpm
+.pnpm-store/
+
+# =============================================================================
+# Security & Secrets
+# =============================================================================
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets.json
+.secrets/
+
+# =============================================================================
+# Development & Debug
+# =============================================================================
+.vscode-test-web/
+*.har
+debug.log
+trace.log
+
+# TypeScript incremental compilation
+*.tsbuildinfo
+
+# =============================================================================
+# Miscellaneous
+# =============================================================================
+# Optional REPL history
+.node_repl_history
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
