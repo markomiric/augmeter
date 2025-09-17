@@ -1,0 +1,189 @@
+{
+  "name": "augmeter",
+  "displayName": "Augmeter",
+  "description": "Track and display Augment AI usage statistics in VSCode status bar",
+  "version": "1.0.0",
+  "publisher": "kamacode",
+  "author": {
+    "name": "Marko",
+    "email": "marko@kamacode.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markomiric/augmeter"
+  },
+  "bugs": {
+    "url": "https://github.com/markomiric/augmeter/issues"
+  },
+  "homepage": "https://github.com/markomiric/augmeter#readme",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.102.0",
+    "node": ">=18.18.0"
+  },
+  "extensionKind": [
+    "ui"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "augment",
+    "ai",
+    "usage",
+    "meter",
+    "statistics"
+  ],
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#007ACC",
+    "theme": "dark"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "augmeter.manualRefresh",
+        "title": "Augmeter: Refresh Usage",
+        "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.openSettings",
+        "title": "Augmeter: Open Settings",
+        "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.signIn",
+        "title": "Augmeter: Sign In",
+        "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.signOut",
+        "title": "Augmeter: Sign Out",
+        "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.openWebsiteAndSignIn",
+        "title": "Augmeter: Open Website and Sign In",
+        "category": "Augmeter"
+      }
+    ],
+    "configuration": {
+      "title": "%config.title%",
+      "properties": {
+        "augmeter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.enabled%"
+        },
+        "augmeter.refreshInterval": {
+          "type": "number",
+          "default": 60,
+          "description": "%config.refreshInterval%",
+          "minimum": 1,
+          "maximum": 300
+        },
+
+
+        "augmeter.clickAction": {
+          "type": "string",
+          "enum": [
+            "refresh",
+            "openWebsite",
+            "openSettings"
+          ],
+          "enumDescriptions": [
+            "%config.clickAction.refresh%",
+            "%config.clickAction.openWebsite%",
+            "%config.clickAction.openSettings%"
+          ],
+          "default": "refresh",
+          "description": "%config.clickAction%"
+        },
+        "augmeter.displayMode": {
+          "type": "string",
+          "enum": [
+            "used",
+            "remaining",
+            "both"
+          ],
+          "default": "both",
+          "description": "Choose how to display credits in the status bar: used/limit, remaining/limit, or both."
+        },
+
+
+
+
+
+
+
+
+        "augmeter.apiBaseUrl": {
+          "type": "string",
+          "default": "https://app.augmentcode.com/api",
+          "description": "Base URL for the Augment API (useful for staging/tenant overrides).",
+          "scope": "application"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "compile-tests": "tsc -p . --outDir out --sourceMap true",
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "clean": "rimraf out *.vsix",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "test": "vscode-test",
+    "test:integration": "vscode-test",
+    "test:unit": "npm run compile-tests && mocha --ui tdd --require ./test-setup/unit-vscode-stub.js --reporter spec \"out/unit/**/*.test.js\"",
+    "test:unit:coverage": "c8 -r text -r html -r lcov --check-coverage --lines 70 --functions 60 --branches 50 npm run -s test:unit",
+    "test:all": "npm run -s test:unit:coverage && npm run -s test:integration",
+    "lint": "eslint src --ext ts",
+    "lint:fix": "eslint src --ext ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@sinonjs/fake-timers": "^14.0.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.19.13",
+    "@types/sinon": "^17.0.4",
+    "@types/vscode": "^1.104.0",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.3.8",
+    "c8": "^10.1.3",
+    "eslint": "^9.34.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.6",
+    "mocha": "^10.2.0",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.0.1",
+    "sinon": "^21.0.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "undici": "^7.15.0"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "**/*.{js,mjs}": [
+      "prettier --write"
+    ]
+  }
+}
