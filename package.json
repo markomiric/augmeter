@@ -152,7 +152,7 @@
   "devDependencies": {
     "@sinonjs/fake-timers": "^14.0.0",
     "@types/mocha": "^10.0.6",
-    "@types/node": "^20.19.13",
+    "@types/node": "^24.5.2",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.42.0",
