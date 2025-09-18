@@ -165,7 +165,7 @@
     "eslint-plugin-prettier": "^5.5.4",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6",
-    "mocha": "^10.2.0",
+    "mocha": "^11.7.2",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
     "sinon": "^21.0.0",
