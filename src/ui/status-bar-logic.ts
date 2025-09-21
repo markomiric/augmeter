@@ -1,6 +1,4 @@
-// Pure helper logic for StatusBarManager (no vscode imports)
-
-export type DisplayMode = "used" | "remaining" | "both";
+export type DisplayMode = "used" | "remaining" | "remainingOnly" | "both";
 export type Density = "auto" | "compact" | "detailed";
 export type ClickAction = "refresh" | "openWebsite" | "openSettings";
 
@@ -36,6 +34,8 @@ export function computeValueText(
       return `${u}/${l}`;
     case "remaining":
       return `${r}/${l}`;
+    case "remainingOnly":
+      return `${r}`;
     case "both":
     default:
       // Show used/limit in compact bar; details go to tooltip
@@ -241,7 +241,12 @@ function computeStandardColors(
     return { foreground: "statusBarItem.warningForeground" };
   }
 
-  // Below warning threshold: keep default theme color to minimize noise
+  // Below warning threshold:
+  // - If we have real data, use prominent foreground to keep the item visually present
+  // - If not, keep default theme color (undefined) to minimize noise
+  if (hasRealData) {
+    return { foreground: "statusBarItem.prominentForeground" };
+  }
   return {};
 }
 

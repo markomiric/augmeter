@@ -218,3 +218,9 @@ public
 # Temporary folders
 tmp/
 temp/
+
+# Augment-specific
+.augment
+
+# JSCPD report
+jscpd-report.json

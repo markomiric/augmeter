@@ -15,12 +15,3 @@ export interface AugmentUsageData {
   subscriptionType?: string;
   renewalDate?: string;
 }
-
-export interface AugmentUserInfo {
-  email?: string;
-  name?: string;
-  id?: string;
-  plan?: string;
-  avatar?: string;
-  verified?: boolean;
-}

@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 
-// Secure logging utility
 export class SecureLogger {
   private static outputChannel: vscode.OutputChannel | null = null;
 

@@ -1,5 +1,4 @@
 import * as assert from "assert";
-import * as vscode from "vscode";
 import { ConfigManager } from "../../core/config/config-manager";
 
 suite("ConfigManager Test Suite", () => {

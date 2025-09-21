@@ -13,7 +13,8 @@ export interface ClipboardWatchResult {
  */
 export async function watchClipboardForCookie(
   timeoutMs: number = 120_000,
-  pollIntervalMs: number = 1_000
+  pollIntervalMs: number = 1_000,
+  externalCancel?: vscode.CancellationToken
 ): Promise<ClipboardWatchResult> {
   const started = Date.now();
   let lastText = "";
@@ -30,8 +31,8 @@ export async function watchClipboardForCookie(
       });
 
       while (Date.now() - started < timeoutMs) {
-        if (token.isCancellationRequested) {
-          SecureLogger.info("Clipboard cookie watch cancelled by user");
+        if (token.isCancellationRequested || externalCancel?.isCancellationRequested) {
+          SecureLogger.info("Clipboard cookie watch cancelled");
           return { cookie: null };
         }
 

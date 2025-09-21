@@ -13,6 +13,7 @@ suite("Smart Sign In (unit)", () => {
     };
 
     const apiClient = {
+      hasCookie: () => false,
       setSessionCookie: (_c: string) => {
         calls.setSessionCookie++;
       },
@@ -43,7 +44,9 @@ suite("Smart Sign In (unit)", () => {
       },
     } as any;
 
-    const configManager = { getSmartSignInQuickWatchMs: () => 200 } as any;
+    const configManager = {
+      getSmartSignInWebsiteWatchMs: () => 500,
+    } as any;
     const auth = new AuthCommands(augmentDetector, usageTracker, statusBarManager, configManager);
     const disposables = auth.registerCommands();
 
@@ -79,23 +82,44 @@ suite("Smart Sign In (unit)", () => {
     disposables.forEach(d => d.dispose?.());
   });
 
-  test("Falls back to website when no cookie available", async function () {
-    this.timeout(6000);
+  test("Opens website and shows manual input when no cookie available", async function () {
+    this.timeout(2000);
     const { calls, disposables } = makeMocks();
 
     // Empty clipboard
     await vscode.env.clipboard.writeText("");
 
-    let fallbackCalled = false;
-    vscode.commands.registerCommand("augmeter.openWebsiteAndSignIn", async () => {
-      fallbackCalled = true;
-    });
-
     await vscode.commands.executeCommand("augmeter.smartSignIn");
 
-    assert.strictEqual(calls.setSessionCookie, 0, "should not set cookie");
-    assert.strictEqual(fallbackCalled, true, "should fall back to website");
+    assert.strictEqual(calls.setSessionCookie, 0, "should not set cookie when no input provided");
+    assert.strictEqual(
+      calls.clearSessionCookie > 0,
+      true,
+      "should clear session before starting consistent flow"
+    );
 
     disposables.forEach(d => d.dispose?.());
+  });
+
+  test("Allows repeated sign-in attempts sequentially (lock releases)", async function () {
+    this.timeout(5000);
+    const { calls, disposables } = makeMocks();
+
+    const token = "B".repeat(64);
+    await vscode.env.clipboard.writeText(token);
+
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+
+    assert.ok(
+      calls.setSessionCookie >= 2,
+      `expected multiple cookie sets, got ${calls.setSessionCookie}`
+    );
+    assert.ok(
+      calls.testConnection >= 2,
+      `expected multiple validations, got ${calls.testConnection}`
+    );
+
+    disposables.forEach((d: any) => d.dispose?.());
   });
 });

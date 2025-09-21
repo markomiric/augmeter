@@ -31,6 +31,12 @@ Module._load = function (request, parent, isMain) {
         showWarningMessage: async (_message, ..._items) => {
           return undefined;
         },
+        showInputBox: async _options => {
+          return undefined; // default: simulate cancel/no input
+        },
+        showQuickPick: async (_items, _options) => {
+          return undefined; // default: simulate cancel
+        },
         setStatusBarMessage: (_text, _timeout) => {
           /* noop */
         },
@@ -64,6 +70,18 @@ Module._load = function (request, parent, isMain) {
         Notification: 15,
       },
       ThemeColor: class {},
+      CancellationTokenSource: class {
+        constructor() {
+          this.token = {
+            isCancellationRequested: false,
+            onCancellationRequested: () => ({ dispose: () => {} }),
+          };
+        }
+        cancel() {
+          this.token.isCancellationRequested = true;
+        }
+        dispose() {}
+      },
     };
   }
   if (
