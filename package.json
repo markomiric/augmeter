@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter",
   "description": "Augment credits/usage meter for the VS Code status bar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "publisher": "kamacode",
   "author": {
     "name": "Marko",
@@ -46,7 +46,6 @@
     "theme": "dark"
   },
   "main": "./out/extension.js",
-
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -93,8 +92,6 @@
           "minimum": 1,
           "maximum": 300
         },
-
-
         "augmeter.clickAction": {
           "type": "string",
           "enum": [
@@ -148,14 +145,6 @@
           "default": true,
           "description": "Show Augmeter information in the status bar."
         },
-
-
-
-
-
-
-
-
         "augmeter.apiBaseUrl": {
           "type": "string",
           "default": "https://app.augmentcode.com/api",
