@@ -14,6 +14,7 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one‑click 
 ## Features
 
 - Usage in the status bar
+- Remaining-only display option (number-only) with clear tooltip and color cues
 - Color thresholds (no % by default)
 - Click to refresh
 - Secure cookie sign‑in (VS Code Secrets)
@@ -23,6 +24,8 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one‑click 
 ### Screenshot
 
 ![Status bar usage](images/status-bar.png)
+
+![Status bar remaining-only](images/remaining.png)
 
 ## Installation
 
@@ -50,18 +53,17 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one‑click 
 2. Click the status bar if it shows “Sign in”.
 
    ![Status bar usage](images/sign-in.png)
+
 3. Your browser opens https://app.augmentcode.com. Copy the `_session` cookie value; Augmeter watches the clipboard and detects it automatically.
 
-![Sign-in: copy the _session cookie; Augmeter detects it automatically](images/session-cookie.png)
-4. Once validated, the status bar shows “Connected” and then real usage when available.
-5. Click the status bar (default action) to refresh usage on demand.
+![Sign-in: copy the _session cookie; Augmeter detects it automatically](images/session-cookie.png) 4. Once validated, the status bar shows “Connected” and then real usage when available. 5. Click the status bar (default action) to refresh usage on demand.
 
 ## Usage
 
 - Status bar states:
   - Sign in: Not authenticated; use “Open Website and Sign In”.
   - Connected: Authenticated, awaiting usage data.
-  - Usage: Shows used/remaining/both based on your settings.
+  - Usage: Shows used/remaining/remainingOnly/both based on your settings.
 - Commands (Command Palette):
   - Augmeter: Refresh Usage (`augmeter.manualRefresh`)
   - Augmeter: Open Settings (`augmeter.openSettings`)
@@ -72,13 +74,16 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one‑click 
 
 All settings live under `augmeter.*`.
 
-| Setting                      | Type            | Default                               | Description                                             |
-| ---------------------------- | --------------- | ------------------------------------- | ------------------------------------------------------- |
-| `augmeter.enabled`         | boolean         | `true`                              | Enable/disable the extension                            |
-| `augmeter.refreshInterval` | number (1–300) | `60`                                | Poll interval (seconds)                                 |
-| `augmeter.clickAction`     | string          | `"refresh"`                         | On click:`refresh`, `openWebsite`, `openSettings` |
-| `augmeter.displayMode`     | string          | `"both"`                            | Show `used`, `remaining`, or `both`               |
-| `augmeter.apiBaseUrl`      | string          | `"https://app.augmentcode.com/api"` | Augment API base URL                                    |
+| Setting                     | Type           | Default                             | Description                                                                    |
+| --------------------------- | -------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| `augmeter.enabled`          | boolean        | `true`                              | Enable/disable the extension                                                   |
+| `augmeter.refreshInterval`  | number (1–300) | `60`                                | Poll interval (seconds)                                                        |
+| `augmeter.clickAction`      | string         | `"refresh"`                         | On click:`refresh`, `openWebsite`, `openSettings`                              |
+| `augmeter.displayMode`      | string         | `"both"`                            | Show `used`, `remaining`, `remainingOnly`, or `both`                           |
+| `augmeter.apiBaseUrl`       | string         | `"https://app.augmentcode.com/api"` | Augment API base URL                                                           |
+| `augmeter.statusBarDensity` | string         | `"auto"`                            | Density of status bar: `auto`, `compact` (text only), `detailed` (icon + text) |
+| `augmeter.statusBarIcon`    | string         | `"dashboard"`                       | Icon used when density is `detailed` (e.g., `dashboard`, `graph`, `pie-chart`) |
+| `augmeter.showInStatusBar`  | boolean        | `true`                              | Show Augmeter information in the status bar                                    |
 
 Example user settings (JSON):
 
@@ -86,15 +91,28 @@ Example user settings (JSON):
 {
   "augmeter.enabled": true,
   "augmeter.refreshInterval": 60,
-  "augmeter.displayMode": "both",
+  "augmeter.displayMode": "remainingOnly",
+  "augmeter.statusBarDensity": "detailed",
   "augmeter.clickAction": "refresh"
 }
 ```
 
+### Display modes and density
+
+- Display modes
+  - used: shows used/limit (e.g., 55/100)
+  - remaining: shows remaining/limit (e.g., 45/100)
+  - remainingOnly: shows only remaining (e.g., 45). Tooltip clarifies context; color cues warn near limits.
+  - both: shows used/limit
+- Density
+  - compact: text only (no icon)
+  - detailed: icon + text
+  - auto: adaptive
+
 ## Requirements
 
-- Visual Studio Code: `>= 1.102.0`
-- Node.js: `>= 18.18.0` (development)
+- Visual Studio Code: `>= 1.104.0`
+- Node.js: `>= 20.0.0` (development)
 
 Runtime dependencies:
 

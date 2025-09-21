@@ -1,13 +1,39 @@
+/**
+ * ABOUTME: This file contains the API client for communicating with Augment's backend services,
+ * handling authentication, request retries, response parsing, caching, and secure cookie storage.
+ */
 import * as vscode from "vscode";
-import { RequestInit } from "undici";
-import { HttpClient, HttpResponse } from "../core/http/http-client";
+import { type RequestInit } from "undici";
+import { HttpClient, type HttpResponse } from "../core/http/http-client";
 import { RetryHandler } from "../core/http/retry-handler";
-import { AugmentApiResponse, AugmentUsageData } from "../core/types/augment";
+import { type AugmentApiResponse, type AugmentUsageData } from "../core/types/augment";
 import { SecureSecretsManager } from "../core/auth/secure-secrets-manager";
 import { SecureCookieUtils } from "../core/auth/cookie";
 import { SecureLogger } from "../core/logging/secure-logger";
 import { AugmeterError } from "../core/errors/augmeter-error";
 
+/**
+ * Client for interacting with Augment's API.
+ *
+ * This client provides:
+ * - Cookie-based authentication with secure storage
+ * - Automatic request retries with exponential backoff
+ * - Response caching to reduce network traffic
+ * - Request deduplication to prevent concurrent identical requests
+ * - Comprehensive error handling and logging
+ *
+ * @example
+ * ```typescript
+ * const client = new AugmentApiClient(context);
+ * await client.initializeFromSecrets();
+ *
+ * // Fetch usage data
+ * const response = await client.getUsageData();
+ * if (response.success) {
+ *   const usage = await client.parseUsageResponse(response);
+ * }
+ * ```
+ */
 export class AugmentApiClient {
   private readonly DEFAULT_API_BASE_URL = "https://app.augmentcode.com/api";
   private sessionCookie: string | null = null; // normalized like `_session=abc...`
@@ -29,11 +55,19 @@ export class AugmentApiClient {
 
     if (context) {
       this.secretsManager = new SecureSecretsManager(context);
-      this.initializeFromSecrets();
+      void this.initializeFromSecrets();
     }
   }
 
-  // Initialize authentication data from secure storage
+  /**
+   * Initialize the API client from secure storage.
+   *
+   * Loads the session cookie from VS Code Secrets API if available,
+   * validates it, and sets up authentication for subsequent requests.
+   * Also performs migration from old workspace storage if needed.
+   *
+   * @throws {AugmeterError} When cookie validation fails
+   */
   async initializeFromSecrets(): Promise<void> {
     if (!this.secretsManager) return;
 
@@ -219,7 +253,7 @@ export class AugmentApiClient {
 
   async parseUsageResponse(response: AugmentApiResponse): Promise<AugmentUsageData | null> {
     try {
-      const { parseUsageResponsePure } = await import("./usage-parsing");
+      const { parseUsageResponsePure } = await import("./usage-parsing.js");
       return parseUsageResponsePure(response);
     } catch (error) {
       SecureLogger.error("Error parsing usage response", error);

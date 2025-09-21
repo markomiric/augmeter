@@ -1,8 +1,8 @@
-import * as assert from "assert";
+import { describe, it, expect } from "vitest";
 import * as vscode from "vscode";
 import { AuthCommands } from "../commands/auth-commands";
 
-suite("Smart Sign In (unit)", () => {
+describe("Smart Sign In (unit)", () => {
   function makeMocks() {
     const calls: any = {
       setSessionCookie: 0,
@@ -13,6 +13,7 @@ suite("Smart Sign In (unit)", () => {
     };
 
     const apiClient = {
+      hasCookie: () => false,
       setSessionCookie: (_c: string) => {
         calls.setSessionCookie++;
       },
@@ -43,15 +44,16 @@ suite("Smart Sign In (unit)", () => {
       },
     } as any;
 
-    const configManager = { getSmartSignInQuickWatchMs: () => 200 } as any;
+    const configManager = {
+      getSmartSignInWebsiteWatchMs: () => 500,
+    } as any;
     const auth = new AuthCommands(augmentDetector, usageTracker, statusBarManager, configManager);
     const disposables = auth.registerCommands();
 
     return { apiClient, augmentDetector, usageTracker, statusBarManager, calls, disposables };
   }
 
-  test("Uses clipboard cookie to sign in and fetch without opening website", async function () {
-    this.timeout(5000);
+  it("Uses clipboard cookie to sign in and fetch without opening website", async () => {
     const { calls, disposables } = makeMocks();
 
     // Put a valid-looking cookie in clipboard
@@ -66,36 +68,41 @@ suite("Smart Sign In (unit)", () => {
 
     await vscode.commands.executeCommand("augmeter.smartSignIn");
 
-    assert.strictEqual(calls.setSessionCookie > 0, true, "should set session cookie");
-    assert.strictEqual(calls.testConnection > 0, true, "should validate connection");
-    assert.strictEqual(calls.refreshNow > 0, true, "should refresh usage data");
-    assert.strictEqual(calls.updateDisplay > 0, true, "should update status bar");
-    assert.strictEqual(
-      fallbackCalled,
-      false,
-      "should not fall back to website when clipboard is valid"
-    );
+    expect(calls.setSessionCookie).toBeGreaterThan(0);
+    expect(calls.testConnection).toBeGreaterThan(0);
+    expect(calls.refreshNow).toBeGreaterThan(0);
+    expect(calls.updateDisplay).toBeGreaterThan(0);
+    expect(fallbackCalled).toBe(false);
 
     disposables.forEach(d => d.dispose?.());
-  });
+  }, 5000);
 
-  test("Falls back to website when no cookie available", async function () {
-    this.timeout(6000);
+  it("Opens website and shows manual input when no cookie available", async () => {
     const { calls, disposables } = makeMocks();
 
     // Empty clipboard
     await vscode.env.clipboard.writeText("");
 
-    let fallbackCalled = false;
-    vscode.commands.registerCommand("augmeter.openWebsiteAndSignIn", async () => {
-      fallbackCalled = true;
-    });
-
     await vscode.commands.executeCommand("augmeter.smartSignIn");
 
-    assert.strictEqual(calls.setSessionCookie, 0, "should not set cookie");
-    assert.strictEqual(fallbackCalled, true, "should fall back to website");
+    expect(calls.setSessionCookie).toBe(0);
+    expect(calls.clearSessionCookie).toBeGreaterThan(0);
 
     disposables.forEach(d => d.dispose?.());
-  });
+  }, 2000);
+
+  it("Allows repeated sign-in attempts sequentially (lock releases)", async () => {
+    const { calls, disposables } = makeMocks();
+
+    const token = "B".repeat(64);
+    await vscode.env.clipboard.writeText(token);
+
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+
+    expect(calls.setSessionCookie).toBeGreaterThanOrEqual(2);
+    expect(calls.testConnection).toBeGreaterThanOrEqual(2);
+
+    disposables.forEach((d: any) => d.dispose?.());
+  }, 5000);
 });

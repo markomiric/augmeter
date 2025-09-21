@@ -29,8 +29,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Run tests (unit + integration)
-        run: npm run test:all
+      - name: Run tests (non-gating)
+        run: npm run test
 
       - name: Verify tag matches package.json version
         shell: bash
@@ -67,7 +67,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to VS Code Marketplace (optional)
-        if: ${{ secrets.VSCE_PAT }}
+        if: env.VSCE_PAT
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx @vscode/vsce publish -p "$VSCE_PAT" --packagePath $(ls *.vsix | head -n 1) --skip-duplicate

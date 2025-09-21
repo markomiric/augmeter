@@ -1,5 +1,23 @@
+/**
+ * ABOUTME: This file manages extension configuration settings from VS Code workspace configuration,
+ * providing type-safe access to all Augmeter settings with defaults.
+ */
 import * as vscode from "vscode";
 
+/**
+ * Manages extension configuration settings.
+ *
+ * This class provides type-safe access to all Augmeter settings
+ * from VS Code workspace configuration, with sensible defaults.
+ *
+ * @example
+ * ```typescript
+ * const config = new ConfigManager();
+ * if (config.isEnabled()) {
+ *   const interval = config.getRefreshInterval();
+ * }
+ * ```
+ */
 export class ConfigManager {
   private config!: vscode.WorkspaceConfiguration;
 
@@ -44,9 +62,9 @@ export class ConfigManager {
     return this.config.get<boolean>("analyticsEnabled", true);
   }
 
-  getDisplayMode(): "used" | "remaining" | "both" {
+  getDisplayMode(): "used" | "remaining" | "remainingOnly" | "both" {
     const v = this.config.get<string>("displayMode", "both") ?? "both";
-    return v === "used" || v === "remaining" || v === "both" ? v : "both";
+    return v === "used" || v === "remaining" || v === "remainingOnly" || v === "both" ? v : "both";
   }
 
   getStatusBarDensity(): "auto" | "compact" | "detailed" {
@@ -115,7 +133,7 @@ export class ConfigManager {
     density: "auto" | "compact" | "detailed";
     iconName: string;
     showPercent: boolean;
-    displayMode: "used" | "remaining" | "both";
+    displayMode: "used" | "remaining" | "remainingOnly" | "both";
     colorScheme: "standard" | "conservative" | "aggressive";
     colorThresholds: {
       critical: number;
@@ -150,6 +168,15 @@ export class ConfigManager {
     const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 2000;
     if (n < 0) return 0;
     if (n > 5000) return 5000;
+    return n;
+  }
+
+  // Smart Sign-In: Website clipboard watch duration (ms), clamp to [1000, 300000] (default 5 minutes)
+  getSmartSignInWebsiteWatchMs(): number {
+    const raw = this.config.get<number>("smartSignIn.websiteWatchMs", 300000);
+    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 300000;
+    if (n < 1000) return 1000;
+    if (n > 300000) return 300000;
     return n;
   }
 

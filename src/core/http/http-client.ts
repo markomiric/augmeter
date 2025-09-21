@@ -1,19 +1,26 @@
-import { fetch as undiciFetch, RequestInit } from "undici";
+/**
+ * ABOUTME: This file contains the HTTP client for making requests to external APIs,
+ * with built-in timeout handling, error normalization, and comprehensive logging.
+ */
+import { fetch as undiciFetch, type RequestInit } from "undici";
 import { SecureLogger } from "../logging/secure-logger";
 import { AugmeterError } from "../errors/augmeter-error";
 
+/**
+ * HTTP response structure returned by the client.
+ */
 export interface HttpResponse {
   success: boolean;
-  status?: number;
+  status?: number | undefined;
   data?: any;
-  error?: string;
-  headers?: Record<string, string>;
+  error?: string | undefined;
+  headers?: Record<string, string> | undefined;
 }
 
 export interface HttpRequestOptions extends RequestInit {
-  timeout?: number;
-  retries?: number;
-  baseUrl?: string;
+  timeout?: number | undefined;
+  retries?: number | undefined;
+  baseUrl?: string | undefined;
 }
 
 /**

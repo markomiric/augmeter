@@ -218,3 +218,16 @@ public
 # Temporary folders
 tmp/
 temp/
+
+# Augment-specific
+.augment
+
+# JSCPD report
+jscpd-report.json
+
+# SBOM
+sbom.json
+sbom.xml
+
+# Generated API Documentation
+docs/api/

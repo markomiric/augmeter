@@ -1,15 +1,39 @@
+/**
+ * ABOUTME: This file tracks usage data, manages polling intervals, and emits change events
+ * when usage data is updated from the API or local storage.
+ */
 import * as vscode from "vscode";
-import { StorageManager } from "../../core/storage/storage-manager";
-import { ConfigManager } from "../../core/config/config-manager";
+import { type StorageManager } from "../../core/storage/storage-manager";
+import { type ConfigManager } from "../../core/config/config-manager";
 import { SecureLogger } from "../../core/logging/secure-logger";
 
+/**
+ * Real usage data fetched from the Augment API.
+ */
 export interface RealUsageData {
-  totalUsage?: number;
-  usageLimit?: number;
-  dailyUsage?: number;
-  lastUpdate?: string;
+  totalUsage?: number | undefined;
+  usageLimit?: number | undefined;
+  dailyUsage?: number | undefined;
+  lastUpdate?: string | undefined;
 }
 
+/**
+ * Tracks usage data and manages polling for updates.
+ *
+ * This class provides:
+ * - Local usage tracking with daily breakdown
+ * - Real usage data from the API
+ * - Change event emission for UI updates
+ * - Periodic cleanup of old data
+ * - Jittered polling to avoid synchronized requests
+ *
+ * @example
+ * ```typescript
+ * const tracker = new UsageTracker(storageManager, configManager);
+ * tracker.startTracking();
+ * tracker.onChanged(() => console.log("Usage updated"));
+ * ```
+ */
 export class UsageTracker implements vscode.Disposable {
   private storageManager: StorageManager;
   private configManager: ConfigManager;
@@ -29,7 +53,7 @@ export class UsageTracker implements vscode.Disposable {
   constructor(storageManager: StorageManager, configManager: ConfigManager) {
     this.storageManager = storageManager;
     this.configManager = configManager;
-    this.loadCurrentUsage();
+    void this.loadCurrentUsage();
   }
 
   private async loadCurrentUsage() {
@@ -46,7 +70,7 @@ export class UsageTracker implements vscode.Disposable {
     // Periodic cleanup of old data
     const cleanupInterval = setInterval(
       () => {
-        this.storageManager.cleanOldData();
+        void this.storageManager.cleanOldData();
       },
       24 * 60 * 60 * 1000
     ); // Daily cleanup

@@ -1,7 +1,11 @@
+/**
+ * ABOUTME: This file manages the VS Code status bar item for displaying usage data,
+ * handling user interactions, and updating the UI based on authentication and usage state.
+ */
 import * as vscode from "vscode";
-import { UsageTracker } from "../features/usage/usage-tracker";
-import { ConfigManager } from "../core/config/config-manager";
-import { AugmentDetector } from "../services/augment-detector";
+import { type UsageTracker } from "../features/usage/usage-tracker";
+import { type ConfigManager } from "../core/config/config-manager";
+import { type AugmentDetector } from "../services/augment-detector";
 import { SecureLogger } from "../core/logging/secure-logger";
 import {
   formatCompact as sbFormatCompact,
@@ -14,6 +18,23 @@ import {
   type ClickAction,
 } from "./status-bar-logic";
 
+/**
+ * Manages the VS Code status bar item for displaying Augmeter usage data.
+ *
+ * This class handles:
+ * - Status bar text and color updates based on usage and authentication state
+ * - User interactions (clicks) with configurable actions
+ * - Periodic refresh of usage data
+ * - Theme-aware color schemes (standard, conservative, aggressive, custom)
+ * - Accessibility support with ARIA labels
+ *
+ * @example
+ * ```typescript
+ * const statusBar = new StatusBarManager(usageTracker, configManager, augmentDetector);
+ * await statusBar.updateDisplay();
+ * statusBar.show();
+ * ```
+ */
 export class StatusBarManager implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private usageTracker: UsageTracker;
@@ -107,6 +128,55 @@ export class StatusBarManager implements vscode.Disposable {
     return sbFormatCompact(n);
   }
 
+  private setDisplayTextAndA11y(
+    displayMode: DisplayMode,
+    used: number,
+    limit: number,
+    remaining: number,
+    percentage: number
+  ): void {
+    const valueText = computeValueText(displayMode, used, limit, remaining, sbFormatCompact);
+    const { density, iconName } = this.configManager.getStatusBarConfig();
+    this.statusBarItem.text = computeDisplayText(density, valueText, iconName);
+    this.statusBarItem.accessibilityInformation = {
+      label: computeAccessibilityLabel(used, limit, remaining, percentage),
+      role: "status",
+    };
+  }
+
+  private applyTooltip(
+    used: number,
+    limit: number,
+    remaining: number,
+    percentage: number,
+    hasRealData: boolean
+  ): void {
+    const clickAction = this.configManager.getClickAction() as ClickAction;
+    const tooltip = buildTooltip({
+      used,
+      limit,
+      remaining,
+      percentage,
+      showPercent: false,
+      hasRealData,
+      clickAction,
+      lastUpdated: new Date(),
+    });
+    this.statusBarItem.tooltip = tooltip;
+  }
+
+  private applyColors(percentage: number, hasRealData: boolean): void {
+    const fg = computeStatusColorWithAccessibility(
+      percentage,
+      hasRealData,
+      "standard",
+      { critical: 95, highWarning: 95, warning: 85, caution: 101 },
+      this.isHighContrastTheme()
+    );
+    this.statusBarItem.color = fg ? new vscode.ThemeColor(fg) : undefined;
+    this.statusBarItem.backgroundColor = undefined;
+  }
+
   async updateDisplay() {
     if (!this.configManager.isEnabled() || !this.configManager.shouldShowInStatusBar()) {
       this.statusBarItem.hide();
@@ -150,41 +220,11 @@ export class StatusBarManager implements vscode.Disposable {
     const used = usage;
     const remaining = limit > 0 ? Math.max(limit - usage, 0) : 0;
 
-    // Compute value text using pure helpers
-    const valueText = computeValueText(displayMode, used, limit, remaining, sbFormatCompact);
+    this.setDisplayTextAndA11y(displayMode, used, limit, remaining, percentage);
 
-    const { density, iconName } = this.configManager.getStatusBarConfig();
-    this.statusBarItem.text = computeDisplayText(density, valueText, iconName);
-    this.statusBarItem.accessibilityInformation = {
-      label: computeAccessibilityLabel(used, limit, remaining, percentage),
-      role: "status",
-    };
+    this.applyTooltip(used, limit, remaining, percentage, hasRealData);
 
-    // Build concise, user-focused tooltip
-    const clickAction = this.configManager.getClickAction() as ClickAction;
-    const tooltip = buildTooltip({
-      used,
-      limit,
-      remaining,
-      percentage,
-      showPercent: false,
-      hasRealData,
-      clickAction,
-      lastUpdated: new Date(),
-    });
-    this.statusBarItem.tooltip = tooltip;
-
-    // Apply colors based on usage percentage and accessibility
-    const fg = computeStatusColorWithAccessibility(
-      percentage,
-      hasRealData,
-      "standard",
-      { critical: 95, highWarning: 95, warning: 85, caution: 101 },
-      this.isHighContrastTheme()
-    );
-
-    this.statusBarItem.color = fg ? new vscode.ThemeColor(fg) : undefined;
-    this.statusBarItem.backgroundColor = undefined;
+    this.applyColors(percentage, hasRealData);
 
     this.updateClickCommand();
     this.statusBarItem.show();

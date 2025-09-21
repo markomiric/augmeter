@@ -198,13 +198,21 @@ export class UserNotificationService {
     placeholder?: string,
     validator?: (value: string) => string | null
   ): Promise<string | null> {
-    const input = await vscode.window.showInputBox({
+    const inputOptions: vscode.InputBoxOptions = {
       title,
       prompt,
-      placeHolder: placeholder,
       ignoreFocusOut: true,
-      validateInput: validator,
-    });
+    };
+
+    if (placeholder !== undefined) {
+      inputOptions.placeHolder = placeholder;
+    }
+
+    if (validator !== undefined) {
+      inputOptions.validateInput = validator;
+    }
+
+    const input = await vscode.window.showInputBox(inputOptions);
 
     return input || null;
   }
@@ -220,11 +228,22 @@ export class UserNotificationService {
       canPickMany?: boolean;
     } = {}
   ): Promise<T | T[] | undefined> {
-    return vscode.window.showQuickPick(items, {
-      title: options.title,
-      placeHolder: options.placeholder,
-      canPickMany: options.canPickMany,
+    const quickPickOptions: vscode.QuickPickOptions = {
       ignoreFocusOut: true,
-    });
+    };
+
+    if (options.title !== undefined) {
+      quickPickOptions.title = options.title;
+    }
+
+    if (options.placeholder !== undefined) {
+      quickPickOptions.placeHolder = options.placeholder;
+    }
+
+    if (options.canPickMany !== undefined) {
+      quickPickOptions.canPickMany = options.canPickMany;
+    }
+
+    return vscode.window.showQuickPick(items, quickPickOptions);
   }
 }

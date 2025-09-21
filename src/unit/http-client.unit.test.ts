@@ -1,4 +1,4 @@
-import * as assert from "assert";
+import { describe, it, expect } from "vitest";
 import { HttpClient } from "../core/http/http-client";
 
 // Minimal fake Headers-like helper for Node unit tests
@@ -24,8 +24,8 @@ type FakeResponse = {
   text?: () => Promise<string>;
 };
 
-suite("HttpClient (unit) Test Suite", () => {
-  test("Parses JSON response on success", async () => {
+describe("HttpClient (unit) Test Suite", () => {
+  it("Parses JSON response on success", async () => {
     const resp: FakeResponse = {
       ok: true,
       status: 200,
@@ -37,11 +37,11 @@ suite("HttpClient (unit) Test Suite", () => {
     const client = new HttpClient(fakeFetch as any);
 
     const res = await client.get("/test", { baseUrl: "https://example.com" });
-    assert.strictEqual(res.success, true);
-    assert.deepStrictEqual(res.data, { hello: "world" });
+    expect(res.success).toBe(true);
+    expect(res.data).toEqual({ hello: "world" });
   });
 
-  test("Parses text response when not JSON", async () => {
+  it("Parses text response when not JSON", async () => {
     const resp: FakeResponse = {
       ok: true,
       status: 200,
@@ -53,27 +53,23 @@ suite("HttpClient (unit) Test Suite", () => {
     const client = new HttpClient(fakeFetch as any);
 
     const res = await client.get("/test", { baseUrl: "https://example.com" });
-    assert.strictEqual(res.success, true);
-    assert.strictEqual(res.data, "plain text");
+    expect(res.success).toBe(true);
+    expect(res.data).toBe("plain text");
   });
 
-  test("Maps network errors to AugmeterError.network (ECONNREFUSED)", async () => {
+  it("Maps network errors to AugmeterError.network (ECONNREFUSED)", async () => {
     const err = new Error("ECONNREFUSED: connection refused");
     const fakeFetch = async () => {
       throw err;
     };
     const client = new HttpClient(fakeFetch as any);
 
-    await assert.rejects(
-      client.get("/x", { baseUrl: "https://example.com" }),
-      (e: any) =>
-        e &&
-        (e.name === "AugmeterError" || e.constructor?.name === "AugmeterError") &&
-        e.type === "network"
-    );
+    await expect(client.get("/x", { baseUrl: "https://example.com" })).rejects.toMatchObject({
+      type: "network",
+    });
   });
 
-  test("Returns error details on non-2xx with JSON payload", async () => {
+  it("Returns error details on non-2xx with JSON payload", async () => {
     const resp: FakeResponse = {
       ok: false,
       status: 429,
@@ -85,12 +81,12 @@ suite("HttpClient (unit) Test Suite", () => {
     const client = new HttpClient(fakeFetch as any);
 
     const res = await client.get("/rate", { baseUrl: "https://example.com" });
-    assert.strictEqual(res.success, false);
-    assert.strictEqual(res.status, 429);
-    assert.match(String(res.error), /rate limited/);
+    expect(res.success).toBe(false);
+    expect(res.status).toBe(429);
+    expect(String(res.error)).toMatch(/rate limited/);
   });
 
-  test("Timeout maps to AugmeterError.network with AbortError", async () => {
+  it("Timeout maps to AugmeterError.network with AbortError", async () => {
     const fakeFetch = (_url: string, init: any) => {
       return new Promise((_resolve, reject) => {
         const err: any = new Error("aborted");
@@ -101,16 +97,14 @@ suite("HttpClient (unit) Test Suite", () => {
       });
     };
     const client = new HttpClient(fakeFetch as any);
-    await assert.rejects(
-      client.get("/timeout", { baseUrl: "https://example.com", timeout: 5 }),
-      (e: any) =>
-        e &&
-        (e.name === "AugmeterError" || e.constructor?.name === "AugmeterError") &&
-        e.type === "network"
-    );
+    await expect(
+      client.get("/timeout", { baseUrl: "https://example.com", timeout: 5 })
+    ).rejects.toMatchObject({
+      type: "network",
+    });
   });
 
-  test("Non-JSON error body retains text and builds default error message", async () => {
+  it("Non-JSON error body retains text and builds default error message", async () => {
     const resp: FakeResponse = {
       ok: false,
       status: 500,
@@ -122,12 +116,12 @@ suite("HttpClient (unit) Test Suite", () => {
     const client = new HttpClient(fakeFetch as any);
 
     const res = await client.get("/err", { baseUrl: "https://example.com" });
-    assert.strictEqual(res.success, false);
-    assert.strictEqual(res.data, "oops");
-    assert.match(String(res.error), /HTTP 500: Internal Server Error/);
+    expect(res.success).toBe(false);
+    expect(res.data).toBe("oops");
+    expect(String(res.error)).toMatch(/HTTP 500: Internal Server Error/);
   });
 
-  test("Headers are merged and passed to fetch", async () => {
+  it("Headers are merged and passed to fetch", async () => {
     let capturedHeaders: any;
     const resp: FakeResponse = {
       ok: true,
@@ -145,12 +139,12 @@ suite("HttpClient (unit) Test Suite", () => {
       baseUrl: "https://example.com",
       headers: { "X-Test": "1" },
     });
-    assert.strictEqual(res.success, true);
+    expect(res.success).toBe(true);
     // Normalize header shapes
     const h = new Map<string, string>(
       Object.entries(capturedHeaders).map(([k, v]: any) => [String(k).toLowerCase(), String(v)])
     );
-    assert.strictEqual(h.get("content-type"), "application/json");
-    assert.strictEqual(h.get("x-test"), "1");
+    expect(h.get("content-type")).toBe("application/json");
+    expect(h.get("x-test")).toBe("1");
   });
 });

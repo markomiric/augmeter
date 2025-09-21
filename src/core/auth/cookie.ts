@@ -1,4 +1,24 @@
-// Cookie utils kept internal to this module
+/**
+ * ABOUTME: This file contains utilities for validating, normalizing, and extracting session cookies
+ * from various input formats (raw cookies, curl commands, browser DevTools).
+ */
+
+/**
+ * Utilities for secure cookie validation and normalization.
+ *
+ * This class provides methods to:
+ * - Validate cookie values for security and format
+ * - Normalize cookies from various input formats
+ * - Extract session values from cookie strings
+ * - Handle curl commands and browser DevTools output
+ *
+ * @example
+ * ```typescript
+ * const normalized = SecureCookieUtils.normalizeCookieInput(rawInput);
+ * const sessionValue = SecureCookieUtils.extractSessionValue(normalized);
+ * const validation = SecureCookieUtils.validateCookieValue(sessionValue);
+ * ```
+ */
 export class SecureCookieUtils {
   // Validates that a cookie value looks like a real session token
   static validateCookieValue(value: string): { valid: boolean; error?: string } {
@@ -57,11 +77,11 @@ export class SecureCookieUtils {
     const raw = input.trim();
     // If the user pasted a curl command, try to extract the Cookie header portion
     const curlCookieMatch = raw.match(/-H\s+"?Cookie:([^"\n]+)"?/i);
-    const candidate = curlCookieMatch ? curlCookieMatch[1].trim() : raw;
+    const candidate = curlCookieMatch?.[1]?.trim() ?? raw;
 
     // If it already contains _session=, extract that pair
     const sessionMatch = candidate.match(/(?:^|[;\s])_session=([^;\s]+)/);
-    if (sessionMatch) {
+    if (sessionMatch?.[1]) {
       const value = sessionMatch[1];
       return `_session=${value}`;
     }
@@ -73,6 +93,6 @@ export class SecureCookieUtils {
   // Extract just the session token value for validation
   static extractSessionValue(cookieString: string): string {
     const match = cookieString.match(/_session=([^;\s]+)/);
-    return match ? match[1] : cookieString.replace(/^_session=/, "");
+    return match?.[1] ?? cookieString.replace(/^_session=/, "");
   }
 }

@@ -1,9 +1,9 @@
-import { AugmentApiResponse, AugmentUsageData } from "../core/types/augment";
+import { type AugmentApiResponse, type AugmentUsageData } from "../core/types/augment";
 
 // Pure parser for usage responses. No vscode/logging imports.
 export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsageData | null {
   if (!response?.success || !response.data) return null;
-  const data = response.data as any;
+  const data = response.data;
 
   // 1) Community-style fields
   if (data.usageUnitsUsedThisBillingCycle !== undefined) {
@@ -14,7 +14,6 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
       monthlyUsage: data.usageUnitsUsedThisBillingCycle,
       lastUpdate: new Date().toISOString(),
       subscriptionType: "community",
-      renewalDate: undefined,
     };
   }
 
@@ -26,7 +25,6 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
     return {
       totalUsage: data.creditsIncludedThisBillingCycle - data.creditsRenewingEachBillingCycle,
       usageLimit: data.creditsIncludedThisBillingCycle,
-      dailyUsage: undefined,
       monthlyUsage: data.creditsIncludedThisBillingCycle - data.creditsRenewingEachBillingCycle,
       lastUpdate: new Date().toISOString(),
       subscriptionType: data.augmentPlanType || data.planName,
