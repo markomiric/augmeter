@@ -1,3 +1,7 @@
+/**
+ * ABOUTME: This file contains the bootstrap logic for initializing the extension,
+ * wiring up dependencies, registering commands, and starting background services.
+ */
 import * as vscode from "vscode";
 import { AugmentDetector } from "../services/augment-detector";
 import { UsageTracker } from "../features/usage/usage-tracker";
@@ -10,6 +14,28 @@ import { UsageCommands } from "../commands/usage-commands";
 
 import { ErrorHandler } from "../core/errors/augmeter-error";
 
+/**
+ * Bootstraps the extension by initializing all services and registering commands.
+ *
+ * This class follows a dependency injection pattern, manually wiring up all
+ * services and passing them to command handlers and UI components.
+ *
+ * Initialization sequence:
+ * 1. Initialize core managers (storage, config, detector)
+ * 2. Register authentication provider
+ * 3. Register commands
+ * 4. Initialize authentication state
+ * 5. Setup status bar click handler
+ * 6. Start data fetching
+ *
+ * @example
+ * ```typescript
+ * const bootstrap = new ExtensionBootstrap();
+ * await bootstrap.initialize(context);
+ * const disposables = bootstrap.getDisposables();
+ * disposables.forEach(d => context.subscriptions.push(d));
+ * ```
+ */
 export class ExtensionBootstrap {
   private storageManager!: StorageManager;
   private configManager!: ConfigManager;
@@ -25,6 +51,16 @@ export class ExtensionBootstrap {
 
   private realDataFetcher?: () => Promise<void>;
 
+  /**
+   * Initialize the extension with all services and commands.
+   *
+   * This method orchestrates the entire initialization sequence,
+   * setting up all managers, registering commands, and starting
+   * background data fetching.
+   *
+   * @param context - The VS Code extension context
+   * @throws {Error} When initialization fails
+   */
   async initialize(context: vscode.ExtensionContext): Promise<void> {
     try {
       SecureLogger.info("Extension initialization started");
@@ -142,7 +178,7 @@ export class ExtensionBootstrap {
     try {
       // Status bar click handler is already set up in StatusBarManager
       // Just trigger an update to ensure it's displayed
-      this.statusBarManager.updateDisplay();
+      void this.statusBarManager.updateDisplay();
       SecureLogger.info("Status bar click handler setup completed");
     } catch (error) {
       SecureLogger.error("Status bar click handler setup failed", error);
@@ -169,7 +205,7 @@ export class ExtensionBootstrap {
           // Skip network calls when not authenticated
           if (!apiClient.hasCookie()) {
             this.usageTracker.clearRealDataFlag();
-            this.statusBarManager.updateDisplay();
+            void this.statusBarManager.updateDisplay();
             SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
             return;
           }
@@ -196,7 +232,7 @@ export class ExtensionBootstrap {
                 lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
               });
 
-              this.statusBarManager.updateDisplay();
+              void this.statusBarManager.updateDisplay();
               SecureLogger.info(`Real usage data updated successfully (source=${source})`);
             } else {
               SecureLogger.warn(`Failed to parse usage data response (source=${source})`);
@@ -205,7 +241,7 @@ export class ExtensionBootstrap {
             // If unauthenticated, clear real data and update status without retrying
             if ((response as any).code === "UNAUTHENTICATED") {
               this.usageTracker.clearRealDataFlag();
-              this.statusBarManager.updateDisplay();
+              void this.statusBarManager.updateDisplay();
               SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
               return;
             }
@@ -246,7 +282,7 @@ export class ExtensionBootstrap {
             e.affectsConfiguration("augmeter.displayMode") ||
             e.affectsConfiguration("augmeter.clickAction")
           ) {
-            this.statusBarManager.updateDisplay();
+            void this.statusBarManager.updateDisplay();
           }
         } catch (err) {
           SecureLogger.warn("Failed to apply configuration change", err);

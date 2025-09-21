@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { ConfigManager } from "../../core/config/config-manager";
 import { StatusBarManager } from "../../ui/status-bar";
 import { AugmentDetector } from "../../services/augment-detector";
@@ -22,6 +22,10 @@ class MockUsageTracker {
     return this.hasRealData;
   }
 
+  getDataSource() {
+    return "test";
+  }
+
   setHasRealData(value: boolean) {
     this.hasRealData = value;
   }
@@ -34,6 +38,10 @@ class MockUsageTracker {
 
   stopDataFetching() {
     // Mock implementation
+  }
+
+  onChanged(_cb: () => void) {
+    return { dispose() {} } as vscode.Disposable;
   }
 }
 
@@ -73,9 +81,14 @@ suite("Status Bar Bugs Test Suite", () => {
     mockDetector = new MockAugmentDetector();
   });
 
-  teardown(() => {
+  teardown(async () => {
     try {
       manager?.dispose();
+    } catch {}
+    try {
+      await config.updateConfig("statusBarDensity", "auto");
+      await config.updateConfig("statusBarIcon", "dashboard");
+      await config.updateConfig("showInStatusBar", true);
     } catch {}
   });
 
@@ -167,8 +180,8 @@ suite("Status Bar Bugs Test Suite", () => {
     let statusBarItem = (manager as any).statusBarItem;
     assert.strictEqual(
       statusBarItem.command,
-      "augmeter.openWebsiteAndSignIn",
-      "Sign in state should have openWebsiteAndSignIn command"
+      "augmeter.smartSignIn",
+      "Sign in state should use smartSignIn command"
     );
 
     // Test connected state click command

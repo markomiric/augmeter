@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { AugmentApiClient } from "./augment-api-client";
-import { AugmentUsageData } from "../core/types/augment";
+import { type AugmentUsageData } from "../core/types/augment";
 import { SecureLogger } from "../core/logging/secure-logger";
 
 export interface AugmentStatus {
@@ -63,7 +63,7 @@ export class AugmentDetector {
 
   async testApiConnection(): Promise<{
     success: boolean;
-    error?: string;
+    error?: string | undefined;
     hasToken: boolean;
   }> {
     const hasToken = this.apiClient.hasCookie();
@@ -71,7 +71,7 @@ export class AugmentDetector {
     if (!hasToken) {
       return {
         success: false,
-        error: "No authentication cookie provided",
+        error: "No authentication cookie provided" as string | undefined,
         hasToken: false,
       };
     }
@@ -79,7 +79,7 @@ export class AugmentDetector {
     const testResult = await this.apiClient.testConnection();
     return {
       success: testResult.success,
-      error: testResult.error,
+      error: testResult.error ?? undefined,
       hasToken: true,
     };
   }
@@ -103,7 +103,7 @@ export class AugmentDetector {
   }
 
   clearApiCookie(): void {
-    this.apiClient.clearSessionCookie();
+    void this.apiClient.clearSessionCookie();
     this.cachedStatus = null;
   }
 

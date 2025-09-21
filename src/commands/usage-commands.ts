@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { UsageTracker } from "../features/usage/usage-tracker";
-import { StatusBarManager } from "../ui/status-bar";
+import { type UsageTracker } from "../features/usage/usage-tracker";
+import { type StatusBarManager } from "../ui/status-bar";
 import { SecureLogger } from "../core/logging/secure-logger";
 
 import { UserNotificationService } from "../core/notifications/user-notification-service";

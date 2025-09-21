@@ -142,13 +142,13 @@ export class AuthenticationManager {
   getAuthStatus(): {
     authenticated: boolean;
     hasStoredAuth: boolean;
-    cookieLength?: number;
-    lastValidated?: Date;
+    cookieLength?: number | undefined;
+    lastValidated?: Date | undefined;
   } {
     return {
       authenticated: this.isAuthenticated(),
       hasStoredAuth: this.secretsManager !== null,
-      cookieLength: this.sessionCookie?.length,
+      cookieLength: this.sessionCookie?.length ?? undefined,
       lastValidated: new Date(), // Could be enhanced to track actual validation time
     };
   }

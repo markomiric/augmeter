@@ -1,6 +1,25 @@
+/**
+ * ABOUTME: This file provides a secure logging utility that automatically redacts sensitive data
+ * (cookies, tokens, passwords) from log messages to prevent credential leakage.
+ */
 import * as vscode from "vscode";
 
-// Secure logging utility
+/**
+ * Secure logger that automatically redacts sensitive data.
+ *
+ * This logger provides:
+ * - Automatic redaction of cookies, tokens, and passwords
+ * - Structured logging with timestamps and log levels
+ * - VS Code output channel integration
+ * - Configurable log level filtering
+ *
+ * @example
+ * ```typescript
+ * SecureLogger.init("Augmeter");
+ * SecureLogger.info("User signed in", { userId: 123 });
+ * SecureLogger.error("Request failed", error);
+ * ```
+ */
 export class SecureLogger {
   private static outputChannel: vscode.OutputChannel | null = null;
 

@@ -1,9 +1,9 @@
-import * as assert from "assert";
+import { describe, it, expect } from "vitest";
 import { RetryHandler } from "../core/http/retry-handler";
 import { AugmeterError } from "../core/errors/augmeter-error";
 
-suite("RetryHandler (unit) Test Suite", () => {
-  test("executeHttpWithRetry retries on 5xx and eventually succeeds", async () => {
+describe("RetryHandler (unit) Test Suite", () => {
+  it("executeHttpWithRetry retries on 5xx and eventually succeeds", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
@@ -16,11 +16,11 @@ suite("RetryHandler (unit) Test Suite", () => {
     };
 
     const res = await rh.executeHttpWithRetry(op, "test http");
-    assert.strictEqual(res.success, true);
-    assert.ok(attempts >= 2, `should retry at least once, attempts=${attempts}`);
+    expect(res.success).toBe(true);
+    expect(attempts).toBeGreaterThanOrEqual(2);
   });
 
-  test("executeHttpWithRetry does not retry on 401 (client error)", async () => {
+  it("executeHttpWithRetry does not retry on 401 (client error)", async () => {
     const rh = new RetryHandler({ maxAttempts: 5, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
@@ -29,12 +29,12 @@ suite("RetryHandler (unit) Test Suite", () => {
       return { success: false, status: 401, error: "unauthorized" };
     }, "401 test");
 
-    assert.strictEqual(res.success, false);
-    assert.strictEqual(res.status, 401);
-    assert.strictEqual(attempts, 1);
+    expect(res.success).toBe(false);
+    expect(res.status).toBe(401);
+    expect(attempts).toBe(1);
   });
 
-  test("executeWithRetry retries on network error and then succeeds", async () => {
+  it("executeWithRetry retries on network error and then succeeds", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
@@ -46,22 +46,21 @@ suite("RetryHandler (unit) Test Suite", () => {
       return "ok";
     }, "network op");
 
-    assert.strictEqual(result, "ok");
-    assert.ok(attempts >= 2);
+    expect(result).toBe("ok");
+    expect(attempts).toBeGreaterThanOrEqual(2);
   });
 
-  test("executeWithRetry does not retry on validation error", async () => {
+  it("executeWithRetry does not retry on validation error", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
-    await assert.rejects(
+    await expect(
       rh.executeWithRetry(async () => {
         attempts++;
         throw AugmeterError.validation("bad input");
-      }, "validation op"),
-      /bad input/
-    );
+      }, "validation op")
+    ).rejects.toThrow(/bad input/);
 
-    assert.strictEqual(attempts, 1);
+    expect(attempts).toBe(1);
   });
 });

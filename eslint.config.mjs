@@ -2,19 +2,28 @@ import tsParser from "@typescript-eslint/parser";
 import tsEslintPlugin from "@typescript-eslint/eslint-plugin";
 import prettierPlugin from "eslint-plugin-prettier";
 import globals from "globals";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 
 import eslintConfigPrettier from "eslint-config-prettier";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export default [
   {
     files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsParser,
-      ecmaVersion: 2020,
+      ecmaVersion: 2022,
       sourceType: "module",
       globals: {
         ...globals.node,
         ...globals.browser,
+      },
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: __dirname,
       },
     },
     plugins: {
@@ -22,23 +31,55 @@ export default [
       "@typescript-eslint": tsEslintPlugin,
     },
     rules: {
+      // Base ESLint rules
       "prefer-const": "error",
       "no-var": "error",
       "no-console": "error",
       "no-undef": "off",
+
+      // TypeScript ESLint rules (non-type-checked)
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+
+      // Type-checked rules
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        {
+          checksVoidReturn: false, // Allow promises in void contexts (e.g., event handlers)
+        },
+      ],
+      "@typescript-eslint/await-thenable": "error",
+      "@typescript-eslint/no-unnecessary-type-assertion": "error",
+      "@typescript-eslint/explicit-module-boundary-types": [
+        "warn",
+        {
+          allowArgumentsExplicitlyTypedAsAny: true,
+        },
+      ],
+      "@typescript-eslint/consistent-type-imports": [
+        "warn",
+        {
+          prefer: "type-imports",
+          fixStyle: "inline-type-imports",
+        },
+      ],
+
+      // Prettier
       "prettier/prettier": "error",
     },
   },
   {
-    files: ["src/test/**/*.ts"],
+    files: ["src/test/**/*.ts", "src/unit/**/*.ts"],
     languageOptions: {
       globals: {
-        ...globals.mocha,
         ...globals.node,
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        vi: "readonly",
       },
     },
     rules: {

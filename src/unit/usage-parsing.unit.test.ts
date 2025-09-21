@@ -1,20 +1,20 @@
-import * as assert from "assert";
+import { describe, it, expect } from "vitest";
 import { parseUsageResponsePure } from "../services/usage-parsing";
-import { AugmentApiResponse } from "../core/types/augment";
+import { type AugmentApiResponse } from "../core/types/augment";
 
-suite("Usage parsing (unit) Test Suite", () => {
-  test("Community fields parsed", () => {
+describe("Usage parsing (unit) Test Suite", () => {
+  it("Community fields parsed", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: { usageUnitsUsedThisBillingCycle: 100, usageUnitsAvailable: 50 },
     };
     const out = parseUsageResponsePure(resp)!;
-    assert.strictEqual(out.totalUsage, 100);
-    assert.strictEqual(out.usageLimit, 150);
-    assert.strictEqual(out.subscriptionType, "community");
+    expect(out.totalUsage).toBe(100);
+    expect(out.usageLimit).toBe(150);
+    expect(out.subscriptionType).toBe("community");
   });
 
-  test("Flat credits fields parsed", () => {
+  it("Flat credits fields parsed", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: {
@@ -25,13 +25,13 @@ suite("Usage parsing (unit) Test Suite", () => {
       },
     };
     const out = parseUsageResponsePure(resp)!;
-    assert.strictEqual(out.totalUsage, 100);
-    assert.strictEqual(out.usageLimit, 140);
-    assert.strictEqual(out.subscriptionType, "Pro");
-    assert.strictEqual(out.renewalDate, "2025-01-01");
+    expect(out.totalUsage).toBe(100);
+    expect(out.usageLimit).toBe(140);
+    expect(out.subscriptionType).toBe("Pro");
+    expect(out.renewalDate).toBe("2025-01-01");
   });
 
-  test("Nested credits variant A parsed", () => {
+  it("Nested credits variant A parsed", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: {
@@ -39,23 +39,23 @@ suite("Usage parsing (unit) Test Suite", () => {
       },
     };
     const out = parseUsageResponsePure(resp)!;
-    assert.strictEqual(out.totalUsage, 120);
-    assert.strictEqual(out.usageLimit, 200);
-    assert.strictEqual(out.subscriptionType, "Team");
+    expect(out.totalUsage).toBe(120);
+    expect(out.usageLimit).toBe(200);
+    expect(out.subscriptionType).toBe("Team");
   });
 
-  test("Nested credits variant B parsed", () => {
+  it("Nested credits variant B parsed", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: { credits: { used: 75, available: 25, billingPeriodEnd: "2025-02-01" } },
     };
     const out = parseUsageResponsePure(resp)!;
-    assert.strictEqual(out.totalUsage, 75);
-    assert.strictEqual(out.usageLimit, 100);
-    assert.strictEqual(out.renewalDate, "2025-02-01");
+    expect(out.totalUsage).toBe(75);
+    expect(out.usageLimit).toBe(100);
+    expect(out.renewalDate).toBe("2025-02-01");
   });
 
-  test("Generic usage object parsed", () => {
+  it("Generic usage object parsed", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: {
@@ -64,31 +64,41 @@ suite("Usage parsing (unit) Test Suite", () => {
       },
     };
     const out = parseUsageResponsePure(resp)!;
-    assert.strictEqual(out.totalUsage, 30);
-    assert.strictEqual(out.usageLimit, 120);
-    assert.strictEqual(out.monthlyUsage, 30);
-    assert.strictEqual(out.subscriptionType, "Starter");
+    expect(out.totalUsage).toBe(30);
+    expect(out.usageLimit).toBe(120);
+    expect(out.monthlyUsage).toBe(30);
+    expect(out.subscriptionType).toBe("Starter");
   });
 
-  test("Fallback root fields parsed", () => {
+  it("Fallback root fields parsed", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: { used: 10, available: 90, tier: "Free", nextBilling: "2025-03-01" },
     };
     const out = parseUsageResponsePure(resp)!;
-    assert.strictEqual(out.totalUsage, 10);
-    assert.strictEqual(out.usageLimit, 100);
-    assert.strictEqual(out.subscriptionType, "Free");
-    assert.strictEqual(out.renewalDate, "2025-03-01");
+    expect(out.totalUsage).toBe(10);
+    expect(out.usageLimit).toBe(100);
+    expect(out.subscriptionType).toBe("Free");
+    expect(out.renewalDate).toBe("2025-03-01");
   });
 
-  test("Unsuccessful response -> null", () => {
+  it("Unsuccessful response -> null", () => {
     const out = parseUsageResponsePure({ success: false, error: "nope" });
-    assert.strictEqual(out, null);
+    expect(out).toBe(null);
   });
 
-  test("Missing data -> null", () => {
+  it("Missing data -> null", () => {
     const out = parseUsageResponsePure({ success: true });
-    assert.strictEqual(out, null);
+    expect(out).toBe(null);
+  });
+
+  it("Fallback to default limit when all limit fields undefined", () => {
+    const resp: AugmentApiResponse = {
+      success: true,
+      data: { used: 500 }, // Only used field, no limit fields
+    };
+    const out = parseUsageResponsePure(resp)!;
+    expect(out.totalUsage).toBe(500);
+    expect(out.usageLimit).toBe(1000); // Default fallback value
   });
 });

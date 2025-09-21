@@ -1,6 +1,6 @@
 import { SecureLogger } from "../logging/secure-logger";
 import { AugmeterError } from "../errors/augmeter-error";
-import { HttpResponse } from "./http-client";
+import { type HttpResponse } from "./http-client";
 
 export interface RetryConfig {
   maxAttempts: number;
