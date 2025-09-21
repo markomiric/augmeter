@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter",
   "description": "Augment credits/usage meter for the VS Code status bar",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "publisher": "kamacode",
   "author": {
     "name": "Marko",
