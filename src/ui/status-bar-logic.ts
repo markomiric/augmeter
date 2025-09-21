@@ -241,7 +241,12 @@ function computeStandardColors(
     return { foreground: "statusBarItem.warningForeground" };
   }
 
-  // Below warning threshold: keep default theme color to minimize noise
+  // Below warning threshold:
+  // - If we have real data, use prominent foreground to keep the item visually present
+  // - If not, keep default theme color (undefined) to minimize noise
+  if (hasRealData) {
+    return { foreground: "statusBarItem.prominentForeground" };
+  }
   return {};
 }
 

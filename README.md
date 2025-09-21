@@ -93,8 +93,8 @@ Example user settings (JSON):
 
 ## Requirements
 
-- Visual Studio Code: `>= 1.102.0`
-- Node.js: `>= 18.18.0` (development)
+- Visual Studio Code: `>= 1.104.0`
+- Node.js: `>= 20.0.0` (development)
 
 Runtime dependencies:
 
