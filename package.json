@@ -182,7 +182,7 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@sinonjs/fake-timers": "^14.0.0",
+    "@sinonjs/fake-timers": "^15.0.0",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.19.13",
     "@types/sinon": "^17.0.4",
