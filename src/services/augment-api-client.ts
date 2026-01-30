@@ -3,7 +3,6 @@
  * handling authentication, request retries, response parsing, caching, and secure cookie storage.
  */
 import * as vscode from "vscode";
-import { type RequestInit } from "undici";
 import { HttpClient, type HttpResponse } from "../core/http/http-client";
 import { RetryHandler } from "../core/http/retry-handler";
 import { type AugmentApiResponse, type AugmentUsageData } from "../core/types/augment";

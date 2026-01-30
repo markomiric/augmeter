@@ -2,7 +2,6 @@
  * ABOUTME: This file contains the HTTP client for making requests to external APIs,
  * with built-in timeout handling, error normalization, and comprehensive logging.
  */
-import { fetch as undiciFetch, type RequestInit } from "undici";
 import { SecureLogger } from "../logging/secure-logger";
 import { AugmeterError } from "../errors/augmeter-error";
 
@@ -34,7 +33,7 @@ export class HttpClient {
   };
 
   // Allow dependency injection for fetch to improve testability
-  constructor(private readonly fetchImpl: typeof undiciFetch = undiciFetch) {}
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
 
   /**
    * Make an HTTP request

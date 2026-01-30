@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter",
   "description": "Augment credits/usage meter for the VS Code status bar",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "kamacode",
   "author": {
     "name": "Marko",
@@ -260,9 +260,7 @@
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
-  "dependencies": {
-    "undici": "^7.15.0"
-  },
+  "dependencies": {},
   "lint-staged": {
     "src/**/*.ts": [
       "eslint --fix",
