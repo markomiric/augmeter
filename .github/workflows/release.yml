@@ -67,7 +67,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to VS Code Marketplace (optional)
-        if: env.VSCE_PAT
+        if: env.VSCE_PAT != ''
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx @vscode/vsce publish -p "$VSCE_PAT" --packagePath $(ls *.vsix | head -n 1) --skip-duplicate
+
+      - name: Publish Summary
+        if: always()
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag**: ${GITHUB_REF_NAME}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ secrets.VSCE_PAT }}" ]; then
+            echo "- **VS Code Marketplace**: Published" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **VS Code Marketplace**: Skipped (no VSCE_PAT)" >> $GITHUB_STEP_SUMMARY
+          fi

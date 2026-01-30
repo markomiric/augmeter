@@ -146,6 +146,47 @@ Augmeter respects your VS Code telemetry settings — if telemetry is off, analy
 
 Please follow conventional commit messages and keep changes focused. Open an issue first to discuss substantial changes.
 
+## Releasing
+
+Releases are automated via GitHub Actions. Pushing a `vX.Y.Z` tag triggers the workflow, which lints, tests, packages a `.vsix`, creates a GitHub Release, and (if `VSCE_PAT` is configured) publishes to the VS Code Marketplace.
+
+### Steps
+
+1. **Bump version** (do not create a git tag yet):
+   ```sh
+   npm version patch --no-git-tag-version
+   # or: npm version minor --no-git-tag-version
+   ```
+2. **Update `CHANGELOG.md`** with the new version and changes.
+3. **Commit and tag**:
+   ```sh
+   git add package.json package-lock.json CHANGELOG.md
+   git commit -m "Release vX.Y.Z"
+   git tag vX.Y.Z
+   git push origin main --tags
+   ```
+4. The release workflow handles the rest.
+
+### What happens automatically
+
+- Linting and tests run
+- Tag is verified against `package.json` version
+- `.vsix` artifact is built and uploaded
+- GitHub Release is created with the `.vsix` attached
+- If `VSCE_PAT` secret is set, the extension is published to the VS Code Marketplace
+
+### Troubleshooting
+
+| Problem                              | Fix                                                                                                                              |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Tag/version mismatch**             | `package.json` version must match the tag (e.g. tag `v1.2.3` requires version `1.2.3`). Delete the tag, fix the version, re-tag. |
+| **Expired PAT**                      | Rotate the Azure DevOps PAT, update the `VSCE_PAT` secret in GitHub, and re-run the workflow.                                    |
+| **Duplicate version on Marketplace** | The publish step uses `--skip-duplicate` and will succeed without re-publishing. Bump the version for new changes.               |
+
+### Manual fallback
+
+If the automated publish fails, download the `.vsix` from the GitHub Release and upload it manually at https://marketplace.visualstudio.com/manage/publishers/kamacode.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
