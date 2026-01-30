@@ -75,8 +75,33 @@
         "command": "augmeter.openWebsiteAndSignIn",
         "title": "Augmeter: Open Website and Sign In",
         "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.copyUsageSummary",
+        "title": "Augmeter: Copy Usage Summary",
+        "category": "Augmeter"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "augmeter.signIn",
+          "when": "!augmeter.isSignedIn"
+        },
+        {
+          "command": "augmeter.openWebsiteAndSignIn",
+          "when": "!augmeter.isSignedIn"
+        },
+        {
+          "command": "augmeter.signOut",
+          "when": "augmeter.isSignedIn"
+        },
+        {
+          "command": "augmeter.copyUsageSummary",
+          "when": "augmeter.isSignedIn"
+        }
+      ]
+    },
     "configuration": {
       "title": "Augmeter",
       "properties": {
@@ -113,10 +138,11 @@
             "used",
             "remaining",
             "remainingOnly",
-            "both"
+            "both",
+            "percentage"
           ],
           "default": "both",
-          "description": "Choose how to display credits in the status bar: used/limit, remaining/limit, remainingOnly (remaining number only), or both."
+          "description": "Choose how to display credits in the status bar: used/limit, remaining/limit, remainingOnly (remaining number only), both, or percentage (e.g. 60%)."
         },
         "augmeter.statusBarDensity": {
           "type": "string",
@@ -151,6 +177,16 @@
           "default": "https://app.augmentcode.com/api",
           "description": "Base URL for the Augment API (useful for staging/tenant overrides).",
           "scope": "application"
+        },
+        "augmeter.sessionTracking.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "(Experimental) Enable session activity tracking from local Augment session files."
+        },
+        "augmeter.sessionTracking.path": {
+          "type": "string",
+          "default": "",
+          "description": "(Experimental) Custom path to Augment sessions directory. Leave empty for default (~/.augment/sessions)."
         },
         "augmeter.smartSignIn.quickWatchMs": {
           "type": "number",

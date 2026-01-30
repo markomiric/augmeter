@@ -152,23 +152,14 @@ export class ExtensionBootstrap {
       // Initialize from secure storage (includes migration)
       await apiClient.initializeFromSecrets?.();
 
-      // If no cookie, silently show logged out state in status bar
-      if (!apiClient.hasCookie()) {
-        SecureLogger.info("No session cookie found - showing logged out state");
-        // Status bar will show logged out state automatically
-      }
+      // Set initial auth context for command visibility
+      const isSignedIn = apiClient.hasCookie();
+      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", isSignedIn);
 
-      // Test connection (optional, non-blocking)
-      apiClient
-        .testConnection()
-        .then(response => {
-          if (!response.success) {
-            SecureLogger.warn("Initial connection test failed", response.error);
-          }
-        })
-        .catch(error => {
-          SecureLogger.warn("Initial connection test error", error);
-        });
+      if (!isSignedIn) {
+        SecureLogger.info("No session cookie found - showing logged out state");
+      }
+      // Connection will be validated by the first polling fetch in startDataFetching()
     } catch (error) {
       SecureLogger.error("Auth state initialization failed", error);
     }
@@ -194,7 +185,7 @@ export class ExtensionBootstrap {
 
       // Set up real data fetcher
       const realFetcher = async () => {
-        const source = (this.usageTracker as any).getFetchSource?.() || "poller";
+        const source = this.usageTracker.getFetchSource();
         try {
           const apiClient = this.augmentDetector.getApiClient();
           if (!apiClient) {
@@ -230,6 +221,8 @@ export class ExtensionBootstrap {
                 usageLimit: parsed.usageLimit ?? 0,
                 dailyUsage: parsed.dailyUsage,
                 lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
+                subscriptionType: parsed.subscriptionType,
+                renewalDate: parsed.renewalDate,
               });
 
               void this.statusBarManager.updateDisplay();
@@ -239,7 +232,7 @@ export class ExtensionBootstrap {
             }
           } else {
             // If unauthenticated, clear real data and update status without retrying
-            if ((response as any).code === "UNAUTHENTICATED") {
+            if (response.code === "UNAUTHENTICATED") {
               this.usageTracker.clearRealDataFlag();
               void this.statusBarManager.updateDisplay();
               SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
@@ -315,10 +308,13 @@ export class ExtensionBootstrap {
         if (e.key === "augment.sessionCookie") {
           try {
             const apiClient = this.augmentDetector.getApiClient();
+            const hasCookie = apiClient.hasCookie();
+            // Update context for command visibility
+            void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", hasCookie);
             // Trigger a refresh to reflect new auth state and fetch if signed in
             this.usageTracker.triggerRefreshSoon(0, "auth-change");
             SecureLogger.info(
-              apiClient.hasCookie()
+              hasCookie
                 ? "Triggered auth-change refresh (cookie added)"
                 : "Triggered auth-change refresh (cookie removed)"
             );

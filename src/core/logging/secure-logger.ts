@@ -36,8 +36,20 @@ export class SecureLogger {
   };
 
   private static getConfiguredLevel(): "ERROR" | "WARN" | "INFO" {
-    // Simpler, pragmatic default: always log INFO and above
-    return "INFO";
+    try {
+      const cfg = vscode.workspace.getConfiguration("augmeter");
+      const level = cfg.get<string>("logLevel", "info") ?? "info";
+      switch (level.toLowerCase()) {
+        case "error":
+          return "ERROR";
+        case "warn":
+          return "WARN";
+        default:
+          return "INFO";
+      }
+    } catch {
+      return "INFO";
+    }
   }
 
   private static redact(value: any): any {

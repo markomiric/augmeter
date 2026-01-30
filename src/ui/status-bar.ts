@@ -11,7 +11,7 @@ import {
   formatCompact as sbFormatCompact,
   computeValueText,
   computeDisplayText,
-  buildTooltip,
+  buildMarkdownTooltip,
   computeStatusColorWithAccessibility,
   computeAccessibilityLabel,
   type DisplayMode,
@@ -40,7 +40,6 @@ export class StatusBarManager implements vscode.Disposable {
   private usageTracker: UsageTracker;
   private configManager: ConfigManager;
   private augmentDetector: AugmentDetector | null = null;
-  private refreshTimer: NodeJS.Timeout | undefined;
   private trackerSubscription?: vscode.Disposable;
 
   constructor(
@@ -61,45 +60,14 @@ export class StatusBarManager implements vscode.Disposable {
         SecureLogger.error("Status bar update on usage change failed", err)
       );
     });
-    this.startRefreshTimer();
   }
 
   private setupStatusBarItem() {
-    this.statusBarItem.tooltip = "Augmeter - Click for more options";
+    this.statusBarItem.tooltip = "Augmeter";
     this.updateDisplay().catch(err => SecureLogger.error("Status bar initial update failed", err));
 
     // Set click command based on configuration
     this.updateClickCommand();
-
-    // React to configuration changes (display, timers, and enable)
-    vscode.workspace.onDidChangeConfiguration(e => {
-      const affectsDisplay =
-        e.affectsConfiguration("augmeter.displayMode") ||
-        e.affectsConfiguration("augmeter.clickAction");
-
-      const affectsTimers =
-        e.affectsConfiguration("augmeter.refreshInterval") ||
-        e.affectsConfiguration("augmeter.enabled");
-
-      if (affectsDisplay) {
-        this.updateClickCommand();
-        this.updateDisplay().catch(err =>
-          SecureLogger.error("Status bar update failed after display config change", err)
-        );
-      }
-
-      if (affectsTimers) {
-        if (!this.configManager.isEnabled()) {
-          this.stopRefreshTimer();
-          this.statusBarItem.hide();
-        } else {
-          this.startRefreshTimer();
-          this.updateDisplay().catch(err =>
-            SecureLogger.error("Status bar update failed after config change", err)
-          );
-        }
-      }
-    });
   }
 
   private updateClickCommand() {
@@ -144,25 +112,50 @@ export class StatusBarManager implements vscode.Disposable {
     };
   }
 
-  private applyTooltip(
+  private async applyTooltip(
     used: number,
     limit: number,
     remaining: number,
     percentage: number,
     hasRealData: boolean
-  ): void {
+  ): Promise<void> {
     const clickAction = this.configManager.getClickAction() as ClickAction;
-    const tooltip = buildTooltip({
+
+    // Fetch rate, projection, and session activity data (non-blocking on errors)
+    let usageRatePerHour: number | null = null;
+    let projectedDaysRemaining: number | null = null;
+    let sessionActivity: { promptCount: number; sessionCount: number } | null = null;
+    if (hasRealData) {
+      try {
+        usageRatePerHour = await this.usageTracker.getUsageRate();
+        projectedDaysRemaining = await this.usageTracker.getProjectedDaysRemaining();
+      } catch {
+        // Silently degrade — rate data is optional
+      }
+      try {
+        sessionActivity = this.usageTracker.getSessionActivity();
+      } catch {
+        // Silently degrade — session tracking is optional/experimental
+      }
+    }
+
+    const tooltipContent = buildMarkdownTooltip({
       used,
       limit,
       remaining,
       percentage,
-      showPercent: false,
       hasRealData,
       clickAction,
-      lastUpdated: new Date(),
+      lastUpdated: this.usageTracker.getLastFetchedAt(),
+      subscriptionType: this.usageTracker.getSubscriptionType(),
+      renewalDate: this.usageTracker.getRenewalDate(),
+      usageRatePerHour,
+      projectedDaysRemaining,
+      sessionActivity,
     });
-    this.statusBarItem.tooltip = tooltip;
+    const md = new vscode.MarkdownString(tooltipContent);
+    md.isTrusted = true;
+    this.statusBarItem.tooltip = md;
   }
 
   private applyColors(percentage: number, hasRealData: boolean): void {
@@ -222,7 +215,7 @@ export class StatusBarManager implements vscode.Disposable {
 
     this.setDisplayTextAndA11y(displayMode, used, limit, remaining, percentage);
 
-    this.applyTooltip(used, limit, remaining, percentage, hasRealData);
+    await this.applyTooltip(used, limit, remaining, percentage, hasRealData);
 
     this.applyColors(percentage, hasRealData);
 
@@ -230,33 +223,10 @@ export class StatusBarManager implements vscode.Disposable {
     this.statusBarItem.show();
   }
 
-  private startRefreshTimer() {
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
-      this.refreshTimer = undefined;
-    }
-    if (!this.configManager.isEnabled()) {
-      return;
-    }
-    const interval = this.configManager.getRefreshInterval() * 1000;
-    this.refreshTimer = setInterval(() => {
-      this.updateDisplay().catch(err =>
-        SecureLogger.error("Status bar periodic update failed", err)
-      );
-    }, interval);
-  }
-
-  private stopRefreshTimer() {
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
-      this.refreshTimer = undefined;
-    }
-  }
   showLoading() {
     try {
-      const loadingText = `$(sync~spin) Loading...`;
-      this.statusBarItem.text = loadingText;
-      this.statusBarItem.tooltip = `Loading usage data...\nClick to refresh`;
+      this.statusBarItem.text = `$(sync~spin) Augmeter`;
+      this.statusBarItem.tooltip = `Augmeter\n\nLoading your usage…\n\nClick to refresh`;
       this.statusBarItem.backgroundColor = undefined;
       this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
       this.statusBarItem.show();
@@ -307,21 +277,14 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    // Show connected status when authenticated but no usage data available (compact text)
-    const config = this.configManager.getStatusBarConfig();
-    let connectedText: string;
-    if (config.density === "detailed") {
-      connectedText = `$(${config.iconName}) Connected`;
-    } else {
-      connectedText = "Connected";
-    }
-    this.statusBarItem.text = connectedText;
-    this.statusBarItem.tooltip = `Connected - usage data loading\nClick to refresh connection`;
+    // Always show spinner + "Augmeter" in connected state for clear branding and loading feedback
+    this.statusBarItem.text = `$(sync~spin) Augmeter`;
+    this.statusBarItem.tooltip = `Augmeter\n\nLoading usage data…\n\nClick to refresh`;
     this.statusBarItem.command = "augmeter.manualRefresh";
     this.statusBarItem.backgroundColor = undefined;
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
-      label: "Augmeter connected. Usage data not available.",
+      label: "Augmeter: Loading usage data",
       role: "status",
     };
     this.statusBarItem.show();
@@ -333,31 +296,21 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    // Show sign in status with icon when density is detailed (consistent with Connected state)
+    // Always show icon + "Augmeter" in non-data states for clear branding
     const config = this.configManager.getStatusBarConfig();
-    let signInText: string;
-    if (config.density === "detailed") {
-      signInText = `$(${config.iconName}) Sign in`;
-    } else {
-      signInText = "Sign in";
-    }
-
-    this.statusBarItem.text = signInText;
-    this.statusBarItem.tooltip = `Sign in for real usage data\nClick to auto-detect cookie or open website`;
+    this.statusBarItem.text = `$(${config.iconName}) Augmeter`;
+    this.statusBarItem.tooltip = `Augmeter\n\nSign in to see usage data\n\nClick to sign in`;
     this.statusBarItem.command = "augmeter.smartSignIn";
     this.statusBarItem.backgroundColor = undefined;
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
-      label: "Augmeter not signed in. Run Augment: Sign In.",
+      label: "Augmeter: Sign in to see usage data",
       role: "status",
     };
     this.statusBarItem.show();
   }
 
   dispose() {
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
-    }
     this.trackerSubscription?.dispose();
     this.statusBarItem.dispose();
   }

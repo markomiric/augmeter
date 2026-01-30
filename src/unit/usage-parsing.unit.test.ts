@@ -3,7 +3,7 @@ import { parseUsageResponsePure } from "../services/usage-parsing";
 import { type AugmentApiResponse } from "../core/types/augment";
 
 describe("Usage parsing (unit) Test Suite", () => {
-  it("Community fields parsed", () => {
+  it("Community fields parsed (usageUnitsUsedThisBillingCycle)", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: { usageUnitsUsedThisBillingCycle: 100, usageUnitsAvailable: 50 },
@@ -11,7 +11,23 @@ describe("Usage parsing (unit) Test Suite", () => {
     const out = parseUsageResponsePure(resp)!;
     expect(out.totalUsage).toBe(100);
     expect(out.usageLimit).toBe(150);
-    expect(out.subscriptionType).toBe("community");
+  });
+
+  it("Standard billing cycle fields parsed (usageUnitsConsumedThisBillingCycle)", () => {
+    const resp: AugmentApiResponse = {
+      success: true,
+      data: {
+        usageUnitsAvailable: 276650,
+        usageUnitsPending: 0,
+        usageUnitsRemaining: 276650,
+        usageUnitsConsumedThisBillingCycle: 183867,
+        usageBalanceStatus: "NORMAL",
+      },
+    };
+    const out = parseUsageResponsePure(resp)!;
+    expect(out.totalUsage).toBe(183867);
+    expect(out.usageLimit).toBe(183867 + 276650);
+    expect(out.monthlyUsage).toBe(183867);
   });
 
   it("Flat credits fields parsed", () => {

@@ -226,12 +226,14 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     );
   });
 
-  it("formatCompact produces compact strings or falls back", () => {
-    // Basic sanity (environment-dependent due to Intl locale, so just smoke test)
-    const small = formatCompact(999);
-    expect(typeof small === "string" && small.length >= 1).toBeTruthy();
-    const large = formatCompact(1200);
-    expect(/K|\d/.test(large)).toBeTruthy();
+  it("formatCompact adds locale separators for large numbers", () => {
+    const large = formatCompact(275206);
+    // toLocaleString output is environment-dependent, but should contain a separator
+    expect(large).toMatch(/275.206/); // comma, period, or other separator
+  });
+
+  it("formatCompact leaves small numbers as-is", () => {
+    expect(formatCompact(999)).toBe("999");
   });
 
   it("formatCompact handles non-finite numbers", () => {
@@ -242,7 +244,8 @@ describe("StatusBar Logic (unit) Test Suite", () => {
 
   it("formatCompact handles decimals", () => {
     const result = formatCompact(123.45);
-    expect(result).toBe("123.45");
+    expect(result).toContain("123");
+    expect(result).toContain("45");
   });
 
   it("computeStatusLevel categorizes usage levels", () => {

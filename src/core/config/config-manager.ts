@@ -62,9 +62,15 @@ export class ConfigManager {
     return this.config.get<boolean>("analyticsEnabled", true);
   }
 
-  getDisplayMode(): "used" | "remaining" | "remainingOnly" | "both" {
+  getDisplayMode(): "used" | "remaining" | "remainingOnly" | "both" | "percentage" {
     const v = this.config.get<string>("displayMode", "both") ?? "both";
-    return v === "used" || v === "remaining" || v === "remainingOnly" || v === "both" ? v : "both";
+    return v === "used" ||
+      v === "remaining" ||
+      v === "remainingOnly" ||
+      v === "both" ||
+      v === "percentage"
+      ? v
+      : "both";
   }
 
   getStatusBarDensity(): "auto" | "compact" | "detailed" {
@@ -133,7 +139,7 @@ export class ConfigManager {
     density: "auto" | "compact" | "detailed";
     iconName: string;
     showPercent: boolean;
-    displayMode: "used" | "remaining" | "remainingOnly" | "both";
+    displayMode: "used" | "remaining" | "remainingOnly" | "both" | "percentage";
     colorScheme: "standard" | "conservative" | "aggressive";
     colorThresholds: {
       critical: number;
@@ -178,6 +184,15 @@ export class ConfigManager {
     if (n < 1000) return 1000;
     if (n > 300000) return 300000;
     return n;
+  }
+
+  isSessionTrackingEnabled(): boolean {
+    return this.config.get<boolean>("sessionTracking.enabled", false);
+  }
+
+  getSessionTrackingPath(): string {
+    const v = this.config.get<string>("sessionTracking.path", "") ?? "";
+    return v.trim();
   }
 
   getApiBaseUrl(): string {

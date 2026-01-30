@@ -92,7 +92,7 @@ suite("Status Bar Bugs Test Suite", () => {
     } catch {}
   });
 
-  test("Bug Fix: Sign in state shows icon when density is detailed", async () => {
+  test("Sign out state always shows icon and Augmeter branding", async () => {
     // Set density to detailed
     await config.updateConfig("statusBarDensity", "detailed");
     await config.updateConfig("statusBarIcon", "dashboard");
@@ -104,21 +104,22 @@ suite("Status Bar Bugs Test Suite", () => {
     mockDetector.setHasApiCookie(false);
     mockUsageTracker.setHasRealData(false);
 
-    // Update display should show sign in state
+    // Update display should show sign out state with branding
     await manager.updateDisplay();
 
     // Get the status bar item text
     const statusBarItem = (manager as any).statusBarItem;
     const text = statusBarItem.text;
 
-    // Should include icon when density is detailed
-    assert.ok(text.includes("$(dashboard)"), `Expected icon in sign in text, got: ${text}`);
-    assert.ok(text.includes("Sign in"), `Expected "Sign in" text, got: ${text}`);
+    // Should include icon and "Augmeter" branding
+    assert.ok(text.includes("$(dashboard)"), `Expected icon in sign out text, got: ${text}`);
+    assert.ok(text.includes("Augmeter"), `Expected "Augmeter" text, got: ${text}`);
   });
 
-  test("Bug Fix: Sign in state shows no icon when density is compact", async () => {
-    // Set density to compact
+  test("Sign out state shows icon even in compact density", async () => {
+    // Set density to compact — icon still shown in non-data states
     await config.updateConfig("statusBarDensity", "compact");
+    await config.updateConfig("statusBarIcon", "dashboard");
     await config.updateConfig("showInStatusBar", true);
 
     manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
@@ -132,12 +133,13 @@ suite("Status Bar Bugs Test Suite", () => {
     const statusBarItem = (manager as any).statusBarItem;
     const text = statusBarItem.text;
 
-    // Should not include icon when density is compact
-    assert.ok(!text.includes("$("), `Expected no icon in compact mode, got: ${text}`);
-    assert.strictEqual(text, "Sign in", `Expected just "Sign in" text, got: ${text}`);
+    // Non-data states always show icon + "Augmeter" regardless of density
+    assert.ok(text.includes("$(dashboard)"), `Expected icon even in compact mode, got: ${text}`);
+    assert.ok(text.includes("Augmeter"), `Expected "Augmeter" text, got: ${text}`);
   });
 
-  test("Bug Fix: Connected state transitions to Sign in after sign out", async () => {
+  test("Connected state transitions to sign out state after sign out", async () => {
+    await config.updateConfig("statusBarIcon", "dashboard");
     await config.updateConfig("showInStatusBar", true);
     manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
 
@@ -147,7 +149,12 @@ suite("Status Bar Bugs Test Suite", () => {
 
     await manager.updateDisplay();
     let statusBarItem = (manager as any).statusBarItem;
-    assert.ok(statusBarItem.text.includes("Connected"), "Should start in Connected state");
+    // Connected state uses spinner icon
+    assert.ok(
+      statusBarItem.text.includes("$(sync~spin)"),
+      `Should show spinner in connected state, got: ${statusBarItem.text}`
+    );
+    assert.ok(statusBarItem.text.includes("Augmeter"), "Should show Augmeter branding");
 
     // Simulate sign out process
     mockDetector.setHasApiCookie(false);
@@ -158,14 +165,16 @@ suite("Status Bar Bugs Test Suite", () => {
     await manager.updateDisplay();
 
     statusBarItem = (manager as any).statusBarItem;
+    // Sign out state uses configured icon (dashboard), not spinner
     assert.ok(
-      statusBarItem.text.includes("Sign in"),
-      `Should show Sign in after sign out, got: ${statusBarItem.text}`
+      statusBarItem.text.includes("$(dashboard)"),
+      `Should show dashboard icon after sign out, got: ${statusBarItem.text}`
     );
     assert.ok(
-      !statusBarItem.text.includes("Connected"),
-      `Should not show Connected after sign out, got: ${statusBarItem.text}`
+      !statusBarItem.text.includes("$(sync~spin)"),
+      `Should not show spinner after sign out, got: ${statusBarItem.text}`
     );
+    assert.ok(statusBarItem.text.includes("Augmeter"), "Should still show Augmeter branding");
   });
 
   test("Click command is set correctly for each state", async () => {

@@ -15,6 +15,14 @@ export interface UsageData {
 }
 
 /**
+ * A timestamped credit consumption snapshot for rate computation.
+ */
+export interface UsageSnapshot {
+  timestamp: string; // ISO 8601
+  consumed: number;
+}
+
+/**
  * Manages persistent storage of usage data.
  *
  * This class provides:
@@ -33,6 +41,9 @@ export interface UsageData {
 export class StorageManager {
   private context: vscode.ExtensionContext;
   private readonly STORAGE_KEY = "augmentUsageData";
+  private readonly THRESHOLD_KEY = "augmentLastNotifiedThreshold";
+  private readonly SNAPSHOTS_KEY = "augmentUsageSnapshots";
+  private readonly SNAPSHOT_RETENTION_MS = 48 * 60 * 60 * 1000; // 48 hours
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -106,6 +117,14 @@ export class StorageManager {
     return weeklyTotal;
   }
 
+  async getLastNotifiedThreshold(): Promise<number> {
+    return this.context.globalState.get<number>(this.THRESHOLD_KEY, 0);
+  }
+
+  async setLastNotifiedThreshold(threshold: number): Promise<void> {
+    await this.context.globalState.update(this.THRESHOLD_KEY, threshold);
+  }
+
   async cleanOldData(): Promise<void> {
     const data = await this.getUsageData();
     const cutoffDate = new Date();
@@ -123,5 +142,28 @@ export class StorageManager {
     }
 
     await this.saveUsageData(data);
+  }
+
+  async saveUsageSnapshot(consumed: number): Promise<void> {
+    const snapshots = await this.getUsageSnapshots();
+    snapshots.push({ timestamp: new Date().toISOString(), consumed });
+    await this.context.globalState.update(this.SNAPSHOTS_KEY, snapshots);
+  }
+
+  async getUsageSnapshots(): Promise<UsageSnapshot[]> {
+    return this.context.globalState.get<UsageSnapshot[]>(this.SNAPSHOTS_KEY) || [];
+  }
+
+  async cleanOldSnapshots(): Promise<void> {
+    const snapshots = await this.getUsageSnapshots();
+    const cutoff = Date.now() - this.SNAPSHOT_RETENTION_MS;
+    const filtered = snapshots.filter(s => new Date(s.timestamp).getTime() >= cutoff);
+    if (filtered.length !== snapshots.length) {
+      await this.context.globalState.update(this.SNAPSHOTS_KEY, filtered);
+    }
+  }
+
+  async clearSnapshots(): Promise<void> {
+    await this.context.globalState.update(this.SNAPSHOTS_KEY, []);
   }
 }

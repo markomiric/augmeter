@@ -239,7 +239,7 @@ export class AugmentApiClient {
     if (tenantResp.success) return tenantResp;
 
     // If unauthenticated, do not attempt fallback
-    if ((tenantResp as any).code === "UNAUTHENTICATED") {
+    if (tenantResp.code === "UNAUTHENTICATED") {
       return tenantResp;
     }
 

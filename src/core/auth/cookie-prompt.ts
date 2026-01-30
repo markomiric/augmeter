@@ -8,10 +8,10 @@ export class CookiePrompt {
     // Directly show a single input box — no instructional modals
     const input = await vscode.window.showInputBox(
       {
-        title: "Paste Augment _session Cookie",
+        title: "Augmeter — Paste Session Cookie",
         prompt:
           "Tip: In your browser, open app.augmentcode.com and sign in. Then DevTools → Application/Storage → Cookies → app.augmentcode.com → copy VALUE of _session. Help: https://app.augmentcode.com",
-        placeHolder: "Paste the _session cookie VALUE here (e.g., eyJvYXV0aDI6c3RhdGU...)",
+        placeHolder: "Paste the session cookie value here",
         password: true,
         ignoreFocusOut: true,
         validateInput: value => {

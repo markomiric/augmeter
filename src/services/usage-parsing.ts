@@ -5,15 +5,18 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
   if (!response?.success || !response.data) return null;
   const data = response.data;
 
-  // 1) Community-style fields
-  if (data.usageUnitsUsedThisBillingCycle !== undefined) {
+  // 1) Usage-units style fields (community / standard billing cycle)
+  const usageUnitsConsumed =
+    data.usageUnitsConsumedThisBillingCycle ?? data.usageUnitsUsedThisBillingCycle;
+  if (usageUnitsConsumed !== undefined) {
+    const available = data.usageUnitsAvailable ?? data.usageUnitsRemaining ?? 0;
     return {
-      totalUsage: data.usageUnitsUsedThisBillingCycle,
-      usageLimit: (data.usageUnitsAvailable ?? 0) + data.usageUnitsUsedThisBillingCycle,
-      dailyUsage: data.usageUnitsUsedThisBillingCycle,
-      monthlyUsage: data.usageUnitsUsedThisBillingCycle,
+      totalUsage: usageUnitsConsumed,
+      usageLimit: available + usageUnitsConsumed,
+      dailyUsage: usageUnitsConsumed,
+      monthlyUsage: usageUnitsConsumed,
       lastUpdate: new Date().toISOString(),
-      subscriptionType: "community",
+      subscriptionType: data.augmentPlanType || data.planName || undefined,
     };
   }
 

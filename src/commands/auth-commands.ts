@@ -23,7 +23,7 @@ export class AuthCommands {
 
   private async withSignInLock<T>(fn: () => Promise<T>): Promise<T | void> {
     if (this.signInInProgress) {
-      await UserNotificationService.showInfo("Sign-in already in progress");
+      await UserNotificationService.showInfo("Sign-in is already in progress");
       return;
     }
     this.signInInProgress = true;
@@ -53,8 +53,8 @@ export class AuthCommands {
       );
     }
 
-    await UserNotificationService.withProgress("Signing in...", async progress => {
-      progress.report({ message: "Validating authentication..." });
+    await UserNotificationService.withProgress("Augmeter", async progress => {
+      progress.report({ message: "Signing in…" });
       const result = await apiClient.testConnection();
       if (!result.success) {
         await apiClient.clearSessionCookie();
@@ -65,11 +65,11 @@ export class AuthCommands {
         );
       }
 
-      progress.report({ message: "Fetching usage data..." });
+      progress.report({ message: "Loading your usage…" });
       this.statusBarManager.showLoading();
       await this.usageTracker.refreshNow?.();
       await this.statusBarManager.updateDisplay();
-      UserNotificationService.showSuccess("Successfully signed in to Augment");
+      UserNotificationService.showSuccess("Signed in to Augment");
     });
   }
 
@@ -77,15 +77,15 @@ export class AuthCommands {
     this.statusBarManager.showLoading();
     await this.usageTracker.refreshNow?.();
     await this.statusBarManager.updateDisplay();
-    UserNotificationService.showSuccess("Successfully signed in to Augment");
+    UserNotificationService.showSuccess("Signed in to Augment");
   }
 
   private async tryExistingCookieAndFinalize(apiClient: any): Promise<boolean> {
-    return await UserNotificationService.withProgress("Signing in...", async progress => {
-      progress.report({ message: "Validating authentication..." });
+    return await UserNotificationService.withProgress("Augmeter", async progress => {
+      progress.report({ message: "Signing in…" });
       const result = await apiClient.testConnection();
       if (result.success) {
-        progress.report({ message: "Fetching usage data..." });
+        progress.report({ message: "Loading your usage…" });
         await this.finalizeAuthenticatedSession();
         return true;
       }

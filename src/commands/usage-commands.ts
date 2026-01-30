@@ -29,6 +29,13 @@ export class UsageCommands {
       })
     );
 
+    // Copy usage summary command
+    disposables.push(
+      vscode.commands.registerCommand("augmeter.copyUsageSummary", async () => {
+        await this.handleCopyUsageSummary();
+      })
+    );
+
     return disposables;
   }
 
@@ -36,22 +43,61 @@ export class UsageCommands {
     await ErrorHandler.withErrorHandling(async () => {
       SecureLogger.info("Manual refresh requested");
 
-      await UserNotificationService.withProgress("Refreshing usage data...", async progress => {
-        progress.report({ message: "Fetching latest data..." });
+      await UserNotificationService.withProgress("Augmeter", async progress => {
+        progress.report({ message: "Refreshing your usage…" });
 
         // Trigger data refresh and then update status bar
         await this.usageTracker.refreshNow?.();
-
-        progress.report({ message: "Updating display..." });
         await this.statusBarManager.updateDisplay();
       });
 
-      UserNotificationService.showSuccess("Usage data refreshed");
+      UserNotificationService.showSuccess("Usage refreshed");
       SecureLogger.info("Manual refresh completed");
     }, "Manual refresh");
   }
 
-  // handleShowDetails method removed - no longer needed since we eliminated popup dialogs
+  private async handleCopyUsageSummary(): Promise<void> {
+    try {
+      const usage = this.usageTracker.getCurrentUsage();
+      const limit = this.usageTracker.getCurrentLimit();
+      const hasRealData = this.usageTracker.hasRealUsageData();
+
+      if (!hasRealData) {
+        UserNotificationService.showSuccess("No usage data yet — sign in first");
+        return;
+      }
+
+      const remaining = limit > 0 ? Math.max(limit - usage, 0) : 0;
+      const percentage = limit > 0 ? Math.round((usage / limit) * 100) : 0;
+      const subscriptionType = this.usageTracker.getSubscriptionType();
+      const renewalDate = this.usageTracker.getRenewalDate();
+
+      const lines: string[] = ["Augment Usage Summary"];
+      if (subscriptionType) {
+        lines.push(`Plan: ${subscriptionType}`);
+      }
+      lines.push(`Used: ${usage.toLocaleString()} / ${limit.toLocaleString()} (${percentage}%)`);
+      lines.push(`Remaining: ${remaining.toLocaleString()}`);
+      if (renewalDate) {
+        try {
+          const date = new Date(renewalDate);
+          if (!isNaN(date.getTime())) {
+            lines.push(`Renews: ${date.toLocaleDateString()}`);
+          }
+        } catch {
+          // Skip invalid dates
+        }
+      }
+      lines.push(`As of: ${new Date().toLocaleString()}`);
+
+      await vscode.env.clipboard.writeText(lines.join("\n"));
+      UserNotificationService.showSuccess("Usage summary copied");
+      SecureLogger.info("Usage summary copied to clipboard");
+    } catch (error) {
+      SecureLogger.error("Copy usage summary failed", error);
+      vscode.window.showErrorMessage("Failed to copy usage summary.");
+    }
+  }
 
   private handleOpenSettings(): void {
     try {
