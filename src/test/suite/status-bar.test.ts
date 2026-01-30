@@ -16,6 +16,24 @@ class FakeUsageTracker {
   getDataSource() {
     return "test";
   }
+  getLastFetchedAt() {
+    return new Date();
+  }
+  getSubscriptionType() {
+    return undefined;
+  }
+  getRenewalDate() {
+    return undefined;
+  }
+  async getUsageRate() {
+    return null;
+  }
+  async getProjectedDaysRemaining() {
+    return null;
+  }
+  getSessionActivity() {
+    return null;
+  }
   onChanged(_cb: () => void) {
     return { dispose() {} } as vscode.Disposable;
   }
@@ -31,15 +49,18 @@ suite("StatusBar tooltip Test Suite", () => {
     } catch {}
   });
 
-  test("Tooltip never includes percentage (kept simple)", async () => {
+  test("Tooltip includes usage bar, used, and remaining", async () => {
     config = new ConfigManager();
     await config.updateConfig("enabled", true);
 
     manager = new StatusBarManager(new FakeUsageTracker() as any, config);
     await manager.updateDisplay();
 
-    const tooltip = (manager as any).statusBarItem.tooltip as string;
-    assert.ok(!tooltip.includes("%"), `Tooltip should not include percentage, got: ${tooltip}`);
+    const rawTooltip = (manager as any).statusBarItem.tooltip;
+    const tooltip = typeof rawTooltip === "string" ? rawTooltip : (rawTooltip?.value ?? "");
+    assert.ok(tooltip.includes("Augmeter"), `Tooltip should include title, got: ${tooltip}`);
+    assert.ok(tooltip.includes("50 / 100"), `Tooltip should include used/limit, got: ${tooltip}`);
+    assert.ok(tooltip.includes("Remaining"), `Tooltip should include remaining, got: ${tooltip}`);
   });
 });
 
@@ -88,9 +109,10 @@ suite("StatusBar RemainingOnly Mode", () => {
     assert.ok(text.startsWith("$("), `Expected icon prefix in detailed mode, got: ${text}`);
     assert.ok(text.endsWith(" 50"), `Expected remaining-only value '50' after icon, got: ${text}`);
 
-    const tooltip = (manager as any).statusBarItem.tooltip as string;
+    const rawTooltip = (manager as any).statusBarItem.tooltip;
+    const tooltip = typeof rawTooltip === "string" ? rawTooltip : (rawTooltip?.value ?? "");
     assert.ok(
-      tooltip.includes("50 remaining"),
+      tooltip.includes("**Remaining:** 50"),
       `Tooltip should clearly state remaining credits, got: ${tooltip}`
     );
   });

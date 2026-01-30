@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter",
   "description": "Augment credits/usage meter for the VS Code status bar",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "kamacode",
   "author": {
     "name": "Marko",
@@ -53,32 +53,32 @@
     "commands": [
       {
         "command": "augmeter.manualRefresh",
-        "title": "Augmeter: Refresh Usage",
+        "title": "Refresh Usage",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.openSettings",
-        "title": "Augmeter: Open Settings",
+        "title": "Open Settings",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.signIn",
-        "title": "Augmeter: Sign In",
+        "title": "Sign In",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.signOut",
-        "title": "Augmeter: Sign Out",
+        "title": "Sign Out",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.openWebsiteAndSignIn",
-        "title": "Augmeter: Open Website and Sign In",
+        "title": "Open Website and Sign In",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.copyUsageSummary",
-        "title": "Augmeter: Copy Usage Summary",
+        "title": "Copy Usage Summary",
         "category": "Augmeter"
       }
     ],
