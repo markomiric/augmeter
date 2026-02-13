@@ -53,7 +53,7 @@ jobs:
         run: npx @vscode/vsce package --no-dependencies
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: augmeter-vsix
           path: "*.vsix"
