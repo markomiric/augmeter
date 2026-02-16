@@ -2,7 +2,7 @@
 
 [![Marketplace](https://img.shields.io/visual-studio-marketplace/v/kamacode.augmeter?color=007ACC&label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kamacode.augmeter)
 [![Rating](https://img.shields.io/visual-studio-marketplace/stars/kamacode.augmeter?color=ffc400)](https://marketplace.visualstudio.com/items?itemName=kamacode.augmeter)
-[![Privacy](https://img.shields.io/badge/privacy-anonymized%20analytics-blue)](#privacy--security)
+[![Privacy](https://img.shields.io/badge/privacy-local--first-blue)](#privacy--security)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Augment credits/usage meter for the VS Code status bar. Color cues, one-click refresh, and secure cookie sign-in.
@@ -14,9 +14,12 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one-click re
 ## Features
 
 - Real-time usage tracking in the status bar
-- Rich tooltip with usage bar, rate, projection, and session activity
-- Color thresholds that warn as you approach your limit
+- Rich tooltip with usage bar, rate, projection, target delta, and session activity
+- Configurable alert thresholds plus projected run-out warnings
 - Click to refresh
+- Usage dashboard with 24h/7d/30d trends
+- CSV export for usage snapshots
+- Diagnostics command for support reports
 - Secure cookie sign-in (stored in VS Code Secrets)
 - Auto-refresh on window focus and configurable interval (1-300s)
 - Accessible colors and high-contrast support
@@ -71,22 +74,38 @@ code-insiders --install-extension kamacode.augmeter
 - **Augmeter: Refresh Usage** — fetch latest data now
 - **Augmeter: Sign In** — authenticate with your session cookie
 - **Augmeter: Sign Out** — clear stored credentials
+- **Augmeter: Open Usage Dashboard** — open trend/target dashboard
+- **Augmeter: Export Usage History (CSV)** — export local snapshots
+- **Augmeter: Run Diagnostics** — copy environment/config diagnostics
 - **Augmeter: Open Settings** — jump to Augmeter settings
 
 ## Configuration
 
 All settings live under `augmeter.*`.
 
-| Setting                     | Type           | Default                             | Description                                                              |
-| --------------------------- | -------------- | ----------------------------------- | ------------------------------------------------------------------------ |
-| `augmeter.enabled`          | boolean        | `true`                              | Enable/disable the extension                                             |
-| `augmeter.refreshInterval`  | number (1-300) | `60`                                | Poll interval in seconds                                                 |
-| `augmeter.clickAction`      | string         | `"refresh"`                         | On click: `refresh`, `openWebsite`, `openSettings`                       |
-| `augmeter.displayMode`      | string         | `"both"`                            | Show `used`, `remaining`, `remainingOnly`, or `both`                     |
-| `augmeter.apiBaseUrl`       | string         | `"https://app.augmentcode.com/api"` | Augment API base URL                                                     |
-| `augmeter.statusBarDensity` | string         | `"auto"`                            | Density: `auto`, `compact` (text only), `detailed` (icon + text)         |
-| `augmeter.statusBarIcon`    | string         | `"dashboard"`                       | Icon when density is `detailed` (e.g. `dashboard`, `graph`, `pie-chart`) |
-| `augmeter.showInStatusBar`  | boolean        | `true`                              | Show Augmeter in the status bar                                          |
+| Setting                            | Type            | Default                             | Description                                                                     |
+| ---------------------------------- | --------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| `augmeter.enabled`                 | boolean         | `true`                              | Enable/disable the extension                                                    |
+| `augmeter.refreshInterval`         | number (1-300)  | `60`                                | Poll interval in seconds                                                        |
+| `augmeter.clickAction`             | string          | `"refresh"`                         | On click: `refresh`, `openWebsite`, `openSettings`                              |
+| `augmeter.displayMode`             | string          | `"both"`                            | Show `used`, `remaining`, `remainingOnly`, `both`, or `percentage`              |
+| `augmeter.statusBarDensity`        | string          | `"auto"`                            | Density: `auto`, `compact` (text only), `detailed` (icon + text)                |
+| `augmeter.statusBarIcon`           | string          | `"dashboard"`                       | Icon when density is `detailed`                                                 |
+| `augmeter.showPercentInStatusBar`  | boolean         | `false`                             | Show percentage context where supported                                         |
+| `augmeter.colorScheme`             | string          | `"standard"`                        | Status color sensitivity: `standard`, `conservative`, `aggressive`              |
+| `augmeter.colorThresholds`         | object          | `{95,85,75,50}`                     | Custom status bar color thresholds                                              |
+| `augmeter.enhancedReadability`     | boolean         | `false`                             | Use foreground/background emphasis in status colors                             |
+| `augmeter.autoDetectHighContrast`  | boolean         | `true`                              | Adapt colors for high-contrast themes                                           |
+| `augmeter.alerts.warningPercent`   | number (50-99)  | `75`                                | Warning notification threshold                                                  |
+| `augmeter.alerts.highPercent`      | number (60-99)  | `90`                                | High-usage notification threshold                                               |
+| `augmeter.alerts.criticalPercent`  | number (70-100) | `95`                                | Critical notification threshold                                                 |
+| `augmeter.alerts.runOutDays`       | number (0-30)   | `3`                                 | Alert when projected depletion is within N days (`0` disables)                  |
+| `augmeter.history.retentionDays`   | number (7-90)   | `35`                                | Snapshot retention window for trends/export                                     |
+| `augmeter.budget.monthlyTarget`    | number          | `0`                                 | Optional monthly usage target (`0` disables)                                    |
+| `augmeter.sessionTracking.enabled` | boolean         | `false`                             | Experimental: local session activity parsing (disabled in untrusted workspaces) |
+| `augmeter.sessionTracking.path`    | string          | `""`                                | Experimental custom path for Augment sessions                                   |
+| `augmeter.apiBaseUrl`              | string          | `"https://app.augmentcode.com/api"` | Augment API base URL                                                            |
+| `augmeter.showInStatusBar`         | boolean         | `true`                              | Show Augmeter in the status bar                                                 |
 
 Example:
 
@@ -105,6 +124,7 @@ Example:
 - **remaining** — `45/100` (remaining / limit)
 - **remainingOnly** — `45` (just the remaining number; tooltip and color cues provide context)
 - **both** — `55/100` (same as used)
+- **percentage** — `55%`
 
 ### Density
 
@@ -121,11 +141,11 @@ The icon always appears in non-data states (signed out / loading) regardless of 
 
 ## Privacy & security
 
-Augmeter respects your VS Code telemetry settings — if telemetry is off, analytics are off.
-
 - Session cookie stored in VS Code Secrets (encrypted)
 - Logs redact sensitive values (cookies, headers) — see Output > Augmeter
-- No PII is sent; analytics are anonymized
+- Usage history and diagnostics are local to your machine
+- Augmeter currently does not send extension analytics/telemetry events
+- Session file tracking is automatically disabled in untrusted workspaces
 
 ## Known issues & troubleshooting
 

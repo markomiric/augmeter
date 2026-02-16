@@ -162,6 +162,23 @@ export function formatProjectionLine(projectedDays: number | null | undefined): 
   return `**Projected:** ~${Math.round(projectedDays)} days remaining`;
 }
 
+export function formatTargetLine(
+  monthlyTarget: number | null | undefined,
+  targetDelta: number | null | undefined,
+  targetProgressPercent: number | null | undefined
+): string | null {
+  if (!monthlyTarget || monthlyTarget <= 0 || targetDelta === null || targetDelta === undefined) {
+    return null;
+  }
+
+  if (targetDelta >= 0) {
+    const progress = targetProgressPercent ?? 0;
+    return `**Target:** ${Math.max(0, targetDelta).toLocaleString()} under target (${progress}%)`;
+  }
+
+  return `**Target:** ${Math.abs(targetDelta).toLocaleString()} over target`;
+}
+
 export function buildMarkdownTooltip(params: {
   used: number;
   limit: number;
@@ -175,6 +192,10 @@ export function buildMarkdownTooltip(params: {
   usageRatePerHour?: number | null | undefined;
   projectedDaysRemaining?: number | null | undefined;
   sessionActivity?: { promptCount: number; sessionCount: number } | null | undefined;
+  monthlyTarget?: number | null | undefined;
+  targetDelta?: number | null | undefined;
+  targetProgressPercent?: number | null | undefined;
+  projectedDepletionDate?: Date | null | undefined;
 }): string {
   const {
     used,
@@ -189,6 +210,10 @@ export function buildMarkdownTooltip(params: {
     usageRatePerHour,
     projectedDaysRemaining,
     sessionActivity,
+    monthlyTarget,
+    targetDelta,
+    targetProgressPercent,
+    projectedDepletionDate,
   } = params;
 
   const lines: string[] = [];
@@ -226,6 +251,15 @@ export function buildMarkdownTooltip(params: {
     const projLine = formatProjectionLine(projectedDaysRemaining);
     if (projLine) {
       lines.push(projLine);
+    }
+
+    const targetLine = formatTargetLine(monthlyTarget, targetDelta, targetProgressPercent);
+    if (targetLine) {
+      lines.push(targetLine);
+    }
+
+    if (projectedDepletionDate) {
+      lines.push(`**Depletion:** ~${projectedDepletionDate.toLocaleDateString()}`);
     }
   }
 

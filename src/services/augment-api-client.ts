@@ -74,22 +74,31 @@ export class AugmentApiClient {
       // Perform migration first if needed
       await this.secretsManager.migrateFromWorkspaceConfig();
 
-      // Load session cookie from secure storage
-      const stored = await this.secretsManager.getSessionCookie();
-      if (stored && stored.trim()) {
-        const normalized = SecureCookieUtils.normalizeCookieInput(stored.trim());
-        const sessionValue = SecureCookieUtils.extractSessionValue(normalized);
-        const validation = SecureCookieUtils.validateCookieValue(sessionValue);
-        if (validation.valid) {
-          this.setSessionCookie(normalized);
-        } else {
-          SecureLogger.warn("Ignoring invalid stored _session cookie:", validation.error);
-          await this.clearSessionCookie();
-        }
-      }
+      await this.refreshSessionFromSecrets();
     } catch (error) {
       SecureLogger.error("Failed to initialize from secure storage:", error);
     }
+  }
+
+  async refreshSessionFromSecrets(): Promise<void> {
+    if (!this.secretsManager) return;
+
+    const stored = await this.secretsManager.getSessionCookie();
+    if (!stored || !stored.trim()) {
+      this.sessionCookie = null;
+      return;
+    }
+
+    const normalized = SecureCookieUtils.normalizeCookieInput(stored.trim());
+    const sessionValue = SecureCookieUtils.extractSessionValue(normalized);
+    const validation = SecureCookieUtils.validateCookieValue(sessionValue);
+    if (validation.valid) {
+      this.sessionCookie = normalized;
+      return;
+    }
+
+    SecureLogger.warn("Ignoring invalid stored _session cookie:", validation.error);
+    await this.clearSessionCookie();
   }
 
   setSessionCookie(input: string): void {

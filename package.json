@@ -25,6 +25,7 @@
     "ui"
   ],
   "categories": [
+    "Machine Learning",
     "Other"
   ],
   "keywords": [
@@ -37,6 +38,11 @@
     "status bar",
     "statusbar",
     "statistics",
+    "credits monitor",
+    "token usage",
+    "cost tracking",
+    "usage dashboard",
+    "usage alerts",
     "augment credits",
     "augment usage"
   ],
@@ -49,6 +55,16 @@
   "activationEvents": [
     "onStartupFinished"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Augmeter disables local session-file tracking in untrusted workspaces.",
+      "restrictedConfigurations": [
+        "augmeter.sessionTracking.enabled",
+        "augmeter.sessionTracking.path"
+      ]
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -80,6 +96,21 @@
         "command": "augmeter.copyUsageSummary",
         "title": "Copy Usage Summary",
         "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.openUsageDashboard",
+        "title": "Open Usage Dashboard",
+        "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.exportUsageHistoryCsv",
+        "title": "Export Usage History (CSV)",
+        "category": "Augmeter"
+      },
+      {
+        "command": "augmeter.runDiagnostics",
+        "title": "Run Diagnostics",
+        "category": "Augmeter"
       }
     ],
     "menus": {
@@ -99,6 +130,16 @@
         {
           "command": "augmeter.copyUsageSummary",
           "when": "augmeter.isSignedIn"
+        },
+        {
+          "command": "augmeter.openUsageDashboard"
+        },
+        {
+          "command": "augmeter.exportUsageHistoryCsv",
+          "when": "augmeter.isSignedIn"
+        },
+        {
+          "command": "augmeter.runDiagnostics"
         }
       ]
     },
@@ -167,10 +208,96 @@
           "default": "dashboard",
           "description": "Icon to display in the status bar when density is detailed."
         },
+        "augmeter.showPercentInStatusBar": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show percentage context in compact status surfaces where supported."
+        },
+        "augmeter.colorScheme": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "conservative",
+            "aggressive"
+          ],
+          "default": "standard",
+          "description": "Color sensitivity for warning thresholds."
+        },
+        "augmeter.colorThresholds": {
+          "type": "object",
+          "default": {
+            "critical": 95,
+            "highWarning": 85,
+            "warning": 75,
+            "caution": 50
+          },
+          "description": "Custom status bar color thresholds as percentages."
+        },
+        "augmeter.enhancedReadability": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use stronger foreground/background contrast in status colors."
+        },
+        "augmeter.autoDetectHighContrast": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically adapt status colors for high-contrast themes."
+        },
+        "augmeter.logLevel": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warn",
+            "info"
+          ],
+          "default": "info",
+          "description": "Log verbosity for Output > Augmeter."
+        },
         "augmeter.showInStatusBar": {
           "type": "boolean",
           "default": true,
           "description": "Show Augmeter information in the status bar."
+        },
+        "augmeter.history.retentionDays": {
+          "type": "number",
+          "default": 35,
+          "minimum": 7,
+          "maximum": 90,
+          "description": "How many days of usage snapshots to retain for trend and export."
+        },
+        "augmeter.alerts.warningPercent": {
+          "type": "number",
+          "default": 75,
+          "minimum": 50,
+          "maximum": 99,
+          "description": "Usage percentage threshold for warning notifications."
+        },
+        "augmeter.alerts.highPercent": {
+          "type": "number",
+          "default": 90,
+          "minimum": 60,
+          "maximum": 99,
+          "description": "Usage percentage threshold for high-usage notifications."
+        },
+        "augmeter.alerts.criticalPercent": {
+          "type": "number",
+          "default": 95,
+          "minimum": 70,
+          "maximum": 100,
+          "description": "Usage percentage threshold for critical notifications."
+        },
+        "augmeter.alerts.runOutDays": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 30,
+          "description": "Alert when projected depletion is within this many days (0 disables this alert)."
+        },
+        "augmeter.budget.monthlyTarget": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Optional monthly usage target. Set 0 to disable."
         },
         "augmeter.apiBaseUrl": {
           "type": "string",

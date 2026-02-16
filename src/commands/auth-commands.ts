@@ -59,12 +59,14 @@ export class AuthCommands {
       if (!result.success) {
         await apiClient.clearSessionCookie();
         this.augmentDetector.clearAuthCache();
+        void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
         throw AugmeterError.authentication(
           result.error || "Authentication failed",
           "Authentication failed. Please check your cookie and try again."
         );
       }
 
+      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
       progress.report({ message: "Loading your usage…" });
       this.statusBarManager.showLoading();
       await this.usageTracker.refreshNow?.();
@@ -74,6 +76,7 @@ export class AuthCommands {
   }
 
   private async finalizeAuthenticatedSession(): Promise<void> {
+    void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
     await this.usageTracker.refreshNow?.();
     await this.statusBarManager.updateDisplay();
@@ -315,6 +318,7 @@ export class AuthCommands {
       await this.usageTracker.resetUsage();
       // Do NOT stop data fetching; keep the realDataFetcher attached
       this.usageTracker.clearRealDataFlag();
+      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
 
       // Ensure status bar updates after all state is cleared
       await this.statusBarManager.updateDisplay();

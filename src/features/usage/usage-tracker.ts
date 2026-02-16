@@ -63,8 +63,6 @@ export class UsageTracker implements vscode.Disposable {
     void this.loadCurrentUsage();
   }
 
-  private static readonly NOTIFICATION_THRESHOLDS = [95, 90, 75] as const;
-
   private async loadCurrentUsage() {
     const data = await this.storageManager.getUsageData();
     this.currentUsage = data.totalUsage;
@@ -91,6 +89,7 @@ export class UsageTracker implements vscode.Disposable {
 
   async resetUsage() {
     await this.storageManager.resetUsage();
+    await this.storageManager.resetAlertState();
     const data = await this.storageManager.getUsageData();
     this.currentUsage = data.totalUsage;
     this.lastResetDate = data.lastResetDate;
@@ -132,6 +131,38 @@ export class UsageTracker implements vscode.Disposable {
 
   getLastFetchedAt(): Date | undefined {
     return this.lastFetchedAt;
+  }
+
+  getMonthlyTarget(): number {
+    return this.configManager.getMonthlyTarget();
+  }
+
+  getTargetDelta(): number | null {
+    const target = this.getMonthlyTarget();
+    if (target <= 0) return null;
+    return target - this.currentUsage;
+  }
+
+  getTargetProgressPercent(): number | null {
+    const target = this.getMonthlyTarget();
+    if (target <= 0) return null;
+    return Math.round((this.currentUsage / target) * 100);
+  }
+
+  getRemainingCredits(): number {
+    return this.currentLimit > 0 ? Math.max(this.currentLimit - this.currentUsage, 0) : 0;
+  }
+
+  async getProjectedDepletionDate(): Promise<Date | null> {
+    const projectedDays = await this.getProjectedDaysRemaining();
+    if (projectedDays === null) return null;
+    return new Date(Date.now() + projectedDays * 24 * 60 * 60 * 1000);
+  }
+
+  async getUsageSnapshots(): Promise<UsageSnapshot[]> {
+    return (await this.storageManager.getUsageSnapshots()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
   }
 
   /**
@@ -221,6 +252,8 @@ export class UsageTracker implements vscode.Disposable {
       });
 
       if (realData.totalUsage !== undefined) {
+        const previousUsage = this.currentUsage;
+
         // Update with real total usage and limit
         this.currentUsage = realData.totalUsage;
         if (realData.usageLimit !== undefined) {
@@ -234,6 +267,11 @@ export class UsageTracker implements vscode.Disposable {
         }
         if (realData.renewalDate !== undefined) {
           this.renewalDate = realData.renewalDate;
+        }
+
+        // A drop usually indicates a billing-cycle reset, so reset per-cycle alerts.
+        if (realData.totalUsage < previousUsage) {
+          await this.storageManager.resetAlertState();
         }
 
         SecureLogger.info("UsageTracker: Real data flags set", {
@@ -252,8 +290,12 @@ export class UsageTracker implements vscode.Disposable {
         await this.storageManager.saveUsageData(data);
 
         // Record snapshot for rate computation
-        await this.storageManager.saveUsageSnapshot(realData.totalUsage);
-        await this.storageManager.cleanOldSnapshots();
+        await this.storageManager.saveUsageSnapshot(
+          realData.totalUsage,
+          this.currentLimit > 0 ? this.currentLimit : undefined,
+          this.realDataSource
+        );
+        await this.storageManager.cleanOldSnapshots(this.configManager.getHistoryRetentionDays());
 
         // Check threshold notifications
         if (this.currentLimit > 0) {
@@ -285,14 +327,17 @@ export class UsageTracker implements vscode.Disposable {
 
   private async checkThresholdNotifications(percentage: number): Promise<void> {
     try {
-      const lastNotified = await this.storageManager.getLastNotifiedThreshold();
+      const { warning, high, critical } = this.configManager.getAlertThresholds();
+      const thresholds = [critical, high, warning].sort((a, b) => b - a);
+      const cycleId = this.getAlertCycleId();
+      const lastNotified = await this.storageManager.getNotifiedThresholdForCycle(cycleId);
 
-      for (const threshold of UsageTracker.NOTIFICATION_THRESHOLDS) {
+      for (const threshold of thresholds) {
         if (percentage >= threshold && lastNotified < threshold) {
-          await this.storageManager.setLastNotifiedThreshold(threshold);
+          await this.storageManager.setNotifiedThresholdForCycle(cycleId, threshold);
           const remaining = this.currentLimit > 0 ? this.currentLimit - this.currentUsage : 0;
 
-          if (threshold >= 95) {
+          if (threshold >= critical) {
             void UserNotificationService.showWarning(
               `Augmeter: ${threshold}% of credits used. Only ${Math.max(0, remaining).toLocaleString()} remaining.`,
               {
@@ -310,9 +355,43 @@ export class UsageTracker implements vscode.Disposable {
           break; // Only notify for the highest crossed threshold
         }
       }
+
+      const runOutDays = this.configManager.getRunOutAlertDays();
+      if (runOutDays > 0) {
+        const projectedDays = await this.getProjectedDaysRemaining();
+        const runOutAlreadyAlerted = await this.storageManager.isRunOutAlertedForCycle(cycleId);
+        if (
+          projectedDays !== null &&
+          projectedDays > 0 &&
+          projectedDays <= runOutDays &&
+          !runOutAlreadyAlerted
+        ) {
+          await this.storageManager.setRunOutAlertedForCycle(cycleId, true);
+          void UserNotificationService.showWarning(
+            `Augmeter: At current pace, credits may run out in ~${Math.max(1, Math.round(projectedDays))} day(s).`,
+            {
+              text: "View Usage",
+              action: async () => {
+                await vscode.commands.executeCommand("augmeter.openUsageDashboard");
+              },
+            }
+          );
+        }
+      }
     } catch (error) {
       SecureLogger.warn("UsageTracker: Error checking threshold notifications", error);
     }
+  }
+
+  private getAlertCycleId(): string {
+    if (this.renewalDate) {
+      const date = new Date(this.renewalDate);
+      if (!isNaN(date.getTime())) {
+        return `renewal-${date.toISOString().split("T")[0]}`;
+      }
+    }
+    const now = new Date();
+    return `month-${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   }
 
   // promptUserForRealData method removed - no longer needed since we eliminated popup dialogs

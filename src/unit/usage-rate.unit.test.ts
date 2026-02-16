@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { UsageTracker } from "../features/usage/usage-tracker";
 import type { UsageSnapshot } from "../core/storage/storage-manager";
-import { formatRateLine, formatProjectionLine, buildMarkdownTooltip } from "../ui/status-bar-logic";
+import {
+  formatRateLine,
+  formatProjectionLine,
+  buildMarkdownTooltip,
+  formatTargetLine,
+} from "../ui/status-bar-logic";
 
 function makeSnapshot(hoursAgo: number, consumed: number): UsageSnapshot {
   const ts = new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
@@ -145,6 +150,20 @@ describe("Tooltip Rate/Projection Formatting", () => {
     });
   });
 
+  describe("formatTargetLine", () => {
+    it("returns null when target is disabled", () => {
+      expect(formatTargetLine(0, null, null)).toBe(null);
+    });
+
+    it("formats under-target status with progress", () => {
+      expect(formatTargetLine(1000, 250, 75)).toBe("**Target:** 250 under target (75%)");
+    });
+
+    it("formats over-target status", () => {
+      expect(formatTargetLine(1000, -120, 112)).toBe("**Target:** 120 over target");
+    });
+  });
+
   describe("buildMarkdownTooltip with rate/projection/session data", () => {
     const baseParams = {
       used: 183867,
@@ -164,6 +183,18 @@ describe("Tooltip Rate/Projection Formatting", () => {
       });
       expect(tooltip).toContain("**Rate:** ~520/hr");
       expect(tooltip).toContain("**Projected:** ~22 days remaining");
+    });
+
+    it("includes target and depletion lines when provided", () => {
+      const tooltip = buildMarkdownTooltip({
+        ...baseParams,
+        monthlyTarget: 200000,
+        targetDelta: 16133,
+        targetProgressPercent: 92,
+        projectedDepletionDate: new Date("2026-02-20T00:00:00Z"),
+      });
+      expect(tooltip).toMatch(/\*\*Target:\*\* .* under target \(92%\)/);
+      expect(tooltip).toContain("**Depletion:** ~");
     });
 
     it("omits rate/projection when null", () => {

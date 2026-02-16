@@ -12,7 +12,7 @@ import {
   computeValueText,
   computeDisplayText,
   buildMarkdownTooltip,
-  computeStatusColorWithAccessibility,
+  computeStatusColorsEnhanced,
   computeAccessibilityLabel,
   type DisplayMode,
   type ClickAction,
@@ -124,11 +124,16 @@ export class StatusBarManager implements vscode.Disposable {
     // Fetch rate, projection, and session activity data (non-blocking on errors)
     let usageRatePerHour: number | null = null;
     let projectedDaysRemaining: number | null = null;
+    let projectedDepletionDate: Date | null = null;
     let sessionActivity: { promptCount: number; sessionCount: number } | null = null;
+    let targetDelta: number | null = null;
+    let targetProgressPercent: number | null = null;
+    let monthlyTarget: number | null = null;
     if (hasRealData) {
       try {
         usageRatePerHour = await this.usageTracker.getUsageRate();
         projectedDaysRemaining = await this.usageTracker.getProjectedDaysRemaining();
+        projectedDepletionDate = await this.usageTracker.getProjectedDepletionDate();
       } catch {
         // Silently degrade — rate data is optional
       }
@@ -136,6 +141,13 @@ export class StatusBarManager implements vscode.Disposable {
         sessionActivity = this.usageTracker.getSessionActivity();
       } catch {
         // Silently degrade — session tracking is optional/experimental
+      }
+      try {
+        monthlyTarget = this.usageTracker.getMonthlyTarget();
+        targetDelta = this.usageTracker.getTargetDelta();
+        targetProgressPercent = this.usageTracker.getTargetProgressPercent();
+      } catch {
+        // Silently degrade — target tracking is optional
       }
     }
 
@@ -152,6 +164,10 @@ export class StatusBarManager implements vscode.Disposable {
       usageRatePerHour,
       projectedDaysRemaining,
       sessionActivity,
+      monthlyTarget,
+      targetDelta,
+      targetProgressPercent,
+      projectedDepletionDate,
     });
     const md = new vscode.MarkdownString(tooltipContent);
     md.isTrusted = true;
@@ -159,15 +175,21 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   private applyColors(percentage: number, hasRealData: boolean): void {
-    const fg = computeStatusColorWithAccessibility(
+    const statusBarConfig = this.configManager.getStatusBarConfig();
+    const colors = computeStatusColorsEnhanced(
       percentage,
       hasRealData,
-      "standard",
-      { critical: 95, highWarning: 95, warning: 85, caution: 101 },
-      this.isHighContrastTheme()
+      statusBarConfig.colorScheme,
+      statusBarConfig.colorThresholds,
+      statusBarConfig.enhancedReadability,
+      statusBarConfig.autoDetectHighContrast ? this.isHighContrastTheme() : false
     );
-    this.statusBarItem.color = fg ? new vscode.ThemeColor(fg) : undefined;
-    this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.color = colors.foreground
+      ? new vscode.ThemeColor(colors.foreground)
+      : undefined;
+    this.statusBarItem.backgroundColor = colors.background
+      ? new vscode.ThemeColor(colors.background)
+      : undefined;
   }
 
   async updateDisplay() {

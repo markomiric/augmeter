@@ -112,7 +112,12 @@ export class ExtensionBootstrap {
     );
 
     // Initialize usage command handlers
-    this.usageCommands = new UsageCommands(this.usageTracker, this.statusBarManager);
+    this.usageCommands = new UsageCommands(
+      this.usageTracker,
+      this.statusBarManager,
+      this.configManager,
+      this.augmentDetector
+    );
   }
 
   private registerAuthProvider(): void {
@@ -251,6 +256,12 @@ export class ExtensionBootstrap {
       // React to configuration changes for live behavior
       const cfgDisposable = vscode.workspace.onDidChangeConfiguration(e => {
         try {
+          if (!e.affectsConfiguration("augmeter")) {
+            return;
+          }
+
+          this.configManager.reloadConfig();
+
           if (e.affectsConfiguration("augmeter.enabled")) {
             if (!this.configManager.isEnabled()) {
               this.usageTracker.stopDataFetching();
@@ -266,17 +277,19 @@ export class ExtensionBootstrap {
             }
           }
 
-          if (e.affectsConfiguration("augmeter.refreshInterval")) {
+          if (
+            e.affectsConfiguration("augmeter.refreshInterval") ||
+            e.affectsConfiguration("augmeter.alerts.warningPercent") ||
+            e.affectsConfiguration("augmeter.alerts.highPercent") ||
+            e.affectsConfiguration("augmeter.alerts.criticalPercent") ||
+            e.affectsConfiguration("augmeter.alerts.runOutDays") ||
+            e.affectsConfiguration("augmeter.history.retentionDays")
+          ) {
             // Reschedule polling quickly to apply new interval
             this.usageTracker.triggerRefreshSoon(0, "config-change");
           }
 
-          if (
-            e.affectsConfiguration("augmeter.displayMode") ||
-            e.affectsConfiguration("augmeter.clickAction")
-          ) {
-            void this.statusBarManager.updateDisplay();
-          }
+          void this.statusBarManager.updateDisplay();
         } catch (err) {
           SecureLogger.warn("Failed to apply configuration change", err);
         }
@@ -308,6 +321,7 @@ export class ExtensionBootstrap {
         if (e.key === "augment.sessionCookie") {
           try {
             const apiClient = this.augmentDetector.getApiClient();
+            await apiClient.refreshSessionFromSecrets?.();
             const hasCookie = apiClient.hasCookie();
             // Update context for command visibility
             void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", hasCookie);

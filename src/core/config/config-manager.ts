@@ -58,10 +58,6 @@ export class ConfigManager {
     }
   }
 
-  isAnalyticsEnabled(): boolean {
-    return this.config.get<boolean>("analyticsEnabled", true);
-  }
-
   getDisplayMode(): "used" | "remaining" | "remainingOnly" | "both" | "percentage" {
     const v = this.config.get<string>("displayMode", "both") ?? "both";
     return v === "used" ||
@@ -168,6 +164,60 @@ export class ConfigManager {
     return "info";
   }
 
+  getHistoryRetentionDays(): number {
+    const raw = this.config.get<number>("history.retentionDays", 35);
+    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 35;
+    if (n < 7) return 7;
+    if (n > 90) return 90;
+    return n;
+  }
+
+  getAlertThresholds(): { warning: number; high: number; critical: number } {
+    const warningRaw = this.config.get<number>("alerts.warningPercent", 75);
+    const highRaw = this.config.get<number>("alerts.highPercent", 90);
+    const criticalRaw = this.config.get<number>("alerts.criticalPercent", 95);
+
+    const warning = Math.max(
+      50,
+      Math.min(
+        99,
+        typeof warningRaw === "number" && Number.isFinite(warningRaw) ? Math.round(warningRaw) : 75
+      )
+    );
+    const high = Math.max(
+      warning + 1,
+      Math.min(
+        99,
+        typeof highRaw === "number" && Number.isFinite(highRaw) ? Math.round(highRaw) : 90
+      )
+    );
+    const critical = Math.max(
+      high + 1,
+      Math.min(
+        100,
+        typeof criticalRaw === "number" && Number.isFinite(criticalRaw)
+          ? Math.round(criticalRaw)
+          : 95
+      )
+    );
+
+    return { warning, high, critical };
+  }
+
+  getRunOutAlertDays(): number {
+    const raw = this.config.get<number>("alerts.runOutDays", 3);
+    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 3;
+    if (n < 0) return 0;
+    if (n > 30) return 30;
+    return n;
+  }
+
+  getMonthlyTarget(): number {
+    const raw = this.config.get<number>("budget.monthlyTarget", 0);
+    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 0;
+    return Math.max(0, n);
+  }
+
   // Smart Sign-In: Quick clipboard watch duration (ms), clamp to [0, 5000]
   getSmartSignInQuickWatchMs(): number {
     const raw = this.config.get<number>("smartSignIn.quickWatchMs", 2000);
@@ -187,6 +237,7 @@ export class ConfigManager {
   }
 
   isSessionTrackingEnabled(): boolean {
+    if (!vscode.workspace.isTrusted) return false;
     return this.config.get<boolean>("sessionTracking.enabled", false);
   }
 

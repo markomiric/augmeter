@@ -25,10 +25,6 @@ suite("ConfigManager Test Suite", () => {
       "refresh",
       "Default clickAction should be 'refresh'"
     );
-    assert.ok(
-      typeof configManager.isAnalyticsEnabled() === "boolean",
-      "isAnalyticsEnabled should return boolean"
-    );
     assert.strictEqual(
       configManager.getDisplayMode(),
       "both",
@@ -47,6 +43,41 @@ suite("ConfigManager Test Suite", () => {
       configManager.shouldShowPercentInStatusBar(),
       false,
       "Default showPercentInStatusBar should be false"
+    );
+    assert.strictEqual(
+      configManager.getHistoryRetentionDays(),
+      35,
+      "Default retention should be 35 days"
+    );
+    assert.deepStrictEqual(
+      configManager.getAlertThresholds(),
+      { warning: 75, high: 90, critical: 95 },
+      "Default alert thresholds should match manifest defaults"
+    );
+    assert.strictEqual(
+      configManager.getRunOutAlertDays(),
+      3,
+      "Default run-out alert days should be 3"
+    );
+    assert.strictEqual(
+      configManager.getMonthlyTarget(),
+      0,
+      "Default monthly target should be disabled"
+    );
+    assert.strictEqual(
+      configManager.getColorScheme(),
+      "standard",
+      "Default color scheme should be standard"
+    );
+    assert.strictEqual(
+      configManager.isEnhancedReadabilityEnabled(),
+      false,
+      "Enhanced readability should default to false"
+    );
+    assert.strictEqual(
+      configManager.shouldAutoDetectHighContrast(),
+      true,
+      "Auto high contrast should default to true"
     );
 
     const sb = (configManager as any).getStatusBarConfig?.();
@@ -99,7 +130,7 @@ suite("ConfigManager Test Suite", () => {
     );
 
     const displayMode = configManager.getDisplayMode();
-    const validDisplayModes = ["used", "remaining", "both"];
+    const validDisplayModes = ["used", "remaining", "remainingOnly", "both", "percentage"];
     assert.ok(
       validDisplayModes.includes(displayMode),
       `displayMode '${displayMode}' should be one of: ${validDisplayModes.join(", ")}`

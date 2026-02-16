@@ -20,6 +20,8 @@ export interface UsageData {
 export interface UsageSnapshot {
   timestamp: string; // ISO 8601
   consumed: number;
+  limit?: number;
+  source?: string;
 }
 
 /**
@@ -42,8 +44,8 @@ export class StorageManager {
   private context: vscode.ExtensionContext;
   private readonly STORAGE_KEY = "augmentUsageData";
   private readonly THRESHOLD_KEY = "augmentLastNotifiedThreshold";
+  private readonly ALERT_STATE_KEY = "augmentAlertState";
   private readonly SNAPSHOTS_KEY = "augmentUsageSnapshots";
-  private readonly SNAPSHOT_RETENTION_MS = 48 * 60 * 60 * 1000; // 48 hours
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -125,6 +127,43 @@ export class StorageManager {
     await this.context.globalState.update(this.THRESHOLD_KEY, threshold);
   }
 
+  async getNotifiedThresholdForCycle(cycleId: string): Promise<number> {
+    const state = await this.getAlertState();
+    return state.cycleId === cycleId ? state.lastThreshold : 0;
+  }
+
+  async setNotifiedThresholdForCycle(cycleId: string, threshold: number): Promise<void> {
+    const state = await this.getAlertState();
+    await this.context.globalState.update(this.ALERT_STATE_KEY, {
+      cycleId,
+      lastThreshold: threshold,
+      runOutAlerted: state.cycleId === cycleId ? state.runOutAlerted : false,
+    });
+  }
+
+  async isRunOutAlertedForCycle(cycleId: string): Promise<boolean> {
+    const state = await this.getAlertState();
+    return state.cycleId === cycleId ? state.runOutAlerted : false;
+  }
+
+  async setRunOutAlertedForCycle(cycleId: string, alerted: boolean): Promise<void> {
+    const state = await this.getAlertState();
+    await this.context.globalState.update(this.ALERT_STATE_KEY, {
+      cycleId,
+      lastThreshold: state.cycleId === cycleId ? state.lastThreshold : 0,
+      runOutAlerted: alerted,
+    });
+  }
+
+  async resetAlertState(): Promise<void> {
+    await this.context.globalState.update(this.THRESHOLD_KEY, 0);
+    await this.context.globalState.update(this.ALERT_STATE_KEY, {
+      cycleId: "",
+      lastThreshold: 0,
+      runOutAlerted: false,
+    });
+  }
+
   async cleanOldData(): Promise<void> {
     const data = await this.getUsageData();
     const cutoffDate = new Date();
@@ -144,9 +183,19 @@ export class StorageManager {
     await this.saveUsageData(data);
   }
 
-  async saveUsageSnapshot(consumed: number): Promise<void> {
+  async saveUsageSnapshot(consumed: number, limit?: number, source?: string): Promise<void> {
     const snapshots = await this.getUsageSnapshots();
-    snapshots.push({ timestamp: new Date().toISOString(), consumed });
+    const snapshot: UsageSnapshot = {
+      timestamp: new Date().toISOString(),
+      consumed,
+    };
+    if (limit !== undefined) {
+      snapshot.limit = limit;
+    }
+    if (source !== undefined) {
+      snapshot.source = source;
+    }
+    snapshots.push(snapshot);
     await this.context.globalState.update(this.SNAPSHOTS_KEY, snapshots);
   }
 
@@ -154,9 +203,10 @@ export class StorageManager {
     return this.context.globalState.get<UsageSnapshot[]>(this.SNAPSHOTS_KEY) || [];
   }
 
-  async cleanOldSnapshots(): Promise<void> {
+  async cleanOldSnapshots(retentionDays: number = 35): Promise<void> {
     const snapshots = await this.getUsageSnapshots();
-    const cutoff = Date.now() - this.SNAPSHOT_RETENTION_MS;
+    const safeDays = Math.max(7, Math.min(90, Math.round(retentionDays)));
+    const cutoff = Date.now() - safeDays * 24 * 60 * 60 * 1000;
     const filtered = snapshots.filter(s => new Date(s.timestamp).getTime() >= cutoff);
     if (filtered.length !== snapshots.length) {
       await this.context.globalState.update(this.SNAPSHOTS_KEY, filtered);
@@ -165,5 +215,23 @@ export class StorageManager {
 
   async clearSnapshots(): Promise<void> {
     await this.context.globalState.update(this.SNAPSHOTS_KEY, []);
+  }
+
+  private async getAlertState(): Promise<{
+    cycleId: string;
+    lastThreshold: number;
+    runOutAlerted: boolean;
+  }> {
+    return (
+      this.context.globalState.get<{
+        cycleId: string;
+        lastThreshold: number;
+        runOutAlerted: boolean;
+      }>(this.ALERT_STATE_KEY) || {
+        cycleId: "",
+        lastThreshold: 0,
+        runOutAlerted: false,
+      }
+    );
   }
 }
