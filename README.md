@@ -179,6 +179,11 @@ The icon always appears in non-data states (signed out / loading) regardless of 
    - Lint/format: `npm run lint` / `npm run format`
 4. Package: `npm run package` (produces a `.vsix`)
 
+### Testing conventions
+
+- **Unit tests** live in `src/unit/` as `*.unit.test.ts`, run by Vitest in a Node environment with the VS Code API mocked (`test-setup/vitest-setup.ts`).
+- **Integration tests** live in `src/test/suite/` as `*.test.ts`, run in a real extension host via `@vscode/test-cli` (configured in `.vscode-test.mjs`, compiled with `tsconfig.test.json`).
+
 Please follow conventional commit messages and keep changes focused. Open an issue first to discuss substantial changes.
 
 ## Releasing
