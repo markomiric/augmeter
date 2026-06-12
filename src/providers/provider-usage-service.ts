@@ -91,7 +91,8 @@ export class ProviderUsageService {
       usageSnapshots
     );
     await this.storageManager.cleanOldProviderSnapshots(
-      this.configManager.getHistoryRetentionDays()
+      this.configManager.getHistoryRetentionDays(),
+      now
     );
 
     if (healthSnapshots.length > 0) {

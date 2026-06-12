@@ -357,10 +357,13 @@ export class StorageManager {
     return normalized.filter(snapshot => snapshot.providerId === providerId);
   }
 
-  async cleanOldProviderSnapshots(retentionDays: number = 35): Promise<void> {
+  async cleanOldProviderSnapshots(
+    retentionDays: number = 35,
+    now: Date = new Date()
+  ): Promise<void> {
     const snapshots = await this.getProviderUsageSnapshots();
     const safeDays = Math.max(7, Math.min(90, Math.round(retentionDays)));
-    const cutoff = Date.now() - safeDays * 24 * 60 * 60 * 1000;
+    const cutoff = now.getTime() - safeDays * 24 * 60 * 60 * 1000;
     const filtered = snapshots.filter(snapshot => new Date(snapshot.timestamp).getTime() >= cutoff);
     if (filtered.length !== snapshots.length) {
       await this.context.globalState.update(this.PROVIDER_SNAPSHOTS_KEY, filtered);
