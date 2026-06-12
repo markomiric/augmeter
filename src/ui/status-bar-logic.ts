@@ -57,92 +57,7 @@ export function computeDisplayText(
   return valueText;
 }
 
-export function computeStatusLevel(
-  percentage: number
-): "Near limit" | "High usage" | "Moderate usage" | "Low usage" {
-  if (percentage >= 90) return "Near limit";
-  if (percentage >= 75) return "High usage";
-  if (percentage >= 50) return "Moderate usage";
-  return "Low usage";
-}
-
-export function buildTooltip(params: {
-  used: number;
-  limit: number;
-  remaining: number;
-  percentage: number;
-  showPercent: boolean;
-  hasRealData: boolean;
-  clickAction: ClickAction;
-  lastUpdated?: Date | undefined;
-  subscriptionType?: string | undefined;
-  renewalDate?: string | undefined;
-}): string {
-  const {
-    remaining,
-    limit,
-    percentage,
-    hasRealData,
-    clickAction,
-    lastUpdated,
-    subscriptionType,
-    renewalDate,
-  } = params;
-
-  // Build concise, action-focused tooltip content
-  const lines: string[] = [];
-
-  // Subscription type
-  if (subscriptionType) {
-    lines.push(`Plan: ${subscriptionType}`);
-  }
-
-  // Primary information: remaining usage (most actionable)
-  if (limit > 0) {
-    if (percentage >= 90) {
-      lines.push(`Near limit: ${remaining.toLocaleString()} remaining`);
-    } else if (percentage >= 75) {
-      lines.push(`${remaining.toLocaleString()} remaining of ${limit.toLocaleString()}`);
-    } else {
-      lines.push(`${remaining.toLocaleString()} remaining of ${limit.toLocaleString()} limit`);
-    }
-  } else if (!hasRealData) {
-    lines.push("Sign in for real usage data");
-  } else {
-    lines.push("Usage data available (limit unknown)");
-  }
-
-  // Renewal date
-  if (renewalDate) {
-    try {
-      const date = new Date(renewalDate);
-      if (!isNaN(date.getTime())) {
-        lines.push(`Renews: ${date.toLocaleDateString()}`);
-      }
-    } catch {
-      // Skip invalid dates
-    }
-  }
-
-  // Last updated timestamp
-  if (lastUpdated) {
-    lines.push(`Updated: ${lastUpdated.toLocaleTimeString()}`);
-  }
-
-  // Action information: what clicking will do
-  const clickLine =
-    clickAction === "refresh"
-      ? "Click to refresh usage data"
-      : clickAction === "openWebsite"
-        ? "Click to open Augment website"
-        : "Click to open settings";
-
-  lines.push(clickLine);
-
-  return lines.join("\n");
-}
-
-export function buildUsageBar(percentage: number, width: number = 10): string {
+function buildUsageBar(percentage: number, width: number = 10): string {
   const filled = Math.round((percentage / 100) * width);
   const empty = width - filled;
   return `\`[${"■".repeat(filled)}${"·".repeat(empty)}]\` ${percentage}%`;
@@ -405,37 +320,6 @@ export interface StatusBarColors {
   background?: string;
 }
 
-// Return VS Code theme color id or undefined (legacy function for backward compatibility)
-export function computeStatusColor(percentage: number, hasRealData: boolean): string | undefined {
-  // Use standard thresholds for backward compatibility
-  const standardThresholds: ColorThresholds = {
-    critical: 95,
-    highWarning: 85,
-    warning: 75,
-    caution: 50,
-  };
-
-  return computeStatusColorEnhanced(percentage, hasRealData, "standard", standardThresholds);
-}
-
-// Enhanced color computation with configurable thresholds and schemes
-export function computeStatusColorEnhanced(
-  percentage: number,
-  hasRealData: boolean,
-  colorScheme: ColorScheme,
-  thresholds: ColorThresholds
-): string | undefined {
-  const colors = computeStatusColorsEnhanced(
-    percentage,
-    hasRealData,
-    colorScheme,
-    thresholds,
-    false,
-    false
-  );
-  return colors.foreground;
-}
-
 // Comprehensive color computation that returns both foreground and background colors
 export function computeStatusColorsEnhanced(
   percentage: number,
@@ -465,43 +349,6 @@ export function computeStatusColorsEnhanced(
 
   // Standard color computation
   return computeStandardColors(percentage, hasRealData, adjustedThresholds);
-}
-
-// Enhanced color computation with accessibility considerations
-export function computeStatusColorWithAccessibility(
-  percentage: number,
-  hasRealData: boolean,
-  colorScheme: ColorScheme,
-  thresholds: ColorThresholds,
-  highContrastMode: boolean = false
-): string | undefined {
-  // Apply color scheme adjustments to thresholds
-  const adjustedThresholds = applyColorSchemeAdjustments(thresholds, colorScheme);
-
-  // In high contrast mode, use more distinct colors
-  if (highContrastMode) {
-    const colors = computeHighContrastColors(percentage, hasRealData, adjustedThresholds, false);
-    return colors.foreground;
-  }
-
-  // Critical usage - always show error regardless of data source
-  if (percentage >= adjustedThresholds.critical) {
-    return "statusBarItem.errorForeground";
-  }
-
-  // High warning - use distinct color that's readable
-  if (percentage >= adjustedThresholds.highWarning) {
-    // Use error foreground for high warning to ensure visibility
-    return "statusBarItem.errorForeground";
-  }
-
-  // Warning - traditional warning color
-  if (percentage >= adjustedThresholds.warning) {
-    return "statusBarItem.warningForeground";
-  }
-
-  // Below warning threshold: keep default theme color to minimize noise
-  return undefined;
 }
 
 // Standard color computation (foreground only)
