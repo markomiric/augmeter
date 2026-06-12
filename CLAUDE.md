@@ -12,7 +12,7 @@ Claude Fast uses a SkillActivationHook system that recommends which skills to us
 
 **Why:** Skills contain critical workflows and protocols not in base context. Loading them first prevents missing key instructions.
 
-**Repo context:** Read `.claude/rules/repo-primer.md` before implementation or planning. This repo currently uses FastAPI on AWS Lambda/API Gateway with Serverless Framework, DynamoDB, Cognito, uv, pytest, Ruff, mypy, and Bandit on the backend; React 19 + Vite + TypeScript with a generated typed client (`@hey-api/openapi-ts`), Biome, and Vitest on the frontend. Do not assume Hono, Cloudflare Workers, Drizzle/Neon, Better Auth, Expo, or `apps/web` unless the task explicitly introduces them.
+**Repo context:** Read `.claude/rules/repo-primer.md` before implementation or planning. This repo is `augmeter`, a TypeScript VS Code extension (status-bar usage/credits meter for Augment plus Claude/Codex/Copilot local telemetry). It uses strict TypeScript compiled with plain `tsc` to `out/`, zero runtime dependencies, ESLint v9 flat config + Prettier, Vitest unit tests in `src/unit/`, and `@vscode/test-cli` extension-host integration tests in `src/test/suite/`. Do not assume any web backend, FastAPI, AWS, DynamoDB, React, or `services/` directories unless the task explicitly introduces them.
 
 ### 2. Context Management Strategy
 
@@ -228,7 +228,7 @@ Request → Load Skills → Assess Complexity → Route → Execute → Commit
 - **Collaborative** → `/team-plan` → user approval → `/team-build` (Agent Teams, contract-first)
 - **High-reliability** → `/team-plan` with Specialist + Quality Engineer validation
 
-**Key Skills**: `sub-agent-invocation`, `git-commits`, `codebase-navigation`, `fastapi-aws`
+**Key Skills**: `sub-agent-invocation`, `git-commits`, `codebase-navigation`
 **Key Commands**: `/team-plan` (incorporates session type detection), `/build`, `/team-build`
 **Session Protocols**: `session-management/session-types/` (loaded automatically by `/team-plan`)
 
