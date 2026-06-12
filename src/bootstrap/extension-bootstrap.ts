@@ -11,8 +11,12 @@ import { ConfigManager } from "../core/config/config-manager";
 import { SecureLogger } from "../core/logging/secure-logger";
 import { AuthCommands } from "../commands/auth-commands";
 import { UsageCommands } from "../commands/usage-commands";
-
-import { ErrorHandler } from "../core/errors/augmeter-error";
+import { ProviderRegistry } from "../providers/provider-registry";
+import { ProviderUsageService } from "../providers/provider-usage-service";
+import { ClaudeProviderAdapter } from "../providers/adapters/claude-provider-adapter";
+import { CodexProviderAdapter } from "../providers/adapters/codex-provider-adapter";
+import { CopilotProviderAdapter } from "../providers/adapters/copilot-provider-adapter";
+import { RuntimeCoordinator } from "./runtime-coordinator";
 
 /**
  * Bootstraps the extension by initializing all services and registering commands.
@@ -21,12 +25,10 @@ import { ErrorHandler } from "../core/errors/augmeter-error";
  * services and passing them to command handlers and UI components.
  *
  * Initialization sequence:
- * 1. Initialize core managers (storage, config, detector)
- * 2. Register authentication provider
- * 3. Register commands
- * 4. Initialize authentication state
- * 5. Setup status bar click handler
- * 6. Start data fetching
+ * 1. Initialize shared managers and services
+ * 2. Register commands
+ * 3. Initialize runtime lifecycle coordination
+ * 4. Render the initial status bar state
  *
  * @example
  * ```typescript
@@ -44,12 +46,11 @@ export class ExtensionBootstrap {
   private statusBarManager!: StatusBarManager;
   private authCommands!: AuthCommands;
   private usageCommands!: UsageCommands;
+  private providerRegistry!: ProviderRegistry;
+  private providerUsageService!: ProviderUsageService;
+  private runtimeCoordinator!: RuntimeCoordinator;
 
   private disposables: vscode.Disposable[] = [];
-  private lastFocusRefreshTs: number = 0;
-  private context!: vscode.ExtensionContext;
-
-  private realDataFetcher?: () => Promise<void>;
 
   /**
    * Initialize the extension with all services and commands.
@@ -65,23 +66,11 @@ export class ExtensionBootstrap {
     try {
       SecureLogger.info("Extension initialization started");
 
-      // Initialize core managers
       this.initializeManagers(context);
-
-      // Register authentication provider
-      this.registerAuthProvider();
-
-      // Register commands
       this.registerCommands();
-
-      // Initialize authentication state
-      await this.initializeAuthState();
-
-      // Setup status bar click handler
-      this.setupStatusBarClickHandler();
-
-      // Start data fetching
-      this.startDataFetching();
+      this.initializeRuntimeCoordinator(context);
+      await this.runtimeCoordinator.initialize();
+      void this.statusBarManager.updateDisplay();
 
       SecureLogger.info("Extension initialization completed successfully");
     } catch (error) {
@@ -92,10 +81,9 @@ export class ExtensionBootstrap {
   }
 
   private initializeManagers(context: vscode.ExtensionContext): void {
-    this.context = context;
     this.storageManager = new StorageManager(context);
     this.configManager = new ConfigManager();
-    this.augmentDetector = new AugmentDetector(context);
+    this.augmentDetector = new AugmentDetector(context, () => this.configManager.getApiBaseUrl());
     this.usageTracker = new UsageTracker(this.storageManager, this.configManager);
     this.statusBarManager = new StatusBarManager(
       this.usageTracker,
@@ -118,237 +106,47 @@ export class ExtensionBootstrap {
       this.configManager,
       this.augmentDetector
     );
-  }
 
-  private registerAuthProvider(): void {
-    try {
-      const apiClient = this.augmentDetector.getApiClient();
-      if (!apiClient) {
-        SecureLogger.warn("API client not available for auth-related setup");
-        return;
-      }
-
-      // No authentication provider; we use cookie-based auth via Secrets API
-    } catch (error) {
-      SecureLogger.error("Failed during auth setup", error);
-    }
+    this.providerRegistry = new ProviderRegistry([
+      new ClaudeProviderAdapter(() => this.configManager.getClaudeProjectsPath()),
+      new CodexProviderAdapter(() => this.configManager.getCodexSessionsPath()),
+      new CopilotProviderAdapter(
+        () => this.configManager.getCopilotStateDbPath(),
+        undefined,
+        () => this.configManager.getCopilotApiConfig()
+      ),
+    ]);
+    this.providerUsageService = new ProviderUsageService(
+      this.storageManager,
+      this.configManager,
+      this.providerRegistry
+    );
   }
 
   private registerCommands(): void {
-    // Register authentication commands
     const authDisposables = this.authCommands.registerCommands();
     this.disposables.push(...authDisposables);
 
-    // Register usage commands
     const usageDisposables = this.usageCommands.registerCommands();
     this.disposables.push(...usageDisposables);
 
     SecureLogger.info(`Registered ${this.disposables.length} commands`);
   }
 
-  private async initializeAuthState(): Promise<void> {
-    try {
-      const apiClient = this.augmentDetector.getApiClient();
-      if (!apiClient) {
-        SecureLogger.warn("API client not available during auth state initialization");
-        return;
-      }
-
-      // Initialize from secure storage (includes migration)
-      await apiClient.initializeFromSecrets?.();
-
-      // Set initial auth context for command visibility
-      const isSignedIn = apiClient.hasCookie();
-      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", isSignedIn);
-
-      if (!isSignedIn) {
-        SecureLogger.info("No session cookie found - showing logged out state");
-      }
-      // Connection will be validated by the first polling fetch in startDataFetching()
-    } catch (error) {
-      SecureLogger.error("Auth state initialization failed", error);
-    }
-  }
-
-  private setupStatusBarClickHandler(): void {
-    try {
-      // Status bar click handler is already set up in StatusBarManager
-      // Just trigger an update to ensure it's displayed
-      void this.statusBarManager.updateDisplay();
-      SecureLogger.info("Status bar click handler setup completed");
-    } catch (error) {
-      SecureLogger.error("Status bar click handler setup failed", error);
-    }
-  }
-
-  private startDataFetching(): void {
-    try {
-      if (!this.configManager.isEnabled()) {
-        SecureLogger.info("Extension is disabled, skipping data fetching");
-        return;
-      }
-
-      // Set up real data fetcher
-      const realFetcher = async () => {
-        const source = this.usageTracker.getFetchSource();
-        try {
-          const apiClient = this.augmentDetector.getApiClient();
-          if (!apiClient) {
-            SecureLogger.warn(`API client not available for data fetching (source=${source})`);
-            return;
-          }
-
-          // Skip network calls when not authenticated
-          if (!apiClient.hasCookie()) {
-            this.usageTracker.clearRealDataFlag();
-            void this.statusBarManager.updateDisplay();
-            SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
-            return;
-          }
-
-          SecureLogger.info(`Fetching real usage data (source=${source})`);
-          const response = await apiClient.getUsageData();
-          if (response.success) {
-            SecureLogger.info(`API response received (source=${source})`, {
-              hasData: !!response.data,
-              dataKeys: response.data ? Object.keys(response.data) : [],
-            });
-            const parsed = await apiClient.parseUsageResponse(response);
-            if (parsed) {
-              SecureLogger.info(`Parsed usage data (source=${source})`, {
-                totalUsage: parsed.totalUsage,
-                usageLimit: parsed.usageLimit,
-                hasTotal: parsed.totalUsage !== undefined,
-                hasLimit: parsed.usageLimit !== undefined,
-              });
-              await this.usageTracker.updateWithRealData({
-                totalUsage: parsed.totalUsage ?? 0,
-                usageLimit: parsed.usageLimit ?? 0,
-                dailyUsage: parsed.dailyUsage,
-                lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
-                subscriptionType: parsed.subscriptionType,
-                renewalDate: parsed.renewalDate,
-              });
-
-              void this.statusBarManager.updateDisplay();
-              SecureLogger.info(`Real usage data updated successfully (source=${source})`);
-            } else {
-              SecureLogger.warn(`Failed to parse usage data response (source=${source})`);
-            }
-          } else {
-            // If unauthenticated, clear real data and update status without retrying
-            if (response.code === "UNAUTHENTICATED") {
-              this.usageTracker.clearRealDataFlag();
-              void this.statusBarManager.updateDisplay();
-              SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
-              return;
-            }
-            SecureLogger.warn(`Failed to fetch real usage data (source=${source})`, response.error);
-          }
-        } catch (error) {
-          // Use silent error handling for background operations to avoid interrupting user workflow
-          ErrorHandler.handleSilently(error, `Real data fetching (source=${source})`);
-        }
-      };
-      this.usageTracker.setRealDataFetcher(realFetcher);
-      this.realDataFetcher = realFetcher;
-
-      // React to configuration changes for live behavior
-      const cfgDisposable = vscode.workspace.onDidChangeConfiguration(e => {
-        try {
-          if (!e.affectsConfiguration("augmeter")) {
-            return;
-          }
-
-          this.configManager.reloadConfig();
-
-          if (e.affectsConfiguration("augmeter.enabled")) {
-            if (!this.configManager.isEnabled()) {
-              this.usageTracker.stopDataFetching();
-              this.statusBarManager.hide();
-              SecureLogger.info("Extension disabled via settings; paused data fetching");
-            } else {
-              if (this.realDataFetcher) {
-                this.usageTracker.setRealDataFetcher(this.realDataFetcher);
-              }
-              this.usageTracker.startTracking();
-              this.statusBarManager.show();
-              SecureLogger.info("Extension enabled via settings; resumed data fetching");
-            }
-          }
-
-          if (
-            e.affectsConfiguration("augmeter.refreshInterval") ||
-            e.affectsConfiguration("augmeter.alerts.warningPercent") ||
-            e.affectsConfiguration("augmeter.alerts.highPercent") ||
-            e.affectsConfiguration("augmeter.alerts.criticalPercent") ||
-            e.affectsConfiguration("augmeter.alerts.runOutDays") ||
-            e.affectsConfiguration("augmeter.history.retentionDays")
-          ) {
-            // Reschedule polling quickly to apply new interval
-            this.usageTracker.triggerRefreshSoon(0, "config-change");
-          }
-
-          void this.statusBarManager.updateDisplay();
-        } catch (err) {
-          SecureLogger.warn("Failed to apply configuration change", err);
-        }
-      });
-      this.disposables.push(cfgDisposable);
-
-      // Start periodic data fetching
-      this.usageTracker.startTracking();
-
-      // Trigger a refresh when the VS Code window regains focus (throttled)
-      const focusDisposable = vscode.window.onDidChangeWindowState(e => {
-        if (e.focused) {
-          const now = Date.now();
-          const cooldownMs = 30_000; // 30s throttle
-          if (now - this.lastFocusRefreshTs > cooldownMs) {
-            try {
-              this.usageTracker.triggerRefreshSoon(0, "focus");
-              this.lastFocusRefreshTs = now;
-              SecureLogger.info("Triggered focus-based refresh");
-            } catch (err) {
-              SecureLogger.warn("Failed to trigger focus-based refresh", err);
-            }
-          }
-        }
-      });
-
-      // Resume/pause polling on secret changes (cookie added/removed)
-      const secretsDisposable = this.context.secrets.onDidChange(async e => {
-        if (e.key === "augment.sessionCookie") {
-          try {
-            const apiClient = this.augmentDetector.getApiClient();
-            await apiClient.refreshSessionFromSecrets?.();
-            const hasCookie = apiClient.hasCookie();
-            // Update context for command visibility
-            void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", hasCookie);
-            // Trigger a refresh to reflect new auth state and fetch if signed in
-            this.usageTracker.triggerRefreshSoon(0, "auth-change");
-            SecureLogger.info(
-              hasCookie
-                ? "Triggered auth-change refresh (cookie added)"
-                : "Triggered auth-change refresh (cookie removed)"
-            );
-          } catch (err) {
-            SecureLogger.warn("Failed to handle secrets change", err);
-          }
-        }
-      });
-      this.disposables.push(secretsDisposable);
-
-      this.disposables.push(focusDisposable);
-
-      SecureLogger.info("Data fetching started");
-    } catch (error) {
-      SecureLogger.error("Data fetching startup failed", error);
-    }
+  private initializeRuntimeCoordinator(context: vscode.ExtensionContext): void {
+    this.runtimeCoordinator = new RuntimeCoordinator(
+      context,
+      this.storageManager,
+      this.configManager,
+      this.augmentDetector,
+      this.usageTracker,
+      this.statusBarManager,
+      this.providerUsageService
+    );
   }
 
   getDisposables(): vscode.Disposable[] {
-    return [...this.disposables, this.statusBarManager, this.usageTracker];
+    return [...this.disposables, this.runtimeCoordinator, this.statusBarManager, this.usageTracker];
   }
 
   dispose(): void {
@@ -363,6 +161,10 @@ export class ExtensionBootstrap {
 
     if (this.usageTracker) {
       this.usageTracker.dispose();
+    }
+
+    if (this.runtimeCoordinator) {
+      this.runtimeCoordinator.dispose();
     }
 
     SecureLogger.info("Extension bootstrap disposal completed");

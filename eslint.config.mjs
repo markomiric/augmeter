@@ -22,7 +22,7 @@ export default [
         ...globals.browser,
       },
       parserOptions: {
-        projectService: true,
+        project: "./tsconfig.eslint.json",
         tsconfigRootDir: __dirname,
       },
     },

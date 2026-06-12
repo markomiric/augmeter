@@ -1,6 +1,6 @@
 export interface AugmentApiResponse {
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string | undefined;
   code?: "UNAUTHENTICATED" | "RETRIABLE" | string | undefined;
   status?: number | undefined;

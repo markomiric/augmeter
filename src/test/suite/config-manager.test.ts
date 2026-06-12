@@ -65,6 +65,61 @@ suite("ConfigManager Test Suite", () => {
       "Default monthly target should be disabled"
     );
     assert.strictEqual(
+      configManager.isProviderTrackingEnabled(),
+      true,
+      "Provider tracking should default to enabled in trusted workspace"
+    );
+    assert.deepStrictEqual(configManager.getEnabledProviderIds(), [
+      "augment",
+      "claude",
+      "codex",
+      "copilot",
+    ]);
+    assert.deepStrictEqual(
+      configManager.getProviderMonthlyTargets(),
+      {},
+      "Provider targets should default to empty map"
+    );
+    assert.strictEqual(
+      configManager.getProviderMonthlyTarget("claude"),
+      0,
+      "Provider monthly target should default to disabled"
+    );
+    assert.deepStrictEqual(configManager.getProviderAlertThresholds("claude"), {
+      warning: 75,
+      high: 90,
+      critical: 95,
+      runOutDays: 3,
+    });
+    const copilotApiConfig = configManager.getCopilotApiConfig();
+    assert.strictEqual(copilotApiConfig.enabled, false);
+    assert.strictEqual(copilotApiConfig.username, "");
+    assert.strictEqual(copilotApiConfig.tokenEnvVar, "GITHUB_TOKEN");
+    assert.strictEqual(copilotApiConfig.baseUrl, "https://api.github.com");
+    assert.strictEqual(copilotApiConfig.timeoutMs, 6000);
+    assert.strictEqual(
+      configManager.getApiBaseUrl(),
+      "https://app.augmentcode.com/api",
+      "Default API base URL should match manifest defaults"
+    );
+    assert.strictEqual(configManager.getSmartSignInQuickWatchMs(), 2000);
+    assert.strictEqual(configManager.getSmartSignInWebsiteWatchMs(), 300000);
+    assert.strictEqual(
+      configManager.getClaudeProjectsPath(),
+      "",
+      "Default Claude projects path should be empty"
+    );
+    assert.strictEqual(
+      configManager.getCodexSessionsPath(),
+      "",
+      "Default Codex sessions path should be empty"
+    );
+    assert.strictEqual(
+      configManager.getCopilotStateDbPath(),
+      "",
+      "Default Copilot state DB path should be empty"
+    );
+    assert.strictEqual(
       configManager.getColorScheme(),
       "standard",
       "Default color scheme should be standard"

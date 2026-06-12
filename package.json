@@ -58,8 +58,20 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Augmeter disables local session-file tracking in untrusted workspaces.",
+      "description": "Augmeter disables local provider/session file tracking in untrusted workspaces.",
       "restrictedConfigurations": [
+        "augmeter.providers.enabled",
+        "augmeter.providers.enabledIds",
+        "augmeter.providers.targets",
+        "augmeter.providers.alerts",
+        "augmeter.providers.claude.path",
+        "augmeter.providers.codex.path",
+        "augmeter.providers.copilot.stateDbPath",
+        "augmeter.providers.copilot.api.enabled",
+        "augmeter.providers.copilot.api.username",
+        "augmeter.providers.copilot.api.tokenEnvVar",
+        "augmeter.providers.copilot.api.baseUrl",
+        "augmeter.providers.copilot.api.timeoutMs",
         "augmeter.sessionTracking.enabled",
         "augmeter.sessionTracking.path"
       ]
@@ -108,6 +120,11 @@
         "category": "Augmeter"
       },
       {
+        "command": "augmeter.exportUsageBundleJson",
+        "title": "Export Usage Bundle (JSON)",
+        "category": "Augmeter"
+      },
+      {
         "command": "augmeter.runDiagnostics",
         "title": "Run Diagnostics",
         "category": "Augmeter"
@@ -137,6 +154,9 @@
         {
           "command": "augmeter.exportUsageHistoryCsv",
           "when": "augmeter.isSignedIn"
+        },
+        {
+          "command": "augmeter.exportUsageBundleJson"
         },
         {
           "command": "augmeter.runDiagnostics"
@@ -299,6 +319,82 @@
           "minimum": 0,
           "description": "Optional monthly usage target. Set 0 to disable."
         },
+        "augmeter.providers.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable multi-provider local usage tracking (Claude, Codex, Copilot, and Augment rollups). Disabled in untrusted workspaces."
+        },
+        "augmeter.providers.enabledIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "augment",
+              "claude",
+              "codex",
+              "copilot"
+            ]
+          },
+          "default": [
+            "augment",
+            "claude",
+            "codex",
+            "copilot"
+          ],
+          "description": "Choose which providers Augmeter should collect and display."
+        },
+        "augmeter.providers.targets": {
+          "type": "object",
+          "default": {},
+          "description": "Optional per-provider monthly targets (messages/requests). Example: { \"claude\": 1200, \"codex\": 900, \"copilot\": 1500 }."
+        },
+        "augmeter.providers.alerts": {
+          "type": "object",
+          "default": {},
+          "description": "Optional per-provider alert overrides. Example: { \"claude\": { \"warningPercent\": 70, \"highPercent\": 85, \"criticalPercent\": 95, \"runOutDays\": 2 } }."
+        },
+        "augmeter.providers.claude.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom path to Claude Code project logs. Leave empty for default (~/.claude/projects)."
+        },
+        "augmeter.providers.codex.path": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom path to Codex session logs. Leave empty for default (~/.codex/sessions)."
+        },
+        "augmeter.providers.copilot.stateDbPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom path to VS Code state.vscdb used for Copilot usage counters. Leave empty for platform default."
+        },
+        "augmeter.providers.copilot.api.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Copilot usage collection from the GitHub billing API (falls back to local state DB counters on failure)."
+        },
+        "augmeter.providers.copilot.api.username": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub username used when Copilot API collection is enabled."
+        },
+        "augmeter.providers.copilot.api.tokenEnvVar": {
+          "type": "string",
+          "default": "GITHUB_TOKEN",
+          "description": "Environment variable name that contains a GitHub token for Copilot API usage collection."
+        },
+        "augmeter.providers.copilot.api.baseUrl": {
+          "type": "string",
+          "default": "https://api.github.com",
+          "description": "Base URL for GitHub API requests used by Copilot provider tracking."
+        },
+        "augmeter.providers.copilot.api.timeoutMs": {
+          "type": "number",
+          "default": 6000,
+          "minimum": 1000,
+          "maximum": 30000,
+          "description": "Timeout in milliseconds for Copilot GitHub API requests."
+        },
         "augmeter.apiBaseUrl": {
           "type": "string",
           "default": "https://app.augmentcode.com/api",
@@ -336,10 +432,10 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "compile-tests": "tsc -p . --outDir out --sourceMap true",
+    "compile": "npm run clean && tsc -p ./",
+    "compile-tests": "npm run clean && tsc -p ./tsconfig.test.json",
     "watch": "tsc -watch -p ./",
-    "package": "npx @vscode/vsce package",
+    "package": "npm run compile && npx @vscode/vsce package",
     "clean": "rimraf out *.vsix",
     "sbom": "cyclonedx-npm --output-file sbom.json",
     "pretest": "npm run compile && npm run lint",
@@ -348,7 +444,7 @@
     "test:cov": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:unit": "vitest run src/unit",
-    "test:integration": "vscode-test",
+    "test:integration": "npm run compile-tests && vscode-test",
     "test:all": "npm run test:cov && npm run test:integration",
     "lint": "eslint src --ext ts",
     "lint:fix": "eslint src --ext ts --fix",

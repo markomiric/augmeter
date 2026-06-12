@@ -1,0 +1,23 @@
+# Runtime lock files (scheduled tasks, hook state, etc.)
+*.lock
+
+# Backup files (transcript backups before compaction)
+backups/*.jsonl
+backups/*.md
+
+# ContextRecoveryHook per-session state and locks (live in backups/)
+backups/.claudefast-state-*.json
+backups/.claudefast-backup-*.lock
+backups/.claudefast-state-*.tmp.*
+
+# Hook logs (created at runtime)
+hooks/*/logs/
+
+# Session state tracking
+hooks/SkillActivationHook/recommendation-log.json
+hooks/LibraryHook/pending-sync.json
+
+# Dev Browser Skill Tidyness
+skills/dev-browser/profiles
+skills/dev-browser/src
+skills/dev-browser/tmp

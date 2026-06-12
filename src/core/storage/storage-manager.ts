@@ -3,6 +3,20 @@
  * including daily usage tracking and automatic cleanup of old data.
  */
 import type * as vscode from "vscode";
+import {
+  type ProviderHealthSnapshot,
+  type ProviderId,
+  type ProviderUsageSnapshot,
+} from "../types/provider-usage";
+import {
+  getDefaultProviderAlertState,
+  normalizeProviderHealthSnapshot,
+  normalizeProviderId,
+  normalizeProviderUsageSnapshot,
+  parseProviderAlertStateMap,
+  parseProviderHealthMap,
+  type ProviderAlertState,
+} from "./provider-storage-state";
 
 /**
  * Usage data stored in VS Code workspace state.
@@ -45,7 +59,10 @@ export class StorageManager {
   private readonly STORAGE_KEY = "augmentUsageData";
   private readonly THRESHOLD_KEY = "augmentLastNotifiedThreshold";
   private readonly ALERT_STATE_KEY = "augmentAlertState";
+  private readonly PROVIDER_ALERT_STATE_KEY = "providerAlertStateV1";
   private readonly SNAPSHOTS_KEY = "augmentUsageSnapshots";
+  private readonly PROVIDER_SNAPSHOTS_KEY = "providerUsageSnapshotsV1";
+  private readonly PROVIDER_HEALTH_KEY = "providerHealthSnapshotsV1";
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -164,6 +181,71 @@ export class StorageManager {
     });
   }
 
+  async getProviderNotifiedThresholdForCycle(
+    providerId: ProviderId,
+    cycleId: string
+  ): Promise<number> {
+    const state = await this.getProviderAlertState(providerId);
+    return state.cycleId === cycleId ? state.lastThreshold : 0;
+  }
+
+  async setProviderNotifiedThresholdForCycle(
+    providerId: ProviderId,
+    cycleId: string,
+    threshold: number
+  ): Promise<void> {
+    const key = this.normalizeProviderId(providerId);
+    if (!key) {
+      return;
+    }
+    const map = await this.getProviderAlertStateMap();
+    const state = map[key] || getDefaultProviderAlertState();
+    map[key] = {
+      cycleId,
+      lastThreshold: threshold,
+      runOutAlerted: state.cycleId === cycleId ? state.runOutAlerted : false,
+    };
+    await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, map);
+  }
+
+  async isProviderRunOutAlertedForCycle(providerId: ProviderId, cycleId: string): Promise<boolean> {
+    const state = await this.getProviderAlertState(providerId);
+    return state.cycleId === cycleId ? state.runOutAlerted : false;
+  }
+
+  async setProviderRunOutAlertedForCycle(
+    providerId: ProviderId,
+    cycleId: string,
+    alerted: boolean
+  ): Promise<void> {
+    const key = this.normalizeProviderId(providerId);
+    if (!key) {
+      return;
+    }
+    const map = await this.getProviderAlertStateMap();
+    const state = map[key] || getDefaultProviderAlertState();
+    map[key] = {
+      cycleId,
+      lastThreshold: state.cycleId === cycleId ? state.lastThreshold : 0,
+      runOutAlerted: alerted,
+    };
+    await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, map);
+  }
+
+  async resetProviderAlertState(providerId?: ProviderId): Promise<void> {
+    if (!providerId) {
+      await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, {});
+      return;
+    }
+    const key = this.normalizeProviderId(providerId);
+    if (!key) {
+      return;
+    }
+    const map = await this.getProviderAlertStateMap();
+    delete map[key];
+    await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, map);
+  }
+
   async cleanOldData(): Promise<void> {
     const data = await this.getUsageData();
     const cutoffDate = new Date();
@@ -217,6 +299,114 @@ export class StorageManager {
     await this.context.globalState.update(this.SNAPSHOTS_KEY, []);
   }
 
+  async saveProviderUsageSnapshot(snapshot: ProviderUsageSnapshot): Promise<void> {
+    const normalized = normalizeProviderUsageSnapshot(snapshot);
+    if (!normalized) {
+      return;
+    }
+    const snapshots = await this.getProviderUsageSnapshots();
+    snapshots.push(normalized);
+    await this.context.globalState.update(this.PROVIDER_SNAPSHOTS_KEY, snapshots);
+  }
+
+  async saveProviderUsageSnapshots(snapshots: ProviderUsageSnapshot[]): Promise<void> {
+    const normalized = snapshots
+      .map(snapshot => normalizeProviderUsageSnapshot(snapshot))
+      .filter((snapshot): snapshot is ProviderUsageSnapshot => snapshot !== null);
+    await this.context.globalState.update(this.PROVIDER_SNAPSHOTS_KEY, normalized);
+  }
+
+  async replaceProviderUsageSnapshotsForProviders(
+    providerIds: ProviderId[],
+    snapshots: ProviderUsageSnapshot[]
+  ): Promise<void> {
+    const normalizedSnapshots = snapshots
+      .map(snapshot => normalizeProviderUsageSnapshot(snapshot))
+      .filter((snapshot): snapshot is ProviderUsageSnapshot => snapshot !== null);
+
+    const providerKeys = new Set(
+      providerIds
+        .map(providerId => this.normalizeProviderId(providerId))
+        .filter((providerId): providerId is string => providerId.length > 0)
+    );
+
+    const existing = await this.getProviderUsageSnapshots();
+    const retained = existing.filter(
+      snapshot => !providerKeys.has(this.normalizeProviderId(snapshot.providerId))
+    );
+
+    await this.context.globalState.update(
+      this.PROVIDER_SNAPSHOTS_KEY,
+      retained.concat(normalizedSnapshots)
+    );
+  }
+
+  async getProviderUsageSnapshots(providerId?: ProviderId): Promise<ProviderUsageSnapshot[]> {
+    const stored = this.context.globalState.get<unknown>(this.PROVIDER_SNAPSHOTS_KEY);
+    if (!Array.isArray(stored)) {
+      return [];
+    }
+
+    const normalized = stored
+      .map(snapshot => normalizeProviderUsageSnapshot(snapshot))
+      .filter((snapshot): snapshot is ProviderUsageSnapshot => snapshot !== null);
+
+    if (!providerId) {
+      return normalized;
+    }
+    return normalized.filter(snapshot => snapshot.providerId === providerId);
+  }
+
+  async cleanOldProviderSnapshots(retentionDays: number = 35): Promise<void> {
+    const snapshots = await this.getProviderUsageSnapshots();
+    const safeDays = Math.max(7, Math.min(90, Math.round(retentionDays)));
+    const cutoff = Date.now() - safeDays * 24 * 60 * 60 * 1000;
+    const filtered = snapshots.filter(snapshot => new Date(snapshot.timestamp).getTime() >= cutoff);
+    if (filtered.length !== snapshots.length) {
+      await this.context.globalState.update(this.PROVIDER_SNAPSHOTS_KEY, filtered);
+    }
+  }
+
+  async clearProviderUsageSnapshots(): Promise<void> {
+    await this.context.globalState.update(this.PROVIDER_SNAPSHOTS_KEY, []);
+  }
+
+  async setProviderHealth(health: ProviderHealthSnapshot): Promise<void> {
+    const normalized = normalizeProviderHealthSnapshot(health);
+    if (!normalized) {
+      return;
+    }
+    const healthMap = await this.getProviderHealthMap();
+    healthMap[normalized.providerId] = normalized;
+    await this.context.globalState.update(this.PROVIDER_HEALTH_KEY, healthMap);
+  }
+
+  async setProviderHealthBulk(healthSnapshots: ProviderHealthSnapshot[]): Promise<void> {
+    const healthMap = await this.getProviderHealthMap();
+    for (const snapshot of healthSnapshots) {
+      const normalized = normalizeProviderHealthSnapshot(snapshot);
+      if (!normalized) {
+        continue;
+      }
+      healthMap[normalized.providerId] = normalized;
+    }
+    await this.context.globalState.update(this.PROVIDER_HEALTH_KEY, healthMap);
+  }
+
+  async getProviderHealth(providerId: ProviderId): Promise<ProviderHealthSnapshot | null> {
+    const healthMap = await this.getProviderHealthMap();
+    return healthMap[providerId] || null;
+  }
+
+  async getAllProviderHealth(): Promise<ProviderHealthSnapshot[]> {
+    const healthMap = await this.getProviderHealthMap();
+    return Object.values(healthMap);
+  }
+
+  async clearProviderHealth(): Promise<void> {
+    await this.context.globalState.update(this.PROVIDER_HEALTH_KEY, {});
+  }
+
   private async getAlertState(): Promise<{
     cycleId: string;
     lastThreshold: number;
@@ -233,5 +423,28 @@ export class StorageManager {
         runOutAlerted: false,
       }
     );
+  }
+
+  private async getProviderHealthMap(): Promise<Record<string, ProviderHealthSnapshot>> {
+    return parseProviderHealthMap(this.context.globalState.get<unknown>(this.PROVIDER_HEALTH_KEY));
+  }
+
+  private async getProviderAlertStateMap(): Promise<Record<string, ProviderAlertState>> {
+    return parseProviderAlertStateMap(
+      this.context.globalState.get<unknown>(this.PROVIDER_ALERT_STATE_KEY)
+    );
+  }
+
+  private async getProviderAlertState(providerId: ProviderId): Promise<ProviderAlertState> {
+    const key = this.normalizeProviderId(providerId);
+    if (!key) {
+      return getDefaultProviderAlertState();
+    }
+    const map = await this.getProviderAlertStateMap();
+    return map[key] || getDefaultProviderAlertState();
+  }
+
+  private normalizeProviderId(providerId: ProviderId): string {
+    return normalizeProviderId(providerId);
   }
 }

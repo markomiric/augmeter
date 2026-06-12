@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildProviderUsageLines,
   computePercentage,
   computeValueText,
   computeDisplayText,
   buildTooltip,
+  buildMarkdownTooltip,
   computeStatusColor,
   computeStatusColorEnhanced,
   computeStatusColorsEnhanced,
@@ -83,6 +85,78 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     });
     expect(tooltip3).toMatch(/Sign in for real usage data/);
     expect(tooltip3).toMatch(/Click to open Augment website/);
+  });
+
+  it("buildMarkdownTooltip includes provider usage lines", () => {
+    const tooltip = buildMarkdownTooltip({
+      used: 1000,
+      limit: 2000,
+      remaining: 1000,
+      percentage: 50,
+      hasRealData: true,
+      clickAction: "refresh",
+      providerUsageLines: ["Claude Code: 5h 12 • 7d 84", "Codex (local prompts): 5h 8 • 7d 42"],
+    });
+
+    expect(tooltip).toContain("**Providers:**");
+    expect(tooltip).toContain("- Claude Code: 5h 12 • 7d 84");
+    expect(tooltip).toContain("- Codex (local prompts): 5h 8 • 7d 42");
+    expect(tooltip).toContain("[Open dashboard](command:augmeter.openUsageDashboard)");
+  });
+
+  it("buildProviderUsageLines orders providers and falls back to health status", () => {
+    const lines = buildProviderUsageLines(
+      [
+        {
+          providerId: "codex",
+          timestamp: "2026-03-17T10:00:00.000Z",
+          windowType: "rolling_5h",
+          metricType: "messages",
+          sourceKind: "file",
+          used: 8,
+        },
+        {
+          providerId: "claude",
+          timestamp: "2026-03-17T10:00:00.000Z",
+          windowType: "weekly_7d",
+          metricType: "messages",
+          sourceKind: "file",
+          used: 84,
+        },
+      ],
+      [
+        {
+          providerId: "copilot",
+          status: "degraded",
+          checkedAt: "2026-03-17T10:00:00.000Z",
+          canCollectInCurrentWorkspace: true,
+        },
+      ]
+    );
+
+    expect(lines).toEqual([
+      "Claude Code: 7d 84",
+      "Codex (local prompts): 5h 8",
+      "GitHub Copilot: degraded",
+    ]);
+  });
+
+  it("buildProviderUsageLines surfaces monthly provider snapshots", () => {
+    const lines = buildProviderUsageLines(
+      [
+        {
+          providerId: "copilot",
+          timestamp: "2026-03-17T10:00:00.000Z",
+          windowType: "monthly",
+          metricType: "messages",
+          sourceKind: "api",
+          used: 42,
+        },
+      ],
+      []
+    );
+
+    expect(lines).toEqual(["GitHub Copilot: month 42"]);
   });
 
   it("computeStatusColor maps thresholds and data source (legacy)", () => {

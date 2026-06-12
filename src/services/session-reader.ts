@@ -11,6 +11,10 @@ export interface SessionActivity {
   sessionCount: number;
 }
 
+interface SessionExchange {
+  finishedAt?: unknown;
+}
+
 /**
  * Read-only parser for Augment session files (~/.augment/sessions/*.json).
  *
@@ -57,14 +61,8 @@ export class SessionReader {
       try {
         const filePath = path.join(sessionsDir, file);
         const raw = fs.readFileSync(filePath, "utf-8");
-        const data = JSON.parse(raw);
-
-        // Session files can be an array of exchanges or an object with an exchanges array
-        const exchanges: any[] = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.exchanges)
-            ? data.exchanges
-            : [];
+        const data: unknown = JSON.parse(raw);
+        const exchanges = this.getExchanges(data);
 
         let sessionHadActivity = false;
         for (const exchange of exchanges) {
@@ -84,5 +82,25 @@ export class SessionReader {
     }
 
     return { promptCount, sessionCount };
+  }
+
+  private static getExchanges(data: unknown): SessionExchange[] {
+    if (Array.isArray(data)) {
+      return data.filter(value => this.isSessionExchange(value));
+    }
+
+    if (this.isRecord(data) && Array.isArray(data.exchanges)) {
+      return data.exchanges.filter(value => this.isSessionExchange(value));
+    }
+
+    return [];
+  }
+
+  private static isSessionExchange(value: unknown): value is SessionExchange {
+    return this.isRecord(value);
+  }
+
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
   }
 }

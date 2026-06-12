@@ -9,6 +9,12 @@ import { UserNotificationService } from "../core/notifications/user-notification
 import { ErrorHandler } from "../core/errors/augmeter-error";
 import { type ConfigManager } from "../core/config/config-manager";
 import { type AugmentDetector } from "../services/augment-detector";
+import {
+  buildDiagnosticsText,
+  buildUsageBundle,
+  buildUsageHistoryCsv,
+  buildUsageSummaryText,
+} from "./usage-command-formatters";
 
 export class UsageCommands {
   private dashboardPanel: vscode.WebviewPanel | null = null;
@@ -58,6 +64,13 @@ export class UsageCommands {
       })
     );
 
+    // Export unified usage bundle command
+    disposables.push(
+      vscode.commands.registerCommand("augmeter.exportUsageBundleJson", async () => {
+        await this.handleExportUsageBundleJson();
+      })
+    );
+
     // Diagnostics command
     disposables.push(
       vscode.commands.registerCommand("augmeter.runDiagnostics", async () => {
@@ -100,53 +113,19 @@ export class UsageCommands {
         return;
       }
 
-      const remaining = limit > 0 ? Math.max(limit - usage, 0) : 0;
-      const percentage = limit > 0 ? Math.round((usage / limit) * 100) : 0;
-      const subscriptionType = this.usageTracker.getSubscriptionType();
-      const renewalDate = this.usageTracker.getRenewalDate();
-      const target = this.usageTracker.getMonthlyTarget();
-      const targetDelta = this.usageTracker.getTargetDelta();
-      const projectedDays = await this.usageTracker.getProjectedDaysRemaining();
-      const projectedDate = await this.usageTracker.getProjectedDepletionDate();
-
-      const lines: string[] = ["Augment Usage Summary"];
-      if (subscriptionType) {
-        lines.push(`Plan: ${subscriptionType}`);
-      }
-      lines.push(`Used: ${usage.toLocaleString()} / ${limit.toLocaleString()} (${percentage}%)`);
-      lines.push(`Remaining: ${remaining.toLocaleString()}`);
-
-      if (target > 0 && targetDelta !== null) {
-        lines.push(
-          `Target: ${target.toLocaleString()} (${targetDelta >= 0 ? `${Math.abs(targetDelta).toLocaleString()} under` : `${Math.abs(targetDelta).toLocaleString()} over`})`
-        );
-      }
-
-      if (projectedDays !== null) {
-        if (projectedDays <= 0) {
-          lines.push("Projected depletion: exhausted");
-        } else {
-          lines.push(`Projected depletion: ~${Math.max(1, Math.round(projectedDays))} day(s)`);
-        }
-      }
-
-      if (projectedDate) {
-        lines.push(`Projected date: ${projectedDate.toLocaleDateString()}`);
-      }
-
-      if (renewalDate) {
-        try {
-          const date = new Date(renewalDate);
-          if (!isNaN(date.getTime())) {
-            lines.push(`Renews: ${date.toLocaleDateString()}`);
-          }
-        } catch {
-          // Skip invalid dates
-        }
-      }
-      lines.push(`As of: ${new Date().toLocaleString()}`);
-
-      await vscode.env.clipboard.writeText(lines.join("\n"));
+      await vscode.env.clipboard.writeText(
+        buildUsageSummaryText({
+          usage,
+          limit,
+          subscriptionType: this.usageTracker.getSubscriptionType(),
+          renewalDate: this.usageTracker.getRenewalDate(),
+          monthlyTarget: this.usageTracker.getMonthlyTarget(),
+          targetDelta: this.usageTracker.getTargetDelta(),
+          projectedDays: await this.usageTracker.getProjectedDaysRemaining(),
+          projectedDate: await this.usageTracker.getProjectedDepletionDate(),
+          now: new Date(),
+        })
+      );
       UserNotificationService.showSuccess("Usage summary copied");
       SecureLogger.info("Usage summary copied to clipboard");
     } catch (error) {
@@ -187,6 +166,9 @@ export class UsageCommands {
   private async renderDashboard(panel: vscode.WebviewPanel): Promise<void> {
     const { renderUsageDashboard } = await import("../ui/usage-dashboard.js");
     const snapshots = await this.usageTracker.getUsageSnapshots();
+    const providerSnapshots = await this.usageTracker.getProviderUsageSnapshots();
+    const providerHealth = await this.usageTracker.getProviderHealthSnapshots();
+    const hasRealData = this.usageTracker.hasRealUsageData();
     const usage = this.usageTracker.getCurrentUsage();
     const limit = this.usageTracker.getCurrentLimit();
     const remaining = this.usageTracker.getRemainingCredits();
@@ -198,6 +180,7 @@ export class UsageCommands {
 
     panel.webview.html = renderUsageDashboard({
       generatedAt: new Date(),
+      hasRealData,
       usage,
       limit,
       remaining,
@@ -212,6 +195,10 @@ export class UsageCommands {
       targetProgressPercent: this.usageTracker.getTargetProgressPercent(),
       sessionActivity,
       snapshots,
+      providerSnapshots,
+      providerHealth,
+      providerTargets: this.configManager.getProviderMonthlyTargets(),
+      providerAlertThresholds: this.configManager.getAllProviderAlertThresholds(),
     });
   }
 
@@ -240,29 +227,7 @@ export class UsageCommands {
         return;
       }
 
-      const escapeCsv = (value: string): string => {
-        if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-          return `"${value.replace(/\"/g, '""')}"`;
-        }
-        return value;
-      };
-
-      const lines = ["timestamp,consumed,limit,remaining,source"];
-      for (const snapshot of snapshots) {
-        const limit = snapshot.limit ?? 0;
-        const remaining = limit > 0 ? Math.max(limit - snapshot.consumed, 0) : 0;
-        lines.push(
-          [
-            escapeCsv(snapshot.timestamp),
-            snapshot.consumed.toString(),
-            limit > 0 ? limit.toString() : "",
-            limit > 0 ? remaining.toString() : "",
-            escapeCsv(snapshot.source || ""),
-          ].join(",")
-        );
-      }
-
-      await writeFile(destination.fsPath, lines.join("\n"), "utf8");
+      await writeFile(destination.fsPath, buildUsageHistoryCsv(snapshots), "utf8");
       UserNotificationService.showSuccess(`Usage history exported (${snapshots.length} rows)`);
       SecureLogger.info("Usage history exported", {
         rows: snapshots.length,
@@ -274,59 +239,143 @@ export class UsageCommands {
     }
   }
 
+  private async handleExportUsageBundleJson(): Promise<void> {
+    try {
+      const usageSnapshots = await this.usageTracker.getUsageSnapshots();
+      const providerSnapshots = await this.usageTracker.getProviderUsageSnapshots();
+      const providerHealth = await this.usageTracker.getProviderHealthSnapshots();
+
+      if (
+        usageSnapshots.length === 0 &&
+        providerSnapshots.length === 0 &&
+        providerHealth.length === 0
+      ) {
+        void UserNotificationService.showInfo("No usage history available yet.");
+        return;
+      }
+
+      const dateSuffix = new Date().toISOString().slice(0, 10);
+      const defaultUri = vscode.Uri.file(
+        path.join(os.homedir(), `augmeter-usage-bundle-${dateSuffix}.json`)
+      );
+
+      const destination = await vscode.window.showSaveDialog({
+        defaultUri,
+        filters: {
+          JSON: ["json"],
+        },
+        saveLabel: "Export Usage Bundle",
+      });
+
+      if (!destination) {
+        return;
+      }
+
+      const copilotApiConfig = this.configManager.getCopilotApiConfig();
+      await writeFile(
+        destination.fsPath,
+        JSON.stringify(
+          buildUsageBundle({
+            generatedAt: new Date(),
+            extensionVersion:
+              vscode.extensions.getExtension("kamacode.augmeter")?.packageJSON?.version ||
+              "unknown",
+            currentUsage: this.usageTracker.getCurrentUsage(),
+            currentLimit: this.usageTracker.getCurrentLimit(),
+            remainingCredits: this.usageTracker.getRemainingCredits(),
+            renewalDate: this.usageTracker.getRenewalDate(),
+            subscriptionType: this.usageTracker.getSubscriptionType(),
+            usageSnapshots,
+            providerSnapshots,
+            providerHealth,
+            providerTargets: this.configManager.getProviderMonthlyTargets(),
+            providerAlertThresholds: this.configManager.getAllProviderAlertThresholds(),
+            retentionDays: this.configManager.getHistoryRetentionDays(),
+            alertThresholds: this.configManager.getAlertThresholds(),
+            runOutDays: this.configManager.getRunOutAlertDays(),
+            monthlyTarget: this.configManager.getMonthlyTarget(),
+            enabledProviders: this.configManager.getEnabledProviderIds(),
+            copilotApiConfig,
+            copilotTokenPresent: Boolean(process.env[copilotApiConfig.tokenEnvVar]),
+          }),
+          null,
+          2
+        ),
+        "utf8"
+      );
+      UserNotificationService.showSuccess("Usage bundle exported");
+      SecureLogger.info("Usage bundle exported", {
+        usageRows: usageSnapshots.length,
+        providerRows: providerSnapshots.length,
+        healthRows: providerHealth.length,
+        filePath: destination.fsPath,
+      });
+    } catch (error) {
+      SecureLogger.error("Export usage bundle failed", error);
+      vscode.window.showErrorMessage("Failed to export usage bundle.");
+    }
+  }
+
   private async handleRunDiagnostics(): Promise<void> {
     try {
       const extension = vscode.extensions.getExtension("kamacode.augmeter");
       const apiClient = this.augmentDetector.getApiClient();
+      const providerSnapshots = await this.usageTracker.getProviderUsageSnapshots();
+      const providerHealth = await this.usageTracker.getProviderHealthSnapshots();
 
-      const diagnostics = {
-        generatedAt: new Date().toISOString(),
-        extension: {
-          id: extension?.id,
-          version: extension?.packageJSON?.version,
-        },
-        environment: {
+      const copilotApiSettings = this.configManager.getCopilotApiConfig();
+      await vscode.env.clipboard.writeText(
+        buildDiagnosticsText({
+          generatedAt: new Date(),
+          extensionId: extension?.id,
+          extensionVersion: extension?.packageJSON?.version,
           vscodeVersion: vscode.version,
           nodeVersion: process.version,
           platform: process.platform,
           workspaceTrusted: vscode.workspace.isTrusted,
-        },
-        auth: {
           hasCookie: apiClient?.hasCookie() ?? false,
           hasRealData: this.usageTracker.hasRealUsageData(),
           dataSource: this.usageTracker.getDataSource(),
-        },
-        usage: {
-          used: this.usageTracker.getCurrentUsage(),
-          limit: this.usageTracker.getCurrentLimit(),
-          remaining: this.usageTracker.getRemainingCredits(),
-          subscriptionType: this.usageTracker.getSubscriptionType(),
-          renewalDate: this.usageTracker.getRenewalDate(),
-          lastFetchedAt: this.usageTracker.getLastFetchedAt()?.toISOString() || null,
-        },
-        config: {
-          refreshInterval: this.configManager.getRefreshInterval(),
-          clickAction: this.configManager.getClickAction(),
-          displayMode: this.configManager.getDisplayMode(),
-          density: this.configManager.getStatusBarDensity(),
-          showInStatusBar: this.configManager.shouldShowInStatusBar(),
-          colorScheme: this.configManager.getColorScheme(),
-          colorThresholds: this.configManager.getColorThresholds(),
-          alertThresholds: this.configManager.getAlertThresholds(),
-          runOutDays: this.configManager.getRunOutAlertDays(),
-          monthlyTarget: this.configManager.getMonthlyTarget(),
-          retentionDays: this.configManager.getHistoryRetentionDays(),
-          sessionTrackingEnabled: this.configManager.isSessionTrackingEnabled(),
-          sessionTrackingPath: this.configManager.getSessionTrackingPath() || "(default)",
-          logLevel: this.configManager.getLogLevel(),
-        },
-        support: {
-          issueUrl: "https://github.com/markomiric/augmeter/issues/new",
-        },
-      };
-
-      const formatted = `Augmeter Diagnostics\n\n${JSON.stringify(diagnostics, null, 2)}`;
-      await vscode.env.clipboard.writeText(formatted);
+          usage: {
+            used: this.usageTracker.getCurrentUsage(),
+            limit: this.usageTracker.getCurrentLimit(),
+            remaining: this.usageTracker.getRemainingCredits(),
+            subscriptionType: this.usageTracker.getSubscriptionType(),
+            renewalDate: this.usageTracker.getRenewalDate(),
+            lastFetchedAt: this.usageTracker.getLastFetchedAt(),
+          },
+          config: {
+            refreshInterval: this.configManager.getRefreshInterval(),
+            clickAction: this.configManager.getClickAction(),
+            displayMode: this.configManager.getDisplayMode(),
+            density: this.configManager.getStatusBarDensity(),
+            showInStatusBar: this.configManager.shouldShowInStatusBar(),
+            colorScheme: this.configManager.getColorScheme(),
+            colorThresholds: this.configManager.getColorThresholds(),
+            alertThresholds: this.configManager.getAlertThresholds(),
+            runOutDays: this.configManager.getRunOutAlertDays(),
+            monthlyTarget: this.configManager.getMonthlyTarget(),
+            retentionDays: this.configManager.getHistoryRetentionDays(),
+            sessionTrackingEnabled: this.configManager.isSessionTrackingEnabled(),
+            sessionTrackingPath: this.configManager.getSessionTrackingPath() || "(default)",
+            providerTrackingEnabled: this.configManager.isProviderTrackingEnabled(),
+            enabledProviders: this.configManager.getEnabledProviderIds(),
+            providerTargets: this.configManager.getProviderMonthlyTargets(),
+            providerAlertThresholds: this.configManager.getAllProviderAlertThresholds(),
+            claudeProjectsPath: this.configManager.getClaudeProjectsPath() || "(default)",
+            codexSessionsPath: this.configManager.getCodexSessionsPath() || "(default)",
+            copilotStateDbPath: this.configManager.getCopilotStateDbPath() || "(default)",
+            copilotApi: {
+              ...copilotApiSettings,
+              tokenPresent: Boolean(process.env[copilotApiSettings.tokenEnvVar]),
+            },
+            logLevel: this.configManager.getLogLevel(),
+          },
+          providerHealth,
+          providerSnapshots,
+          supportIssueUrl: "https://github.com/markomiric/augmeter/issues/new",
+        })
+      );
 
       const selection = await vscode.window.showInformationMessage(
         "Diagnostics copied to clipboard.",

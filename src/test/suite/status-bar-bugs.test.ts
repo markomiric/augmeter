@@ -192,6 +192,11 @@ suite("Status Bar Bugs Test Suite", () => {
       "augmeter.smartSignIn",
       "Sign in state should use smartSignIn command"
     );
+    assert.ok(
+      typeof statusBarItem.tooltip !== "string" &&
+        statusBarItem.tooltip?.value?.includes("command:augmeter.openUsageDashboard"),
+      "Sign in tooltip should include a dashboard link"
+    );
 
     // Test connected state click command
     mockDetector.setHasApiCookie(true);
@@ -203,6 +208,11 @@ suite("Status Bar Bugs Test Suite", () => {
       statusBarItem.command,
       "augmeter.manualRefresh",
       "Connected state should have manualRefresh command"
+    );
+    assert.ok(
+      typeof statusBarItem.tooltip !== "string" &&
+        statusBarItem.tooltip?.value?.includes("command:augmeter.openUsageDashboard"),
+      "Connected tooltip should include a dashboard link"
     );
   });
 });

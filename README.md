@@ -18,7 +18,9 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one-click re
 - Configurable alert thresholds plus projected run-out warnings
 - Click to refresh
 - Usage dashboard with 24h/7d/30d trends
+- Cross-provider local usage rollups (Claude Code, Codex, Copilot counters when available)
 - CSV export for usage snapshots
+- Unified JSON bundle export (usage + provider health + config summary)
 - Diagnostics command for support reports
 - Secure cookie sign-in (stored in VS Code Secrets)
 - Auto-refresh on window focus and configurable interval (1-300s)
@@ -76,6 +78,7 @@ code-insiders --install-extension kamacode.augmeter
 - **Augmeter: Sign Out** — clear stored credentials
 - **Augmeter: Open Usage Dashboard** — open trend/target dashboard
 - **Augmeter: Export Usage History (CSV)** — export local snapshots
+- **Augmeter: Export Usage Bundle (JSON)** — export full local usage/provider bundle
 - **Augmeter: Run Diagnostics** — copy environment/config diagnostics
 - **Augmeter: Open Settings** — jump to Augmeter settings
 
@@ -83,29 +86,41 @@ code-insiders --install-extension kamacode.augmeter
 
 All settings live under `augmeter.*`.
 
-| Setting                            | Type            | Default                             | Description                                                                     |
-| ---------------------------------- | --------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
-| `augmeter.enabled`                 | boolean         | `true`                              | Enable/disable the extension                                                    |
-| `augmeter.refreshInterval`         | number (1-300)  | `60`                                | Poll interval in seconds                                                        |
-| `augmeter.clickAction`             | string          | `"refresh"`                         | On click: `refresh`, `openWebsite`, `openSettings`                              |
-| `augmeter.displayMode`             | string          | `"both"`                            | Show `used`, `remaining`, `remainingOnly`, `both`, or `percentage`              |
-| `augmeter.statusBarDensity`        | string          | `"auto"`                            | Density: `auto`, `compact` (text only), `detailed` (icon + text)                |
-| `augmeter.statusBarIcon`           | string          | `"dashboard"`                       | Icon when density is `detailed`                                                 |
-| `augmeter.showPercentInStatusBar`  | boolean         | `false`                             | Show percentage context where supported                                         |
-| `augmeter.colorScheme`             | string          | `"standard"`                        | Status color sensitivity: `standard`, `conservative`, `aggressive`              |
-| `augmeter.colorThresholds`         | object          | `{95,85,75,50}`                     | Custom status bar color thresholds                                              |
-| `augmeter.enhancedReadability`     | boolean         | `false`                             | Use foreground/background emphasis in status colors                             |
-| `augmeter.autoDetectHighContrast`  | boolean         | `true`                              | Adapt colors for high-contrast themes                                           |
-| `augmeter.alerts.warningPercent`   | number (50-99)  | `75`                                | Warning notification threshold                                                  |
-| `augmeter.alerts.highPercent`      | number (60-99)  | `90`                                | High-usage notification threshold                                               |
-| `augmeter.alerts.criticalPercent`  | number (70-100) | `95`                                | Critical notification threshold                                                 |
-| `augmeter.alerts.runOutDays`       | number (0-30)   | `3`                                 | Alert when projected depletion is within N days (`0` disables)                  |
-| `augmeter.history.retentionDays`   | number (7-90)   | `35`                                | Snapshot retention window for trends/export                                     |
-| `augmeter.budget.monthlyTarget`    | number          | `0`                                 | Optional monthly usage target (`0` disables)                                    |
-| `augmeter.sessionTracking.enabled` | boolean         | `false`                             | Experimental: local session activity parsing (disabled in untrusted workspaces) |
-| `augmeter.sessionTracking.path`    | string          | `""`                                | Experimental custom path for Augment sessions                                   |
-| `augmeter.apiBaseUrl`              | string          | `"https://app.augmentcode.com/api"` | Augment API base URL                                                            |
-| `augmeter.showInStatusBar`         | boolean         | `true`                              | Show Augmeter in the status bar                                                 |
+| Setting                                      | Type                | Default                                  | Description                                                                     |
+| -------------------------------------------- | ------------------- | ---------------------------------------- | ------------------------------------------------------------------------------- |
+| `augmeter.enabled`                           | boolean             | `true`                                   | Enable/disable the extension                                                    |
+| `augmeter.refreshInterval`                   | number (1-300)      | `60`                                     | Poll interval in seconds                                                        |
+| `augmeter.clickAction`                       | string              | `"refresh"`                              | On click: `refresh`, `openWebsite`, `openSettings`                              |
+| `augmeter.displayMode`                       | string              | `"both"`                                 | Show `used`, `remaining`, `remainingOnly`, `both`, or `percentage`              |
+| `augmeter.statusBarDensity`                  | string              | `"auto"`                                 | Density: `auto`, `compact` (text only), `detailed` (icon + text)                |
+| `augmeter.statusBarIcon`                     | string              | `"dashboard"`                            | Icon when density is `detailed`                                                 |
+| `augmeter.showPercentInStatusBar`            | boolean             | `false`                                  | Show percentage context where supported                                         |
+| `augmeter.colorScheme`                       | string              | `"standard"`                             | Status color sensitivity: `standard`, `conservative`, `aggressive`              |
+| `augmeter.colorThresholds`                   | object              | `{95,85,75,50}`                          | Custom status bar color thresholds                                              |
+| `augmeter.enhancedReadability`               | boolean             | `false`                                  | Use foreground/background emphasis in status colors                             |
+| `augmeter.autoDetectHighContrast`            | boolean             | `true`                                   | Adapt colors for high-contrast themes                                           |
+| `augmeter.alerts.warningPercent`             | number (50-99)      | `75`                                     | Warning notification threshold                                                  |
+| `augmeter.alerts.highPercent`                | number (60-99)      | `90`                                     | High-usage notification threshold                                               |
+| `augmeter.alerts.criticalPercent`            | number (70-100)     | `95`                                     | Critical notification threshold                                                 |
+| `augmeter.alerts.runOutDays`                 | number (0-30)       | `3`                                      | Alert when projected depletion is within N days (`0` disables)                  |
+| `augmeter.history.retentionDays`             | number (7-90)       | `35`                                     | Snapshot retention window for trends/export                                     |
+| `augmeter.budget.monthlyTarget`              | number              | `0`                                      | Optional monthly usage target (`0` disables)                                    |
+| `augmeter.providers.enabled`                 | boolean             | `true`                                   | Enable local multi-provider tracking                                            |
+| `augmeter.providers.enabledIds`              | string[]            | `["augment","claude","codex","copilot"]` | Providers included in multi-provider tracking                                   |
+| `augmeter.providers.targets`                 | object              | `{}`                                     | Optional per-provider monthly targets (messages/requests)                       |
+| `augmeter.providers.alerts`                  | object              | `{}`                                     | Optional per-provider alert overrides                                           |
+| `augmeter.providers.claude.path`             | string              | `""`                                     | Optional Claude projects path override                                          |
+| `augmeter.providers.codex.path`              | string              | `""`                                     | Optional Codex sessions path override                                           |
+| `augmeter.providers.copilot.stateDbPath`     | string              | `""`                                     | Optional VS Code `state.vscdb` path override for Copilot counters               |
+| `augmeter.providers.copilot.api.enabled`     | boolean             | `false`                                  | Enable Copilot GitHub API usage collection                                      |
+| `augmeter.providers.copilot.api.username`    | string              | `""`                                     | GitHub username for Copilot API endpoint                                        |
+| `augmeter.providers.copilot.api.tokenEnvVar` | string              | `"GITHUB_TOKEN"`                         | Env var containing GitHub token for Copilot API calls                           |
+| `augmeter.providers.copilot.api.baseUrl`     | string              | `"https://api.github.com"`               | GitHub API base URL for Copilot API mode                                        |
+| `augmeter.providers.copilot.api.timeoutMs`   | number (1000-30000) | `6000`                                   | Timeout for Copilot API requests (ms)                                           |
+| `augmeter.sessionTracking.enabled`           | boolean             | `false`                                  | Experimental: local session activity parsing (disabled in untrusted workspaces) |
+| `augmeter.sessionTracking.path`              | string              | `""`                                     | Experimental custom path for Augment sessions                                   |
+| `augmeter.apiBaseUrl`                        | string              | `"https://app.augmentcode.com/api"`      | Augment API base URL                                                            |
+| `augmeter.showInStatusBar`                   | boolean             | `true`                                   | Show Augmeter in the status bar                                                 |
 
 Example:
 
@@ -145,7 +160,7 @@ The icon always appears in non-data states (signed out / loading) regardless of 
 - Logs redact sensitive values (cookies, headers) — see Output > Augmeter
 - Usage history and diagnostics are local to your machine
 - Augmeter currently does not send extension analytics/telemetry events
-- Session file tracking is automatically disabled in untrusted workspaces
+- Session/provider file tracking is automatically disabled in untrusted workspaces
 
 ## Known issues & troubleshooting
 

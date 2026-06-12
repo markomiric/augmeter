@@ -166,6 +166,8 @@ trace.log
 
 # TypeScript incremental compilation
 *.tsbuildinfo
+test-setup/*.js
+test-setup/*.js.map
 
 # =============================================================================
 # Miscellaneous

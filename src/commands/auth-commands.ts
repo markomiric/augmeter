@@ -10,6 +10,7 @@ import { CookiePrompt } from "../core/auth/cookie-prompt";
 import { SecureCookieUtils } from "../core/auth/cookie";
 import { watchClipboardForCookie } from "../core/auth/clipboard-cookie-watcher";
 import { type ConfigManager } from "../core/config/config-manager";
+import { type AugmentApiClient } from "../services/augment-api-client";
 
 export class AuthCommands {
   private signInInProgress = false;
@@ -36,12 +37,6 @@ export class AuthCommands {
 
   private async runSignInWithCookie(cookie: string): Promise<void> {
     const apiClient = this.augmentDetector.getApiClient();
-    if (!apiClient) {
-      throw AugmeterError.configuration(
-        "API client not found",
-        "Extension initialization error. Please restart VS Code."
-      );
-    }
 
     try {
       const normalized = SecureCookieUtils.normalizeCookieInput(cookie);
@@ -69,7 +64,7 @@ export class AuthCommands {
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
       progress.report({ message: "Loading your usage…" });
       this.statusBarManager.showLoading();
-      await this.usageTracker.refreshNow?.();
+      await this.usageTracker.refreshNow();
       await this.statusBarManager.updateDisplay();
       UserNotificationService.showSuccess("Signed in to Augment");
     });
@@ -78,12 +73,12 @@ export class AuthCommands {
   private async finalizeAuthenticatedSession(): Promise<void> {
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
-    await this.usageTracker.refreshNow?.();
+    await this.usageTracker.refreshNow();
     await this.statusBarManager.updateDisplay();
     UserNotificationService.showSuccess("Signed in to Augment");
   }
 
-  private async tryExistingCookieAndFinalize(apiClient: any): Promise<boolean> {
+  private async tryExistingCookieAndFinalize(apiClient: AugmentApiClient): Promise<boolean> {
     return await UserNotificationService.withProgress("Augmeter", async progress => {
       progress.report({ message: "Signing in…" });
       const result = await apiClient.testConnection();
@@ -98,13 +93,45 @@ export class AuthCommands {
     });
   }
 
+  private async tryClipboardCookie(): Promise<string | null> {
+    try {
+      const clipboardText = (await vscode.env.clipboard.readText())?.trim() || "";
+      if (!clipboardText) {
+        return null;
+      }
+
+      const normalized = SecureCookieUtils.normalizeCookieInput(clipboardText);
+      const sessionValue = SecureCookieUtils.extractSessionValue(normalized);
+      const validation = SecureCookieUtils.validateCookieValue(sessionValue);
+      return validation.valid ? clipboardText : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async watchClipboardBeforeWebsite(): Promise<string | null> {
+    const quickWatchMs = this.configManager.getSmartSignInQuickWatchMs();
+    if (quickWatchMs <= 0) {
+      return null;
+    }
+
+    const immediateCookie = await this.tryClipboardCookie();
+    if (immediateCookie) {
+      return immediateCookie;
+    }
+
+    const pollIntervalMs = Math.max(50, Math.min(100, quickWatchMs));
+    const result = await watchClipboardForCookie(quickWatchMs, pollIntervalMs);
+    return result.cookie;
+  }
+
   /**
    * Consistent sign-in flow: Open website, show manual input, and watch clipboard in parallel
    * Returns the first valid cookie from either manual input or clipboard detection
    */
-  private async runConsistentSignInFlow(apiClient: any): Promise<string | null> {
+  private async runConsistentSignInFlow(apiClient: AugmentApiClient): Promise<string | null> {
     // Clear any existing authentication state before signing in
-    await apiClient.clearSessionCookie?.();
+    await apiClient.clearSessionCookie();
     this.augmentDetector.clearAuthCache();
 
     // Step 1: Open the website immediately
@@ -198,12 +225,6 @@ export class AuthCommands {
         await ErrorHandler.withErrorHandling(async () => {
           await this.withSignInLock(async () => {
             const apiClient = this.augmentDetector.getApiClient();
-            if (!apiClient) {
-              throw AugmeterError.configuration(
-                "API client not found",
-                "Extension initialization error. Please restart VS Code."
-              );
-            }
 
             // 1) Try existing cookie first
             if (apiClient.hasCookie()) {
@@ -227,9 +248,6 @@ export class AuthCommands {
         try {
           await this.withSignInLock(async () => {
             const apiClient = this.augmentDetector.getApiClient();
-            if (!apiClient) {
-              return;
-            }
 
             // 1) Try existing cookie first
             if (apiClient.hasCookie()) {
@@ -254,12 +272,6 @@ export class AuthCommands {
         await ErrorHandler.withErrorHandling(async () => {
           await this.withSignInLock(async () => {
             const apiClient = this.augmentDetector.getApiClient();
-            if (!apiClient) {
-              throw AugmeterError.configuration(
-                "API client not found",
-                "Extension initialization error. Please restart VS Code."
-              );
-            }
 
             // Step 1: Check stored cookie first
             if (apiClient.hasCookie()) {
@@ -267,20 +279,11 @@ export class AuthCommands {
               if (ok) return;
             }
 
-            // Step 2: Quick clipboard fast-path before opening website
-            try {
-              const clip = (await vscode.env.clipboard.readText())?.trim() || "";
-              if (clip) {
-                const normalized = SecureCookieUtils.normalizeCookieInput(clip);
-                const sessionValue = SecureCookieUtils.extractSessionValue(normalized);
-                const validation = SecureCookieUtils.validateCookieValue(sessionValue);
-                if (validation.valid) {
-                  await this.runSignInWithCookie(clip);
-                  return;
-                }
-              }
-            } catch {
-              // ignore and proceed to full flow
+            // Step 2: Watch the clipboard briefly before opening the website.
+            const quickClipboardCookie = await this.watchClipboardBeforeWebsite();
+            if (quickClipboardCookie) {
+              await this.runSignInWithCookie(quickClipboardCookie);
+              return;
             }
 
             // Step 3: If no valid clipboard cookie, run consistent flow
@@ -307,9 +310,7 @@ export class AuthCommands {
   private async handleSignOut(): Promise<void> {
     try {
       const apiClient = this.augmentDetector.getApiClient();
-      if (apiClient) {
-        await apiClient.clearSessionCookie?.();
-      }
+      await apiClient.clearSessionCookie();
 
       // Clear any cached authentication status
       this.augmentDetector.clearAuthCache();

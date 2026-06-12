@@ -3,7 +3,10 @@ import { type AugmentApiResponse, type AugmentUsageData } from "../core/types/au
 // Pure parser for usage responses. No vscode/logging imports.
 export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsageData | null {
   if (!response?.success || !response.data) return null;
-  const data = response.data;
+  const data = asRecord(response.data);
+  if (!data) {
+    return null;
+  }
 
   // 1) Usage-units style fields (community / standard billing cycle)
   const usageUnitsConsumed =
@@ -11,12 +14,12 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
   if (usageUnitsConsumed !== undefined) {
     const available = data.usageUnitsAvailable ?? data.usageUnitsRemaining ?? 0;
     return {
-      totalUsage: usageUnitsConsumed,
-      usageLimit: available + usageUnitsConsumed,
-      dailyUsage: usageUnitsConsumed,
-      monthlyUsage: usageUnitsConsumed,
+      totalUsage: toNumber(usageUnitsConsumed),
+      usageLimit: toNumber(available) + toNumber(usageUnitsConsumed),
+      dailyUsage: toNumber(usageUnitsConsumed),
+      monthlyUsage: toNumber(usageUnitsConsumed),
       lastUpdate: new Date().toISOString(),
-      subscriptionType: data.augmentPlanType || data.planName || undefined,
+      subscriptionType: firstString(data.augmentPlanType, data.planName),
     };
   }
 
@@ -26,17 +29,21 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
     data.creditsIncludedThisBillingCycle !== undefined
   ) {
     return {
-      totalUsage: data.creditsIncludedThisBillingCycle - data.creditsRenewingEachBillingCycle,
-      usageLimit: data.creditsIncludedThisBillingCycle,
-      monthlyUsage: data.creditsIncludedThisBillingCycle - data.creditsRenewingEachBillingCycle,
+      totalUsage:
+        toNumber(data.creditsIncludedThisBillingCycle) -
+        toNumber(data.creditsRenewingEachBillingCycle),
+      usageLimit: toNumber(data.creditsIncludedThisBillingCycle),
+      monthlyUsage:
+        toNumber(data.creditsIncludedThisBillingCycle) -
+        toNumber(data.creditsRenewingEachBillingCycle),
       lastUpdate: new Date().toISOString(),
-      subscriptionType: data.augmentPlanType || data.planName,
-      renewalDate: data.billingPeriodEnd,
+      subscriptionType: firstString(data.augmentPlanType, data.planName),
+      renewalDate: asString(data.billingPeriodEnd),
     };
   }
 
   // 3) Nested credits object variants
-  const credits = data.credits || data.Credits || undefined;
+  const credits = asRecord(data.credits) ?? asRecord(data.Credits);
   if (credits) {
     // Pattern A
     if (
@@ -44,40 +51,41 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
       credits.renewingEachBillingCycle !== undefined
     ) {
       return {
-        totalUsage: credits.includedThisBillingCycle - credits.renewingEachBillingCycle,
-        usageLimit: credits.includedThisBillingCycle,
+        totalUsage:
+          toNumber(credits.includedThisBillingCycle) - toNumber(credits.renewingEachBillingCycle),
+        usageLimit: toNumber(credits.includedThisBillingCycle),
         lastUpdate: new Date().toISOString(),
-        subscriptionType: data.augmentPlanType || data.planName || credits.planName,
-        renewalDate: credits.billingPeriodEnd || data.billingPeriodEnd,
+        subscriptionType: firstString(data.augmentPlanType, data.planName, credits.planName),
+        renewalDate: firstString(credits.billingPeriodEnd, data.billingPeriodEnd),
       };
     }
     // Pattern B
     if (credits.used !== undefined && credits.available !== undefined) {
       return {
-        totalUsage: credits.used,
-        usageLimit: credits.used + credits.available,
+        totalUsage: toNumber(credits.used),
+        usageLimit: toNumber(credits.used) + toNumber(credits.available),
         lastUpdate: new Date().toISOString(),
-        subscriptionType: data.augmentPlanType || data.planName || credits.planName,
-        renewalDate: credits.billingPeriodEnd || data.billingPeriodEnd,
+        subscriptionType: firstString(data.augmentPlanType, data.planName, credits.planName),
+        renewalDate: firstString(credits.billingPeriodEnd, data.billingPeriodEnd),
       };
     }
   }
 
   // 4) Generic nested usage object variants
-  const usageObj = data.usage || data.Usage || undefined;
+  const usageObj = asRecord(data.usage) ?? asRecord(data.Usage);
   if (
     usageObj &&
     usageObj.used !== undefined &&
     (usageObj.limit !== undefined || usageObj.total !== undefined)
   ) {
     return {
-      totalUsage: usageObj.used,
-      usageLimit: (usageObj.limit ?? usageObj.total) as number,
-      dailyUsage: usageObj.dailyUsage,
-      monthlyUsage: usageObj.monthlyUsage,
-      lastUpdate: usageObj.updatedAt || new Date().toISOString(),
-      subscriptionType: data.plan || data.tier || data.subscriptionType,
-      renewalDate: data.renewalDate || data.nextBilling,
+      totalUsage: toNumber(usageObj.used),
+      usageLimit: toNumber(usageObj.limit ?? usageObj.total),
+      dailyUsage: maybeNumber(usageObj.dailyUsage),
+      monthlyUsage: maybeNumber(usageObj.monthlyUsage),
+      lastUpdate: asString(usageObj.updatedAt) || new Date().toISOString(),
+      subscriptionType: firstString(data.plan, data.tier, data.subscriptionType),
+      renewalDate: firstString(data.renewalDate, data.nextBilling),
     };
   }
 
@@ -87,16 +95,44 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
     data.limit ??
     data.quota ??
     data.maxUsage ??
-    (data.available !== undefined && used !== undefined ? used + data.available : undefined) ??
+    (data.available !== undefined ? toNumber(used) + toNumber(data.available) : undefined) ??
     1000;
 
   return {
     totalUsage: Number(used) || 0,
     usageLimit: Number(limit) || 0,
-    dailyUsage: data.dailyUsage || data.today,
-    monthlyUsage: data.monthlyUsage || data.thisMonth,
-    lastUpdate: data.lastUpdate || data.updatedAt || new Date().toISOString(),
-    subscriptionType: data.plan || data.tier || data.subscriptionType,
-    renewalDate: data.renewalDate || data.nextBilling,
+    dailyUsage: maybeNumber(data.dailyUsage ?? data.today),
+    monthlyUsage: maybeNumber(data.monthlyUsage ?? data.thisMonth),
+    lastUpdate: firstString(data.lastUpdate, data.updatedAt) || new Date().toISOString(),
+    subscriptionType: firstString(data.plan, data.tier, data.subscriptionType),
+    renewalDate: firstString(data.renewalDate, data.nextBilling),
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function maybeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function toNumber(value: unknown): number {
+  return maybeNumber(value) ?? (Number(value) || 0);
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const stringValue = asString(value);
+    if (stringValue) {
+      return stringValue;
+    }
+  }
+  return undefined;
 }

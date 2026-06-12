@@ -34,6 +34,10 @@ suite("Extension Activation Test Suite", () => {
       "augmeter.signOut",
       "augmeter.manualRefresh",
       "augmeter.openSettings",
+      "augmeter.openUsageDashboard",
+      "augmeter.exportUsageHistoryCsv",
+      "augmeter.exportUsageBundleJson",
+      "augmeter.runDiagnostics",
     ];
 
     for (const command of expectedCommands) {
@@ -83,5 +87,9 @@ suite("Extension Activation Test Suite", () => {
     assert.ok(configProps["augmeter.clickAction"], "Should have clickAction configuration");
     assert.ok(configProps["augmeter.displayMode"], "Should have displayMode configuration");
     assert.ok(configProps["augmeter.apiBaseUrl"], "Should have apiBaseUrl configuration");
+    assert.ok(
+      configProps["augmeter.providers.enabled"],
+      "Should have provider tracking configuration"
+    );
   });
 });

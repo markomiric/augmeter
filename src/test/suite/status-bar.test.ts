@@ -31,8 +31,65 @@ class FakeUsageTracker {
   async getProjectedDaysRemaining() {
     return null;
   }
+  async getProjectedDepletionDate() {
+    return null;
+  }
   getSessionActivity() {
     return null;
+  }
+  async getProviderUsageSnapshots() {
+    const nowIso = new Date().toISOString();
+    return [
+      {
+        providerId: "claude",
+        timestamp: nowIso,
+        windowType: "rolling_5h",
+        metricType: "messages",
+        sourceKind: "file",
+        used: 12,
+      },
+      {
+        providerId: "claude",
+        timestamp: nowIso,
+        windowType: "weekly_7d",
+        metricType: "messages",
+        sourceKind: "file",
+        used: 84,
+      },
+      {
+        providerId: "codex",
+        timestamp: nowIso,
+        windowType: "rolling_5h",
+        metricType: "messages",
+        sourceKind: "file",
+        used: 8,
+      },
+      {
+        providerId: "codex",
+        timestamp: nowIso,
+        windowType: "weekly_7d",
+        metricType: "messages",
+        sourceKind: "file",
+        used: 42,
+      },
+    ];
+  }
+  async getProviderHealthSnapshots() {
+    const nowIso = new Date().toISOString();
+    return [
+      {
+        providerId: "claude",
+        status: "connected",
+        checkedAt: nowIso,
+        canCollectInCurrentWorkspace: true,
+      },
+      {
+        providerId: "codex",
+        status: "connected",
+        checkedAt: nowIso,
+        canCollectInCurrentWorkspace: true,
+      },
+    ];
   }
   onChanged(_cb: () => void) {
     return { dispose() {} } as vscode.Disposable;
@@ -61,6 +118,18 @@ suite("StatusBar tooltip Test Suite", () => {
     assert.ok(tooltip.includes("Augmeter"), `Tooltip should include title, got: ${tooltip}`);
     assert.ok(tooltip.includes("50 / 100"), `Tooltip should include used/limit, got: ${tooltip}`);
     assert.ok(tooltip.includes("Remaining"), `Tooltip should include remaining, got: ${tooltip}`);
+    assert.ok(
+      tooltip.includes("**Providers:**"),
+      `Tooltip should include providers, got: ${tooltip}`
+    );
+    assert.ok(
+      tooltip.includes("Claude Code: 5h 12 • 7d 84"),
+      `Tooltip should include Claude provider usage, got: ${tooltip}`
+    );
+    assert.ok(
+      tooltip.includes("Codex (local prompts): 5h 8 • 7d 42"),
+      `Tooltip should include Codex provider usage, got: ${tooltip}`
+    );
   });
 });
 

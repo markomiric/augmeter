@@ -11,7 +11,7 @@ import { AugmeterError } from "../errors/augmeter-error";
 export interface HttpResponse {
   success: boolean;
   status?: number | undefined;
-  data?: any;
+  data?: unknown;
   error?: string | undefined;
   headers?: Record<string, string> | undefined;
 }
@@ -65,7 +65,7 @@ export class HttpClient {
 
       SecureLogger.info(`HTTP Response: ${response.status} ${response.statusText} (${duration}ms)`);
 
-      return await this.parseResponse(response as any);
+      return await this.parseResponse(response);
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === "AbortError") {
@@ -99,7 +99,7 @@ export class HttpClient {
       headers[key] = value;
     });
 
-    let data: any;
+    let data: unknown;
     let error: string | undefined;
 
     try {
@@ -118,12 +118,7 @@ export class HttpClient {
     const success = response.ok;
 
     if (!success) {
-      // Extract error message from response data if available
-      if (data && typeof data === "object") {
-        error = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`;
-      } else {
-        error = `HTTP ${response.status}: ${response.statusText}`;
-      }
+      error = this.getErrorMessage(data, response);
     }
 
     return {
@@ -145,7 +140,11 @@ export class HttpClient {
   /**
    * POST request
    */
-  async post(url: string, body?: any, options: HttpRequestOptions = {}): Promise<HttpResponse> {
+  async post(
+    url: string,
+    body?: RequestInit["body"] | Record<string, unknown>,
+    options: HttpRequestOptions = {}
+  ): Promise<HttpResponse> {
     const requestOptions: HttpRequestOptions = {
       ...options,
       method: "POST",
@@ -165,7 +164,11 @@ export class HttpClient {
   /**
    * PUT request
    */
-  async put(url: string, body?: any, options: HttpRequestOptions = {}): Promise<HttpResponse> {
+  async put(
+    url: string,
+    body?: RequestInit["body"] | Record<string, unknown>,
+    options: HttpRequestOptions = {}
+  ): Promise<HttpResponse> {
     const requestOptions: HttpRequestOptions = {
       ...options,
       method: "PUT",
@@ -192,7 +195,11 @@ export class HttpClient {
   /**
    * PATCH request
    */
-  async patch(url: string, body?: any, options: HttpRequestOptions = {}): Promise<HttpResponse> {
+  async patch(
+    url: string,
+    body?: RequestInit["body"] | Record<string, unknown>,
+    options: HttpRequestOptions = {}
+  ): Promise<HttpResponse> {
     const requestOptions: HttpRequestOptions = {
       ...options,
       method: "PATCH",
@@ -214,5 +221,19 @@ export class HttpClient {
    */
   async head(url: string, options: HttpRequestOptions = {}): Promise<HttpResponse> {
     return this.makeRequest(url, { ...options, method: "HEAD" });
+  }
+
+  private getErrorMessage(responseData: unknown, response: Response): string {
+    if (typeof responseData === "object" && responseData !== null) {
+      const record = responseData as Record<string, unknown>;
+      if (typeof record.error === "string") {
+        return record.error;
+      }
+      if (typeof record.message === "string") {
+        return record.message;
+      }
+    }
+
+    return `HTTP ${response.status}: ${response.statusText}`;
   }
 }

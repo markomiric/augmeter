@@ -3,6 +3,24 @@
  * providing type-safe access to all Augmeter settings with defaults.
  */
 import * as vscode from "vscode";
+import { type KnownProviderId, type ProviderId } from "../types/provider-usage";
+import { AlertConfigSection, type AlertThresholdConfig } from "./alert-config";
+import {
+  ProviderConfigSection,
+  type CopilotApiConfig,
+  type ProviderAlertThresholdConfig,
+} from "./provider-config";
+import { SmartSignInConfigSection } from "./smart-sign-in-config";
+import {
+  StatusBarConfigSection,
+  type StatusBarColorScheme,
+  type StatusBarColorThresholds,
+  type StatusBarConfig,
+  type StatusBarDensity,
+  type StatusBarDisplayMode,
+} from "./status-bar-config";
+
+export type { CopilotApiConfig, ProviderAlertThresholdConfig, StatusBarConfig };
 
 /**
  * Manages extension configuration settings.
@@ -25,7 +43,7 @@ export class ConfigManager {
     this.reloadConfig();
   }
 
-  reloadConfig() {
+  reloadConfig(): void {
     this.config = vscode.workspace.getConfiguration("augmeter");
   }
 
@@ -58,104 +76,40 @@ export class ConfigManager {
     }
   }
 
-  getDisplayMode(): "used" | "remaining" | "remainingOnly" | "both" | "percentage" {
-    const v = this.config.get<string>("displayMode", "both") ?? "both";
-    return v === "used" ||
-      v === "remaining" ||
-      v === "remainingOnly" ||
-      v === "both" ||
-      v === "percentage"
-      ? v
-      : "both";
+  getDisplayMode(): StatusBarDisplayMode {
+    return this.getStatusBarSection().getDisplayMode();
   }
 
-  getStatusBarDensity(): "auto" | "compact" | "detailed" {
-    const v = this.config.get<string>("statusBarDensity", "auto") ?? "auto";
-    return v === "auto" || v === "compact" || v === "detailed" ? v : "auto";
+  getStatusBarDensity(): StatusBarDensity {
+    return this.getStatusBarSection().getDensity();
   }
 
   shouldShowPercentInStatusBar(): boolean {
-    return this.config.get<boolean>("showPercentInStatusBar", false);
+    return this.getStatusBarSection().shouldShowPercent();
   }
 
-  getColorScheme(): "standard" | "conservative" | "aggressive" {
-    const v = this.config.get<string>("colorScheme", "standard") ?? "standard";
-    return v === "conservative" || v === "aggressive" ? v : "standard";
+  getColorScheme(): StatusBarColorScheme {
+    return this.getStatusBarSection().getColorScheme();
   }
 
-  getColorThresholds(): {
-    critical: number;
-    highWarning: number;
-    warning: number;
-    caution: number;
-  } {
-    const defaults = {
-      critical: 95,
-      highWarning: 85,
-      warning: 75,
-      caution: 50,
-    };
-
-    const config = this.config.get<any>("colorThresholds", defaults) ?? defaults;
-
-    // Validate and clamp values to ensure they make sense
-    const critical = Math.max(80, Math.min(100, config.critical ?? defaults.critical));
-    const highWarning = Math.max(
-      70,
-      Math.min(critical - 1, config.highWarning ?? defaults.highWarning)
-    );
-    const warning = Math.max(50, Math.min(highWarning - 1, config.warning ?? defaults.warning));
-    const caution = Math.max(25, Math.min(warning - 1, config.caution ?? defaults.caution));
-
-    return { critical, highWarning, warning, caution };
+  getColorThresholds(): StatusBarColorThresholds {
+    return this.getStatusBarSection().getColorThresholds();
   }
 
   isEnhancedReadabilityEnabled(): boolean {
-    return this.config.get<boolean>("enhancedReadability", false);
+    return this.getStatusBarSection().isEnhancedReadabilityEnabled();
   }
 
   shouldAutoDetectHighContrast(): boolean {
-    return this.config.get<boolean>("autoDetectHighContrast", true);
+    return this.getStatusBarSection().shouldAutoDetectHighContrast();
   }
 
   getStatusBarIconName(): string {
-    const allowed = new Set([
-      "graph-line",
-      "graph",
-      "dashboard",
-      "pie-chart",
-      "pulse",
-      "percentage",
-    ]);
-    const v = this.config.get<string>("statusBarIcon", "dashboard") ?? "dashboard";
-    return allowed.has(v) ? v : "dashboard";
+    return this.getStatusBarSection().getIconName();
   }
 
-  getStatusBarConfig(): {
-    density: "auto" | "compact" | "detailed";
-    iconName: string;
-    showPercent: boolean;
-    displayMode: "used" | "remaining" | "remainingOnly" | "both" | "percentage";
-    colorScheme: "standard" | "conservative" | "aggressive";
-    colorThresholds: {
-      critical: number;
-      highWarning: number;
-      warning: number;
-      caution: number;
-    };
-    enhancedReadability: boolean;
-    autoDetectHighContrast: boolean;
-  } {
-    return {
-      density: this.getStatusBarDensity(),
-      iconName: this.getStatusBarIconName(),
-      showPercent: this.shouldShowPercentInStatusBar(),
-      displayMode: this.getDisplayMode(),
-      colorScheme: this.getColorScheme(),
-      colorThresholds: this.getColorThresholds(),
-      enhancedReadability: this.isEnhancedReadabilityEnabled(),
-      autoDetectHighContrast: this.shouldAutoDetectHighContrast(),
-    };
+  getStatusBarConfig(): StatusBarConfig {
+    return this.getStatusBarSection().getConfig();
   }
 
   getLogLevel(): "error" | "warn" | "info" {
@@ -165,75 +119,67 @@ export class ConfigManager {
   }
 
   getHistoryRetentionDays(): number {
-    const raw = this.config.get<number>("history.retentionDays", 35);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 35;
-    if (n < 7) return 7;
-    if (n > 90) return 90;
-    return n;
+    return this.getAlertSection().getHistoryRetentionDays();
   }
 
-  getAlertThresholds(): { warning: number; high: number; critical: number } {
-    const warningRaw = this.config.get<number>("alerts.warningPercent", 75);
-    const highRaw = this.config.get<number>("alerts.highPercent", 90);
-    const criticalRaw = this.config.get<number>("alerts.criticalPercent", 95);
-
-    const warning = Math.max(
-      50,
-      Math.min(
-        99,
-        typeof warningRaw === "number" && Number.isFinite(warningRaw) ? Math.round(warningRaw) : 75
-      )
-    );
-    const high = Math.max(
-      warning + 1,
-      Math.min(
-        99,
-        typeof highRaw === "number" && Number.isFinite(highRaw) ? Math.round(highRaw) : 90
-      )
-    );
-    const critical = Math.max(
-      high + 1,
-      Math.min(
-        100,
-        typeof criticalRaw === "number" && Number.isFinite(criticalRaw)
-          ? Math.round(criticalRaw)
-          : 95
-      )
-    );
-
-    return { warning, high, critical };
+  getAlertThresholds(): AlertThresholdConfig {
+    return this.getAlertSection().getAlertThresholds();
   }
 
   getRunOutAlertDays(): number {
-    const raw = this.config.get<number>("alerts.runOutDays", 3);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 3;
-    if (n < 0) return 0;
-    if (n > 30) return 30;
-    return n;
+    return this.getAlertSection().getRunOutAlertDays();
   }
 
   getMonthlyTarget(): number {
-    const raw = this.config.get<number>("budget.monthlyTarget", 0);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 0;
-    return Math.max(0, n);
+    return this.getAlertSection().getMonthlyTarget();
   }
 
-  // Smart Sign-In: Quick clipboard watch duration (ms), clamp to [0, 5000]
+  getProviderMonthlyTargets(): Record<string, number> {
+    return this.getProviderSection().getMonthlyTargets();
+  }
+
+  getProviderMonthlyTarget(providerId: ProviderId): number {
+    return this.getProviderSection().getMonthlyTarget(providerId);
+  }
+
+  getProviderAlertThresholds(providerId: ProviderId): ProviderAlertThresholdConfig {
+    return this.getProviderSection().getAlertThresholds(providerId);
+  }
+
+  getAllProviderAlertThresholds(): Record<string, ProviderAlertThresholdConfig> {
+    return this.getProviderSection().getAllAlertThresholds();
+  }
+
+  isProviderTrackingEnabled(): boolean {
+    return this.getProviderSection().isTrackingEnabled();
+  }
+
+  getEnabledProviderIds(): KnownProviderId[] {
+    return this.getProviderSection().getEnabledProviderIds();
+  }
+
+  getClaudeProjectsPath(): string {
+    return this.getProviderSection().getClaudeProjectsPath();
+  }
+
+  getCodexSessionsPath(): string {
+    return this.getProviderSection().getCodexSessionsPath();
+  }
+
+  getCopilotStateDbPath(): string {
+    return this.getProviderSection().getCopilotStateDbPath();
+  }
+
+  getCopilotApiConfig(): CopilotApiConfig {
+    return this.getProviderSection().getCopilotApiConfig();
+  }
+
   getSmartSignInQuickWatchMs(): number {
-    const raw = this.config.get<number>("smartSignIn.quickWatchMs", 2000);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 2000;
-    if (n < 0) return 0;
-    if (n > 5000) return 5000;
-    return n;
+    return this.getSmartSignInSection().getQuickWatchMs();
   }
 
-  // Smart Sign-In: Website clipboard watch duration (ms), clamp to [1000, 300000] (default 5 minutes)
   getSmartSignInWebsiteWatchMs(): number {
-    const raw = this.config.get<number>("smartSignIn.websiteWatchMs", 300000);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 300000;
-    if (n < 1000) return 1000;
-    if (n > 300000) return 300000;
-    return n;
+    return this.getSmartSignInSection().getWebsiteWatchMs();
   }
 
   isSessionTrackingEnabled(): boolean {
@@ -258,8 +204,30 @@ export class ConfigManager {
     }
   }
 
-  async updateConfig(key: string, value: any) {
+  async updateConfig(key: string, value: unknown): Promise<void> {
     await this.config.update(key, value, vscode.ConfigurationTarget.Global);
     this.reloadConfig();
+  }
+
+  private getAlertSection(): AlertConfigSection {
+    return new AlertConfigSection(this.config);
+  }
+
+  private getStatusBarSection(): StatusBarConfigSection {
+    return new StatusBarConfigSection(this.config);
+  }
+
+  private getProviderSection(): ProviderConfigSection {
+    const alerts = this.getAlertSection();
+    return new ProviderConfigSection(
+      this.config,
+      alerts.getAlertThresholds(),
+      alerts.getRunOutAlertDays(),
+      alerts.getMonthlyTarget()
+    );
+  }
+
+  private getSmartSignInSection(): SmartSignInConfigSection {
+    return new SmartSignInConfigSection(this.config);
   }
 }

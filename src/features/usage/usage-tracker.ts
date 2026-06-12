@@ -7,7 +7,19 @@ import { type StorageManager, type UsageSnapshot } from "../../core/storage/stor
 import { type ConfigManager } from "../../core/config/config-manager";
 import { SecureLogger } from "../../core/logging/secure-logger";
 import { UserNotificationService } from "../../core/notifications/user-notification-service";
-import { SessionReader, type SessionActivity } from "../../services/session-reader";
+import { type SessionActivity } from "../../services/session-reader";
+import {
+  type ProviderHealthSnapshot,
+  type ProviderId,
+  type ProviderUsageSnapshot,
+} from "../../core/types/provider-usage";
+import {
+  buildAlertCycleId,
+  calculateProjectedDays,
+  readTrackedSessionActivity,
+  selectTriggeredThreshold,
+  shouldNotifyProjectedRunOut,
+} from "./usage-tracker-helpers";
 
 /**
  * Real usage data fetched from the Augment API.
@@ -63,13 +75,13 @@ export class UsageTracker implements vscode.Disposable {
     void this.loadCurrentUsage();
   }
 
-  private async loadCurrentUsage() {
+  private async loadCurrentUsage(): Promise<void> {
     const data = await this.storageManager.getUsageData();
     this.currentUsage = data.totalUsage;
     this.lastResetDate = data.lastResetDate;
   }
 
-  startTracking() {
+  startTracking(): void {
     if (!this.configManager.isEnabled()) {
       return;
     }
@@ -87,7 +99,7 @@ export class UsageTracker implements vscode.Disposable {
     this.scheduleNextFetch(0, "startup"); // immediate first fetch
   }
 
-  async resetUsage() {
+  async resetUsage(): Promise<void> {
     await this.storageManager.resetUsage();
     await this.storageManager.resetAlertState();
     const data = await this.storageManager.getUsageData();
@@ -165,6 +177,18 @@ export class UsageTracker implements vscode.Disposable {
     );
   }
 
+  async getProviderUsageSnapshots(providerId?: ProviderId): Promise<ProviderUsageSnapshot[]> {
+    return (await this.storageManager.getProviderUsageSnapshots(providerId)).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  }
+
+  async getProviderHealthSnapshots(): Promise<ProviderHealthSnapshot[]> {
+    return (await this.storageManager.getAllProviderHealth()).sort((a, b) =>
+      a.providerId.localeCompare(b.providerId)
+    );
+  }
+
   /**
    * Compute the credit consumption rate per hour from stored snapshots.
    * Returns null if fewer than 2 snapshots exist or the time span is too short.
@@ -216,15 +240,14 @@ export class UsageTracker implements vscode.Disposable {
     if (remaining <= 0) return 0;
 
     const rate = await this.getUsageRate();
-    return UsageTracker.computeProjectedDays(remaining, rate);
+    return calculateProjectedDays(remaining, rate);
   }
 
   /**
    * Pure, static projection computation for testability.
    */
   static computeProjectedDays(remaining: number, ratePerHour: number | null): number | null {
-    if (ratePerHour === null || ratePerHour <= 0) return null;
-    return remaining / (ratePerHour * 24);
+    return calculateProjectedDays(remaining, ratePerHour);
   }
 
   /**
@@ -232,13 +255,10 @@ export class UsageTracker implements vscode.Disposable {
    * Returns null if session tracking is disabled or on error.
    */
   getSessionActivity(): SessionActivity | null {
-    try {
-      if (!this.configManager.isSessionTrackingEnabled()) return null;
-      const reader = new SessionReader(this.configManager.getSessionTrackingPath() || undefined);
-      return reader.getTodayActivity();
-    } catch {
-      return null;
-    }
+    return readTrackedSessionActivity(
+      this.configManager.isSessionTrackingEnabled(),
+      this.configManager.getSessionTrackingPath() || undefined
+    );
   }
 
   async updateWithRealData(realData: RealUsageData): Promise<void> {
@@ -296,6 +316,40 @@ export class UsageTracker implements vscode.Disposable {
           this.realDataSource
         );
         await this.storageManager.cleanOldSnapshots(this.configManager.getHistoryRetentionDays());
+        const providerSnapshot: ProviderUsageSnapshot = {
+          providerId: "augment",
+          timestamp: new Date().toISOString(),
+          windowType: "monthly",
+          metricType: "credits",
+          sourceKind: "api",
+          source: "augment_api",
+          used: this.currentUsage,
+          remaining: this.currentLimit > 0 ? Math.max(this.currentLimit - this.currentUsage, 0) : 0,
+          percentUsed:
+            this.currentLimit > 0 ? Math.round((this.currentUsage / this.currentLimit) * 100) : 0,
+          confidence: 1,
+        };
+        if (this.currentLimit > 0) {
+          providerSnapshot.limit = this.currentLimit;
+        }
+        if (this.renewalDate) {
+          providerSnapshot.resetAt = this.renewalDate;
+        }
+        if (this.lastFetchedAt) {
+          providerSnapshot.freshnessAt = this.lastFetchedAt.toISOString();
+        }
+        await this.storageManager.saveProviderUsageSnapshot(providerSnapshot);
+        await this.storageManager.setProviderHealth({
+          providerId: "augment",
+          status: "connected",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+          sourceKind: "api",
+          message: "Connected to Augment usage API.",
+        });
+        await this.storageManager.cleanOldProviderSnapshots(
+          this.configManager.getHistoryRetentionDays()
+        );
 
         // Check threshold notifications
         if (this.currentLimit > 0) {
@@ -328,55 +382,51 @@ export class UsageTracker implements vscode.Disposable {
   private async checkThresholdNotifications(percentage: number): Promise<void> {
     try {
       const { warning, high, critical } = this.configManager.getAlertThresholds();
-      const thresholds = [critical, high, warning].sort((a, b) => b - a);
       const cycleId = this.getAlertCycleId();
       const lastNotified = await this.storageManager.getNotifiedThresholdForCycle(cycleId);
 
-      for (const threshold of thresholds) {
-        if (percentage >= threshold && lastNotified < threshold) {
-          await this.storageManager.setNotifiedThresholdForCycle(cycleId, threshold);
-          const remaining = this.currentLimit > 0 ? this.currentLimit - this.currentUsage : 0;
+      const threshold = selectTriggeredThreshold(
+        percentage,
+        { warning, high, critical },
+        lastNotified
+      );
 
-          if (threshold >= critical) {
-            void UserNotificationService.showWarning(
-              `Augmeter: ${threshold}% of credits used. Only ${Math.max(0, remaining).toLocaleString()} remaining.`,
-              {
-                text: "View Usage",
-                action: async () => {
-                  await vscode.commands.executeCommand("augmeter.manualRefresh");
-                },
-              }
-            );
-          } else {
-            void UserNotificationService.showInfo(
-              `Augmeter: ${threshold}% of credits used. ${Math.max(0, remaining).toLocaleString()} remaining.`
-            );
-          }
-          break; // Only notify for the highest crossed threshold
+      if (threshold !== null) {
+        await this.storageManager.setNotifiedThresholdForCycle(cycleId, threshold);
+        const remaining = this.currentLimit > 0 ? this.currentLimit - this.currentUsage : 0;
+
+        if (threshold >= critical) {
+          void UserNotificationService.showWarning(
+            `Augmeter: ${threshold}% of credits used. Only ${Math.max(0, remaining).toLocaleString()} remaining.`,
+            {
+              text: "View Usage",
+              action: async () => {
+                await vscode.commands.executeCommand("augmeter.manualRefresh");
+              },
+            }
+          );
+        } else {
+          void UserNotificationService.showInfo(
+            `Augmeter: ${threshold}% of credits used. ${Math.max(0, remaining).toLocaleString()} remaining.`
+          );
         }
       }
 
       const runOutDays = this.configManager.getRunOutAlertDays();
-      if (runOutDays > 0) {
-        const projectedDays = await this.getProjectedDaysRemaining();
-        const runOutAlreadyAlerted = await this.storageManager.isRunOutAlertedForCycle(cycleId);
-        if (
-          projectedDays !== null &&
-          projectedDays > 0 &&
-          projectedDays <= runOutDays &&
-          !runOutAlreadyAlerted
-        ) {
-          await this.storageManager.setRunOutAlertedForCycle(cycleId, true);
-          void UserNotificationService.showWarning(
-            `Augmeter: At current pace, credits may run out in ~${Math.max(1, Math.round(projectedDays))} day(s).`,
-            {
-              text: "View Usage",
-              action: async () => {
-                await vscode.commands.executeCommand("augmeter.openUsageDashboard");
-              },
-            }
-          );
-        }
+      const projectedDays = await this.getProjectedDaysRemaining();
+      const runOutAlreadyAlerted = await this.storageManager.isRunOutAlertedForCycle(cycleId);
+      if (shouldNotifyProjectedRunOut(projectedDays, runOutDays, runOutAlreadyAlerted)) {
+        const projectedDaysValue = projectedDays ?? 0;
+        await this.storageManager.setRunOutAlertedForCycle(cycleId, true);
+        void UserNotificationService.showWarning(
+          `Augmeter: At current pace, credits may run out in ~${Math.max(1, Math.round(projectedDaysValue))} day(s).`,
+          {
+            text: "View Usage",
+            action: async () => {
+              await vscode.commands.executeCommand("augmeter.openUsageDashboard");
+            },
+          }
+        );
       }
     } catch (error) {
       SecureLogger.warn("UsageTracker: Error checking threshold notifications", error);
@@ -384,14 +434,7 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   private getAlertCycleId(): string {
-    if (this.renewalDate) {
-      const date = new Date(this.renewalDate);
-      if (!isNaN(date.getTime())) {
-        return `renewal-${date.toISOString().split("T")[0]}`;
-      }
-    }
-    const now = new Date();
-    return `month-${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    return buildAlertCycleId(this.renewalDate);
   }
 
   // promptUserForRealData method removed - no longer needed since we eliminated popup dialogs
@@ -439,7 +482,7 @@ export class UsageTracker implements vscode.Disposable {
     return Math.floor(min + Math.random() * (max - min));
   }
 
-  private scheduleNextFetch(delayMs: number, source: string = "poller") {
+  private scheduleNextFetch(delayMs: number, source: string = "poller"): void {
     if (this.pollTimeout) {
       clearTimeout(this.pollTimeout);
       this.pollTimeout = null;
@@ -451,7 +494,7 @@ export class UsageTracker implements vscode.Disposable {
     }, delayMs);
   }
 
-  triggerRefreshSoon(minDelayMs: number = 0, source: string = "poller") {
+  triggerRefreshSoon(minDelayMs: number = 0, source: string = "poller"): void {
     const delay = Math.max(0, minDelayMs);
     this.scheduleNextFetch(delay, source);
   }
@@ -491,7 +534,7 @@ export class UsageTracker implements vscode.Disposable {
     this.onChangedEmitter.fire();
   }
 
-  dispose() {
+  dispose(): void {
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];
 

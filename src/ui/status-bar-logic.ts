@@ -1,3 +1,5 @@
+import type { ProviderHealthSnapshot, ProviderUsageSnapshot } from "../core/types/provider-usage";
+
 export type DisplayMode = "used" | "remaining" | "remainingOnly" | "both" | "percentage";
 export type Density = "auto" | "compact" | "detailed";
 export type ClickAction = "refresh" | "openWebsite" | "openSettings";
@@ -179,6 +181,87 @@ export function formatTargetLine(
   return `**Target:** ${Math.abs(targetDelta).toLocaleString()} over target`;
 }
 
+export function buildProviderUsageLines(
+  snapshots: ProviderUsageSnapshot[],
+  healthSnapshots: ProviderHealthSnapshot[]
+): string[] {
+  const providerIds = new Set<string>();
+  const latestByWindow = new Map<string, ProviderUsageSnapshot>();
+  for (const snapshot of snapshots) {
+    if (snapshot.providerId === "augment" || snapshot.metricType !== "messages") {
+      continue;
+    }
+    providerIds.add(snapshot.providerId);
+
+    const key = `${snapshot.providerId}:${snapshot.windowType}:${snapshot.metricType}`;
+    const existing = latestByWindow.get(key);
+    if (
+      !existing ||
+      new Date(snapshot.timestamp).getTime() >= new Date(existing.timestamp).getTime()
+    ) {
+      latestByWindow.set(key, snapshot);
+    }
+  }
+
+  const latestHealth = new Map<string, ProviderHealthSnapshot>();
+  for (const snapshot of healthSnapshots) {
+    if (snapshot.providerId === "augment") {
+      continue;
+    }
+    providerIds.add(snapshot.providerId);
+    const existing = latestHealth.get(snapshot.providerId);
+    if (
+      !existing ||
+      new Date(snapshot.checkedAt).getTime() >= new Date(existing.checkedAt).getTime()
+    ) {
+      latestHealth.set(snapshot.providerId, snapshot);
+    }
+  }
+
+  const preferredOrder = ["claude", "codex", "copilot"];
+  const orderedProviderIds = Array.from(providerIds).sort((a, b) => {
+    const aIndex = preferredOrder.indexOf(a);
+    const bIndex = preferredOrder.indexOf(b);
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+
+  return orderedProviderIds
+    .map(providerId => {
+      const usageParts: string[] = [];
+      const rolling = latestByWindow.get(`${providerId}:rolling_5h:messages`);
+      const weekly = latestByWindow.get(`${providerId}:weekly_7d:messages`);
+      const monthly = latestByWindow.get(`${providerId}:monthly:messages`);
+      const cumulative = latestByWindow.get(`${providerId}:custom:messages`);
+
+      if (typeof rolling?.used === "number" && Number.isFinite(rolling.used)) {
+        usageParts.push(`5h ${Math.round(rolling.used).toLocaleString()}`);
+      }
+      if (typeof weekly?.used === "number" && Number.isFinite(weekly.used)) {
+        usageParts.push(`7d ${Math.round(weekly.used).toLocaleString()}`);
+      }
+      if (typeof monthly?.used === "number" && Number.isFinite(monthly.used)) {
+        usageParts.push(`month ${Math.round(monthly.used).toLocaleString()}`);
+      }
+      if (typeof cumulative?.used === "number" && Number.isFinite(cumulative.used)) {
+        usageParts.push(`total ${Math.round(cumulative.used).toLocaleString()}`);
+      }
+
+      if (usageParts.length === 0) {
+        const health = latestHealth.get(providerId);
+        if (!health) {
+          return null;
+        }
+        usageParts.push(health.status === "connected" ? "no usage snapshots yet" : health.status);
+      }
+
+      return `${providerDisplayName(providerId)}: ${usageParts.join(" • ")}`;
+    })
+    .filter((line): line is string => Boolean(line));
+}
+
 export function buildMarkdownTooltip(params: {
   used: number;
   limit: number;
@@ -196,6 +279,7 @@ export function buildMarkdownTooltip(params: {
   targetDelta?: number | null | undefined;
   targetProgressPercent?: number | null | undefined;
   projectedDepletionDate?: Date | null | undefined;
+  providerUsageLines?: string[] | undefined;
 }): string {
   const {
     used,
@@ -214,6 +298,7 @@ export function buildMarkdownTooltip(params: {
     targetDelta,
     targetProgressPercent,
     projectedDepletionDate,
+    providerUsageLines,
   } = params;
 
   const lines: string[] = [];
@@ -270,6 +355,10 @@ export function buildMarkdownTooltip(params: {
     );
   }
 
+  if (hasRealData && providerUsageLines && providerUsageLines.length > 0) {
+    lines.push(["**Providers:**", ...providerUsageLines.map(line => `- ${line}`)].join("\n"));
+  }
+
   // Renewal date
   if (renewalDate) {
     try {
@@ -296,7 +385,7 @@ export function buildMarkdownTooltip(params: {
       : clickAction === "openWebsite"
         ? "Click to open website"
         : "Click to open settings";
-  lines.push(actionHint);
+  lines.push(`${actionHint} · [Open dashboard](command:augmeter.openUsageDashboard)`);
 
   return lines.join("\n\n");
 }
@@ -565,4 +654,11 @@ export function computeAccessibilityLabel(
   percentage: number
 ): string {
   return `Augmeter usage ${used} used of ${limit}. ${remaining} remaining. ${percentage}% of limit.`;
+}
+
+function providerDisplayName(providerId: string): string {
+  if (providerId === "claude") return "Claude Code";
+  if (providerId === "codex") return "Codex (local prompts)";
+  if (providerId === "copilot") return "GitHub Copilot";
+  return providerId;
 }

@@ -2,10 +2,10 @@
  * ABOUTME: This file contains the API client for communicating with Augment's backend services,
  * handling authentication, request retries, response parsing, caching, and secure cookie storage.
  */
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { HttpClient, type HttpResponse } from "../core/http/http-client";
 import { RetryHandler } from "../core/http/retry-handler";
-import { type AugmentApiResponse, type AugmentUsageData } from "../core/types/augment";
+import type { AugmentApiResponse, AugmentUsageData } from "../core/types/augment";
 import { SecureSecretsManager } from "../core/auth/secure-secrets-manager";
 import { SecureCookieUtils } from "../core/auth/cookie";
 import { SecureLogger } from "../core/logging/secure-logger";
@@ -37,21 +37,13 @@ export class AugmentApiClient {
   private readonly DEFAULT_API_BASE_URL = "https://app.augmentcode.com/api";
   private sessionCookie: string | null = null; // normalized like `_session=abc...`
   private secretsManager: SecureSecretsManager | null = null;
-  private apiBaseUrl: string = this.DEFAULT_API_BASE_URL;
   private inFlightRequests: Map<string, Promise<AugmentApiResponse>> = new Map();
   private http: HttpClient = new HttpClient();
   private retry: RetryHandler = new RetryHandler();
+  private readonly resolveApiBaseUrl: () => string;
 
-  constructor(context?: vscode.ExtensionContext) {
-    // Load API base URL from configuration (centralized configuration)
-    try {
-      const cfg = vscode.workspace.getConfiguration("augmeter");
-      const configured = cfg.get<string>("apiBaseUrl", this.DEFAULT_API_BASE_URL);
-      this.apiBaseUrl = configured || this.DEFAULT_API_BASE_URL;
-    } catch {
-      this.apiBaseUrl = this.DEFAULT_API_BASE_URL;
-    }
-
+  constructor(context?: vscode.ExtensionContext, resolveApiBaseUrl?: () => string) {
+    this.resolveApiBaseUrl = resolveApiBaseUrl ?? (() => this.DEFAULT_API_BASE_URL);
     if (context) {
       this.secretsManager = new SecureSecretsManager(context);
       void this.initializeFromSecrets();
@@ -130,22 +122,22 @@ export class AugmentApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<AugmentApiResponse> {
-    const method = (options.method || "GET").toString();
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...((options.headers as Record<string, string>) || {}),
-    };
+    const method = typeof options.method === "string" ? options.method : "GET";
+    const headers = this.normalizeHeaders(options.headers);
     if (this.sessionCookie) {
       headers["Cookie"] = this.sessionCookie;
     }
 
     const op = async (): Promise<HttpResponse> => {
-      return this.http.makeRequest(endpoint, {
+      const requestOptions: RequestInit & { baseUrl: string } = {
         baseUrl,
-        method: method as any,
+        method,
         headers,
-        body: options.body as any,
-      });
+      };
+      if (options.body !== undefined) {
+        requestOptions.body = options.body;
+      }
+      return this.http.makeRequest(endpoint, requestOptions);
     };
 
     const response = await this.retry.executeHttpWithRetry(
@@ -206,7 +198,7 @@ export class AugmentApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<AugmentApiResponse> {
-    return this.makeRequestWithBase(this.apiBaseUrl, endpoint, options);
+    return this.makeRequestWithBase(this.getApiBaseUrl(), endpoint, options);
   }
 
   async checkHealth(): Promise<AugmentApiResponse> {
@@ -242,8 +234,10 @@ export class AugmentApiClient {
       return { success: false, error: "Not authenticated", code: "UNAUTHENTICATED" };
     }
 
+    const apiBaseUrl = this.getApiBaseUrl();
+
     // Try tenant base first (single-flight)
-    const tenantResp = await this.fetchWithSingleFlight("/credits", this.apiBaseUrl);
+    const tenantResp = await this.fetchWithSingleFlight("/credits", apiBaseUrl);
     if (tenantResp.success) return tenantResp;
 
     // If unauthenticated, do not attempt fallback
@@ -256,7 +250,7 @@ export class AugmentApiClient {
   }
 
   async getCreditsInfo(): Promise<AugmentApiResponse> {
-    return await this.fetchWithSingleFlight("/credits", this.apiBaseUrl);
+    return await this.fetchWithSingleFlight("/credits", this.getApiBaseUrl());
   }
 
   async parseUsageResponse(response: AugmentApiResponse): Promise<AugmentUsageData | null> {
@@ -318,6 +312,32 @@ export class AugmentApiClient {
       }
     } else {
       await this.clearSessionCookie();
+    }
+  }
+
+  private normalizeHeaders(headersInit: RequestInit["headers"]): Record<string, string> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (!headersInit) {
+      return headers;
+    }
+
+    const normalizedHeaders = new Headers(headersInit);
+    normalizedHeaders.forEach((value, key) => {
+      headers[key] = value;
+    });
+
+    return headers;
+  }
+
+  private getApiBaseUrl(): string {
+    try {
+      const resolved = this.resolveApiBaseUrl();
+      return resolved.trim().length > 0 ? resolved : this.DEFAULT_API_BASE_URL;
+    } catch {
+      return this.DEFAULT_API_BASE_URL;
     }
   }
 }

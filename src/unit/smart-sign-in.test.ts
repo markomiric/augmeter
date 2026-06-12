@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { AuthCommands } from "../commands/auth-commands";
 
 describe("Smart Sign In (unit)", () => {
-  function makeMocks() {
+  function makeMocks(options?: { quickWatchMs?: number; websiteWatchMs?: number }) {
     const calls: any = {
       setSessionCookie: 0,
       testConnection: 0,
@@ -45,7 +45,8 @@ describe("Smart Sign In (unit)", () => {
     } as any;
 
     const configManager = {
-      getSmartSignInWebsiteWatchMs: () => 500,
+      getSmartSignInQuickWatchMs: () => options?.quickWatchMs ?? 0,
+      getSmartSignInWebsiteWatchMs: () => options?.websiteWatchMs ?? 500,
     } as any;
     const auth = new AuthCommands(augmentDetector, usageTracker, statusBarManager, configManager);
     const disposables = auth.registerCommands();
@@ -54,7 +55,7 @@ describe("Smart Sign In (unit)", () => {
   }
 
   it("Uses clipboard cookie to sign in and fetch without opening website", async () => {
-    const { calls, disposables } = makeMocks();
+    const { calls, disposables } = makeMocks({ quickWatchMs: 200, websiteWatchMs: 500 });
 
     // Put a valid-looking cookie in clipboard
     const token = "A".repeat(64);
@@ -77,8 +78,24 @@ describe("Smart Sign In (unit)", () => {
     disposables.forEach(d => d.dispose?.());
   }, 5000);
 
+  it("Uses quick clipboard watch before opening the website", async () => {
+    const { calls, disposables } = makeMocks({ quickWatchMs: 200, websiteWatchMs: 500 });
+
+    await vscode.env.clipboard.writeText("");
+    setTimeout(() => {
+      void vscode.env.clipboard.writeText("C".repeat(64));
+    }, 50);
+
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+
+    expect(calls.setSessionCookie).toBeGreaterThan(0);
+    expect(calls.clearSessionCookie).toBe(0);
+
+    disposables.forEach(d => d.dispose?.());
+  }, 5000);
+
   it("Opens website and shows manual input when no cookie available", async () => {
-    const { calls, disposables } = makeMocks();
+    const { calls, disposables } = makeMocks({ quickWatchMs: 0, websiteWatchMs: 500 });
 
     // Empty clipboard
     await vscode.env.clipboard.writeText("");
@@ -92,7 +109,7 @@ describe("Smart Sign In (unit)", () => {
   }, 2000);
 
   it("Allows repeated sign-in attempts sequentially (lock releases)", async () => {
-    const { calls, disposables } = makeMocks();
+    const { calls, disposables } = makeMocks({ quickWatchMs: 200, websiteWatchMs: 500 });
 
     const token = "B".repeat(64);
     await vscode.env.clipboard.writeText(token);
