@@ -7,16 +7,19 @@ export default defineConfig({
     include: ["src/unit/**/*.unit.test.ts"],
     exclude: [...configDefaults.exclude, "src/test/**/*"],
     coverage: {
-      all: false,
+      // Count the whole src tree, not just files imported by tests.
+      all: true,
       provider: "v8",
       reporter: ["text", "html", "lcov", "json"],
       reportsDirectory: "./coverage",
       exclude: [...coverageConfigDefaults.exclude, "docs/**", "src/test/**", "test-setup/**"],
+      // Measured 2026-06-12: 51.7 lines / 67.5 branches / 62.3 functions.
+      // Gates sit ~5 points below measured; raise them as coverage grows.
       thresholds: {
-        lines: 30,
-        functions: 60,
-        branches: 65,
-        statements: 30,
+        lines: 45,
+        functions: 57,
+        branches: 62,
+        statements: 45,
       },
     },
     setupFiles: ["./test-setup/vitest-setup.ts"],
