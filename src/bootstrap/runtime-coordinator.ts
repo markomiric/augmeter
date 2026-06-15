@@ -5,6 +5,7 @@ import { SecureLogger } from "../core/logging/secure-logger";
 import { type StorageManager } from "../core/storage/storage-manager";
 import { type UsageTracker } from "../features/usage/usage-tracker";
 import { type ProviderUsageService } from "../providers/provider-usage-service";
+import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentDetector } from "../services/augment-detector";
 import { type StatusBarManager } from "../ui/status-bar";
 
@@ -20,7 +21,8 @@ export class RuntimeCoordinator implements vscode.Disposable {
     private readonly augmentDetector: AugmentDetector,
     private readonly usageTracker: UsageTracker,
     private readonly statusBarManager: StatusBarManager,
-    private readonly providerUsageService: ProviderUsageService
+    private readonly providerUsageService: ProviderUsageService,
+    private readonly auggieCliSource: AuggieCliSource
   ) {}
 
   async initialize(): Promise<void> {
@@ -48,10 +50,99 @@ export class RuntimeCoordinator implements vscode.Disposable {
     }
   }
 
+  /**
+   * Try the Auggie CLI usage source. Returns true when the cycle is fully
+   * handled (data updated, or a terminal CLI-only state); false to fall
+   * through to the cookie-based API path.
+   */
+  private async tryCliFetch(source: string): Promise<boolean> {
+    const mode = this.configManager.getDataSource();
+    if (mode === "cookie") {
+      return false;
+    }
+
+    if (this.storageManager.isCliAuthDisabled()) {
+      if (mode !== "auggie-cli") {
+        return false;
+      }
+      this.usageTracker.clearRealDataFlag();
+      await this.storageManager.setProviderHealth({
+        providerId: "augment",
+        status: "disabled",
+        checkedAt: new Date().toISOString(),
+        canCollectInCurrentWorkspace: true,
+        sourceKind: "cli",
+        message: "Signed out of the Auggie CLI usage source.",
+        errorCode: "AUGGIE_CLI_SIGNED_OUT",
+      });
+      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
+      void this.statusBarManager.updateDisplay();
+      return true;
+    }
+
+    const result = await this.auggieCliSource.fetchUsage();
+
+    if (result.status === "ok") {
+      await this.usageTracker.updateWithRealData({
+        totalUsage: result.data.totalUsage ?? 0,
+        usageLimit: result.data.usageLimit ?? 0,
+        dailyUsage: result.data.dailyUsage,
+        lastUpdate: result.data.lastUpdate ?? new Date().toISOString(),
+        subscriptionType: result.data.subscriptionType,
+        renewalDate: result.data.renewalDate,
+      });
+      await this.storageManager.setProviderHealth({
+        providerId: "augment",
+        status: "connected",
+        checkedAt: new Date().toISOString(),
+        canCollectInCurrentWorkspace: true,
+        sourceKind: "cli",
+        message: "Connected via Auggie CLI.",
+      });
+      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
+      void this.statusBarManager.updateDisplay();
+      SecureLogger.info(`Usage updated from Auggie CLI (source=${source})`);
+      return true;
+    }
+
+    if (mode !== "auggie-cli") {
+      // Auto mode: fall back to the cookie path for any non-ok CLI result.
+      return false;
+    }
+
+    if (result.status === "error") {
+      // Transient failure in CLI-only mode: keep last known data.
+      SecureLogger.warn(`Auggie CLI fetch failed; keeping last data (source=${source})`);
+      return true;
+    }
+
+    this.usageTracker.clearRealDataFlag();
+    await this.storageManager.setProviderHealth({
+      providerId: "augment",
+      status: "unavailable",
+      checkedAt: new Date().toISOString(),
+      canCollectInCurrentWorkspace: true,
+      sourceKind: "cli",
+      message:
+        result.status === "cli-missing"
+          ? "Auggie CLI not found. Install it or set augmeter.auggieCli.path."
+          : "Auggie CLI is not signed in. Run `auggie login`.",
+      errorCode:
+        result.status === "cli-missing" ? "AUGGIE_CLI_MISSING" : "AUGGIE_CLI_UNAUTHENTICATED",
+    });
+    void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
+    void this.statusBarManager.updateDisplay();
+    return true;
+  }
+
   private attachRealDataFetcher(): void {
     const realFetcher = async () => {
       const source = this.usageTracker.getFetchSource();
       try {
+        if (await this.tryCliFetch(source)) {
+          return;
+        }
+
         const apiClient = this.augmentDetector.getApiClient();
 
         if (!apiClient.hasCookie()) {
@@ -65,6 +156,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
             message: "Not signed in to Augment.",
             errorCode: "AUGMENT_SIGNED_OUT",
           });
+          void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
           void this.statusBarManager.updateDisplay();
           SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
           return;
@@ -163,13 +255,22 @@ export class RuntimeCoordinator implements vscode.Disposable {
         }
 
         if (
+          event.affectsConfiguration("augmeter.dataSource") ||
+          event.affectsConfiguration("augmeter.auggieCli.path")
+        ) {
+          this.auggieCliSource.reset();
+        }
+
+        if (
           event.affectsConfiguration("augmeter.refreshInterval") ||
           event.affectsConfiguration("augmeter.alerts.warningPercent") ||
           event.affectsConfiguration("augmeter.alerts.highPercent") ||
           event.affectsConfiguration("augmeter.alerts.criticalPercent") ||
           event.affectsConfiguration("augmeter.alerts.runOutDays") ||
           event.affectsConfiguration("augmeter.history.retentionDays") ||
-          event.affectsConfiguration("augmeter.providers")
+          event.affectsConfiguration("augmeter.providers") ||
+          event.affectsConfiguration("augmeter.dataSource") ||
+          event.affectsConfiguration("augmeter.auggieCli.path")
         ) {
           this.usageTracker.triggerRefreshSoon(0, "config-change");
         }
@@ -217,7 +318,8 @@ export class RuntimeCoordinator implements vscode.Disposable {
         const apiClient = this.augmentDetector.getApiClient();
         await apiClient.refreshSessionFromSecrets();
         const hasCookie = apiClient.hasCookie();
-        void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", hasCookie);
+        const isSignedIn = hasCookie || this.auggieCliSource.isAuthenticatedCached();
+        void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", isSignedIn);
         this.usageTracker.triggerRefreshSoon(0, "auth-change");
         SecureLogger.info(
           hasCookie

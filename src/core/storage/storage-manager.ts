@@ -63,9 +63,19 @@ export class StorageManager {
   private readonly SNAPSHOTS_KEY = "augmentUsageSnapshots";
   private readonly PROVIDER_SNAPSHOTS_KEY = "providerUsageSnapshotsV1";
   private readonly PROVIDER_HEALTH_KEY = "providerHealthSnapshotsV1";
+  private readonly CLI_AUTH_DISABLED_KEY = "augmeterCliAuthDisabled";
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
+  }
+
+  /** True when the user explicitly signed out of the Auggie CLI usage source. */
+  isCliAuthDisabled(): boolean {
+    return this.context.globalState.get<boolean>(this.CLI_AUTH_DISABLED_KEY, false);
+  }
+
+  async setCliAuthDisabled(disabled: boolean): Promise<void> {
+    await this.context.globalState.update(this.CLI_AUTH_DISABLED_KEY, disabled);
   }
 
   async getUsageData(): Promise<UsageData> {

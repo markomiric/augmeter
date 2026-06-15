@@ -401,6 +401,28 @@
           "description": "Base URL for the Augment API (useful for staging/tenant overrides).",
           "scope": "application"
         },
+        "augmeter.dataSource": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "auggie-cli",
+            "cookie"
+          ],
+          "enumDescriptions": [
+            "Prefer the Auggie CLI when installed and signed in; fall back to the session cookie.",
+            "Only use the Auggie CLI (auggie account status).",
+            "Only use the session cookie (legacy behavior)."
+          ],
+          "default": "auto",
+          "description": "Where Augmeter reads Augment usage from. The Auggie CLI source requires no cookie sign-in.",
+          "scope": "application"
+        },
+        "augmeter.auggieCli.path": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the auggie CLI binary. Augmeter executes this binary to read usage, so only point it at a trusted auggie installation. Leave empty to auto-detect.",
+          "scope": "application"
+        },
         "augmeter.sessionTracking.enabled": {
           "type": "boolean",
           "default": false,

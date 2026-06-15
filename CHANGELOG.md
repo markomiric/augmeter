@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- Automatic sign-in via the Auggie CLI: when `auggie` is installed and logged in, usage appears with no cookie or manual steps (`auggie account status` is parsed; credentials are never read). New settings: `augmeter.dataSource` (`auto`/`auggie-cli`/`cookie`) and `augmeter.auggieCli.path`.
+- Sign-in flow offers a one-click terminal `auggie login` when the CLI is installed but signed out
+- Diagnostics now report the data-source mode and Auggie CLI detection/auth state
+
+### Fixed
+
+- Provider snapshot retention now honors the injected clock, making pruning deterministic
+- The `.vsix` no longer ships development/agent files (package size cut from 1.82 MB to ~131 KB)
+
 ## [1.0.3] - 2026-01-30
 
 ### Fixed

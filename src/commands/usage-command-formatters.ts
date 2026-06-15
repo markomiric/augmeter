@@ -47,6 +47,9 @@ export interface DiagnosticsInput {
   hasCookie: boolean;
   hasRealData: boolean;
   dataSource: string;
+  dataSourceMode?: string | undefined;
+  cliDetected?: boolean | undefined;
+  cliAuthenticated?: boolean | undefined;
   usage: {
     used: number;
     limit: number;
@@ -226,7 +229,14 @@ export function buildDiagnosticsPayload(input: DiagnosticsInput): {
     platform: string;
     workspaceTrusted: boolean;
   };
-  auth: { hasCookie: boolean; hasRealData: boolean; dataSource: string };
+  auth: {
+    hasCookie: boolean;
+    hasRealData: boolean;
+    dataSource: string;
+    dataSourceMode?: string | undefined;
+    cliDetected?: boolean | undefined;
+    cliAuthenticated?: boolean | undefined;
+  };
   usage: {
     used: number;
     limit: number;
@@ -258,6 +268,9 @@ export function buildDiagnosticsPayload(input: DiagnosticsInput): {
       hasCookie: input.hasCookie,
       hasRealData: input.hasRealData,
       dataSource: input.dataSource,
+      dataSourceMode: input.dataSourceMode,
+      cliDetected: input.cliDetected,
+      cliAuthenticated: input.cliAuthenticated,
     },
     usage: {
       used: input.usage.used,

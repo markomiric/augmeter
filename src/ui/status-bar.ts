@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { type UsageTracker } from "../features/usage/usage-tracker";
 import { type ConfigManager } from "../core/config/config-manager";
 import { type AugmentDetector } from "../services/augment-detector";
+import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { SecureLogger } from "../core/logging/secure-logger";
 import {
   buildProviderUsageLines,
@@ -41,16 +42,19 @@ export class StatusBarManager implements vscode.Disposable {
   private usageTracker: UsageTracker;
   private configManager: ConfigManager;
   private augmentDetector: AugmentDetector | null = null;
+  private auggieCliSource: AuggieCliSource | null = null;
   private trackerSubscription?: vscode.Disposable;
 
   constructor(
     usageTracker: UsageTracker,
     configManager: ConfigManager,
-    augmentDetector?: AugmentDetector
+    augmentDetector?: AugmentDetector,
+    auggieCliSource?: AuggieCliSource
   ) {
     this.usageTracker = usageTracker;
     this.configManager = configManager;
     this.augmentDetector = augmentDetector || null;
+    this.auggieCliSource = auggieCliSource || null;
 
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 
@@ -295,8 +299,11 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   private async checkAuthenticationStatus(): Promise<boolean> {
-    // Check if we have a valid session cookie via the detector
+    // Signed in when the Auggie CLI source is active or a session cookie exists
     try {
+      if (this.auggieCliSource?.isAuthenticatedCached()) {
+        return true;
+      }
       if (this.augmentDetector) {
         return this.augmentDetector.hasApiCookie();
       }

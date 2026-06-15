@@ -192,6 +192,23 @@ export class ConfigManager {
     return v.trim();
   }
 
+  getDataSource(): "auto" | "auggie-cli" | "cookie" {
+    const v = this.config.get<string>("dataSource", "auto") ?? "auto";
+    switch (v) {
+      case "auto":
+      case "auggie-cli":
+      case "cookie":
+        return v;
+      default:
+        return "auto";
+    }
+  }
+
+  getAuggieCliPath(): string {
+    const v = this.config.get<string>("auggieCli.path", "") ?? "";
+    return v.trim();
+  }
+
   getApiBaseUrl(): string {
     const v =
       this.config.get<string>("apiBaseUrl", "https://app.augmentcode.com/api") ??

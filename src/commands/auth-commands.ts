@@ -10,6 +10,8 @@ import { CookiePrompt } from "../core/auth/cookie-prompt";
 import { SecureCookieUtils } from "../core/auth/cookie";
 import { watchClipboardForCookie } from "../core/auth/clipboard-cookie-watcher";
 import { type ConfigManager } from "../core/config/config-manager";
+import { type StorageManager } from "../core/storage/storage-manager";
+import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentApiClient } from "../services/augment-api-client";
 
 export class AuthCommands {
@@ -19,7 +21,9 @@ export class AuthCommands {
     private augmentDetector: AugmentDetector,
     private usageTracker: UsageTracker,
     private statusBarManager: StatusBarManager,
-    private configManager: ConfigManager
+    private configManager: ConfigManager,
+    private auggieCliSource: AuggieCliSource,
+    private storageManager: StorageManager
   ) {}
 
   private async withSignInLock<T>(fn: () => Promise<T>): Promise<T | void> {
@@ -70,12 +74,115 @@ export class AuthCommands {
     });
   }
 
-  private async finalizeAuthenticatedSession(): Promise<void> {
+  private async finalizeAuthenticatedSession(
+    successMessage = "Signed in to Augment"
+  ): Promise<void> {
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
     await this.usageTracker.refreshNow();
     await this.statusBarManager.updateDisplay();
-    UserNotificationService.showSuccess("Signed in to Augment");
+    UserNotificationService.showSuccess(successMessage);
+  }
+
+  /**
+   * Try the Auggie CLI sign-in path. Returns true when sign-in was fully
+   * handled (success, terminal login flow, or user cancellation); false to
+   * continue with the cookie flow.
+   */
+  private async trySignInViaCli(): Promise<boolean> {
+    const mode = this.configManager.getDataSource();
+    if (mode === "cookie") {
+      return false;
+    }
+
+    const binary = await this.auggieCliSource.detectBinary();
+    if (!binary) {
+      if (mode === "auggie-cli") {
+        void UserNotificationService.showWarning(
+          "Auggie CLI not found. Install it (npm i -g @augmentcode/auggie) or set augmeter.auggieCli.path."
+        );
+        return true;
+      }
+      return false;
+    }
+
+    await this.storageManager.setCliAuthDisabled(false);
+    const result = await this.auggieCliSource.fetchUsage();
+
+    if (result.status === "ok") {
+      await this.finalizeAuthenticatedSession("Signed in via Auggie CLI");
+      return true;
+    }
+
+    if (result.status === "unauthenticated") {
+      const cliItem = {
+        label: "$(terminal) Sign in with Auggie CLI",
+        description: "Opens a terminal running `auggie login`",
+      };
+      const cookieItem = {
+        label: "$(key) Paste session cookie",
+        description: "Manual sign-in via app.augmentcode.com",
+      };
+      const items = mode === "auggie-cli" ? [cliItem] : [cliItem, cookieItem];
+      const choice = await vscode.window.showQuickPick(items, {
+        placeHolder: "How do you want to sign in to Augment?",
+        ignoreFocusOut: true,
+      });
+
+      if (choice === cookieItem) {
+        return false;
+      }
+      if (choice !== cliItem) {
+        return true; // user cancelled
+      }
+
+      const signedIn = await this.runAuggieLoginFlow(binary);
+      if (signedIn) {
+        await this.finalizeAuthenticatedSession("Signed in via Auggie CLI");
+      } else if (mode !== "auggie-cli") {
+        void UserNotificationService.showInfo(
+          "Auggie sign-in not detected. You can retry, or sign in with a session cookie."
+        );
+      }
+      return true;
+    }
+
+    // Transient CLI error: fall back to the cookie flow in auto mode,
+    // but stop here when the CLI is the only allowed source.
+    return mode === "auggie-cli";
+  }
+
+  /** Open a terminal running `auggie login` and poll until the CLI is signed in. */
+  private async runAuggieLoginFlow(binary: string): Promise<boolean> {
+    const command = binary.includes(" ") ? `"${binary}" login` : `${binary} login`;
+    const terminal = vscode.window.createTerminal({ name: "Auggie Login" });
+    terminal.show();
+    terminal.sendText(command);
+
+    try {
+      return await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Augmeter — waiting for Auggie sign-in",
+          cancellable: true,
+        },
+        async (_progress, token) => {
+          const deadline = Date.now() + 180_000;
+          // Poll slower than the source's result cache so each check is fresh.
+          const pollMs = 5_500;
+          while (Date.now() < deadline && !token.isCancellationRequested) {
+            const result = await this.auggieCliSource.fetchUsage();
+            if (result.status === "ok") {
+              return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, pollMs));
+          }
+          return false;
+        }
+      );
+    } finally {
+      terminal.dispose();
+    }
   }
 
   private async tryExistingCookieAndFinalize(apiClient: AugmentApiClient): Promise<boolean> {
@@ -226,6 +333,11 @@ export class AuthCommands {
           await this.withSignInLock(async () => {
             const apiClient = this.augmentDetector.getApiClient();
 
+            // 0) Prefer the Auggie CLI (no cookie required)
+            if (await this.trySignInViaCli()) {
+              return;
+            }
+
             // 1) Try existing cookie first
             if (apiClient.hasCookie()) {
               const ok = await this.tryExistingCookieAndFinalize(apiClient);
@@ -273,6 +385,11 @@ export class AuthCommands {
           await this.withSignInLock(async () => {
             const apiClient = this.augmentDetector.getApiClient();
 
+            // Step 0: Prefer the Auggie CLI (no cookie required)
+            if (await this.trySignInViaCli()) {
+              return;
+            }
+
             // Step 1: Check stored cookie first
             if (apiClient.hasCookie()) {
               const ok = await this.tryExistingCookieAndFinalize(apiClient);
@@ -309,6 +426,17 @@ export class AuthCommands {
 
   private async handleSignOut(): Promise<void> {
     try {
+      // Stop using the Auggie CLI source until the next explicit sign-in;
+      // otherwise the next poll would silently re-authenticate.
+      const wasCliAuthenticated = this.auggieCliSource.isAuthenticatedCached();
+      await this.storageManager.setCliAuthDisabled(true);
+      this.auggieCliSource.reset();
+      if (wasCliAuthenticated) {
+        void UserNotificationService.showInfo(
+          "Signed out in Augmeter. The Auggie CLI itself stays logged in."
+        );
+      }
+
       const apiClient = this.augmentDetector.getApiClient();
       await apiClient.clearSessionCookie();
 

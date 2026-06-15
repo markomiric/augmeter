@@ -8,6 +8,7 @@ import { SecureLogger } from "../core/logging/secure-logger";
 import { UserNotificationService } from "../core/notifications/user-notification-service";
 import { ErrorHandler } from "../core/errors/augmeter-error";
 import { type ConfigManager } from "../core/config/config-manager";
+import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentDetector } from "../services/augment-detector";
 import {
   buildDiagnosticsText,
@@ -23,7 +24,8 @@ export class UsageCommands {
     private usageTracker: UsageTracker,
     private statusBarManager: StatusBarManager,
     private configManager: ConfigManager,
-    private augmentDetector: AugmentDetector
+    private augmentDetector: AugmentDetector,
+    private auggieCliSource?: AuggieCliSource
   ) {}
 
   registerCommands(): vscode.Disposable[] {
@@ -336,6 +338,9 @@ export class UsageCommands {
           hasCookie: apiClient?.hasCookie() ?? false,
           hasRealData: this.usageTracker.hasRealUsageData(),
           dataSource: this.usageTracker.getDataSource(),
+          dataSourceMode: this.configManager.getDataSource(),
+          cliDetected: this.auggieCliSource?.isCliDetectedCached() ?? false,
+          cliAuthenticated: this.auggieCliSource?.isAuthenticatedCached() ?? false,
           usage: {
             used: this.usageTracker.getCurrentUsage(),
             limit: this.usageTracker.getCurrentLimit(),

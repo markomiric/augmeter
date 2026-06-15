@@ -22,7 +22,7 @@ Augment credits/usage meter for the VS Code status bar. Color cues, one-click re
 - CSV export for usage snapshots
 - Unified JSON bundle export (usage + provider health + config summary)
 - Diagnostics command for support reports
-- Secure cookie sign-in (stored in VS Code Secrets)
+- Automatic sign-in via the Auggie CLI (no cookie needed) with secure cookie fallback (stored in VS Code Secrets)
 - Auto-refresh on window focus and configurable interval (1-300s)
 - Accessible colors and high-contrast support
 
@@ -52,6 +52,21 @@ code-insiders --install-extension kamacode.augmeter
 
 ## Quick start
 
+### Automatic (recommended): Auggie CLI
+
+If you have the [Auggie CLI](https://docs.augmentcode.com/cli/overview) installed and signed in (`auggie login`), there is nothing to do — Augmeter detects it and shows your usage with **zero sign-in steps**. If the CLI is installed but signed out, clicking **"Augmeter"** in the status bar offers a one-click `auggie login` (opens a terminal; sign-in happens in your browser).
+
+```sh
+npm install -g @augmentcode/auggie
+auggie login
+```
+
+If the CLI isn't found (e.g. installed via a version manager VS Code can't see), set `augmeter.auggieCli.path` to the binary's full path.
+
+### Fallback: session cookie
+
+Without the CLI, Augmeter falls back to cookie sign-in:
+
 1. Install the extension and reload VS Code.
 2. Click **"Augmeter"** in the status bar.
 3. Your browser opens https://app.augmentcode.com. Copy the `_session` cookie value — Augmeter watches the clipboard and detects it automatically.
@@ -60,6 +75,8 @@ code-insiders --install-extension kamacode.augmeter
 
 4. Once signed in, the status bar shows a spinner while loading, then your real usage numbers.
 5. Click the status bar anytime to refresh.
+
+The source is configurable via `augmeter.dataSource`: `auto` (default, CLI preferred), `auggie-cli` (CLI only), or `cookie` (legacy behavior).
 
 ## Usage
 
@@ -74,7 +91,7 @@ code-insiders --install-extension kamacode.augmeter
 **Commands** (Command Palette):
 
 - **Augmeter: Refresh Usage** — fetch latest data now
-- **Augmeter: Sign In** — authenticate with your session cookie
+- **Augmeter: Sign In** — authenticate via the Auggie CLI or your session cookie
 - **Augmeter: Sign Out** — clear stored credentials
 - **Augmeter: Open Usage Dashboard** — open trend/target dashboard
 - **Augmeter: Export Usage History (CSV)** — export local snapshots

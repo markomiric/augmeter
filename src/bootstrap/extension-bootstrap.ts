@@ -3,6 +3,7 @@
  * wiring up dependencies, registering commands, and starting background services.
  */
 import * as vscode from "vscode";
+import { AuggieCliSource } from "../services/auggie-cli-source";
 import { AugmentDetector } from "../services/augment-detector";
 import { UsageTracker } from "../features/usage/usage-tracker";
 import { StatusBarManager } from "../ui/status-bar";
@@ -42,6 +43,7 @@ export class ExtensionBootstrap {
   private storageManager!: StorageManager;
   private configManager!: ConfigManager;
   private augmentDetector!: AugmentDetector;
+  private auggieCliSource!: AuggieCliSource;
   private usageTracker!: UsageTracker;
   private statusBarManager!: StatusBarManager;
   private authCommands!: AuthCommands;
@@ -84,11 +86,13 @@ export class ExtensionBootstrap {
     this.storageManager = new StorageManager(context);
     this.configManager = new ConfigManager();
     this.augmentDetector = new AugmentDetector(context, () => this.configManager.getApiBaseUrl());
+    this.auggieCliSource = new AuggieCliSource(() => this.configManager.getAuggieCliPath());
     this.usageTracker = new UsageTracker(this.storageManager, this.configManager);
     this.statusBarManager = new StatusBarManager(
       this.usageTracker,
       this.configManager,
-      this.augmentDetector
+      this.augmentDetector,
+      this.auggieCliSource
     );
 
     // Initialize command handlers
@@ -96,7 +100,9 @@ export class ExtensionBootstrap {
       this.augmentDetector,
       this.usageTracker,
       this.statusBarManager,
-      this.configManager
+      this.configManager,
+      this.auggieCliSource,
+      this.storageManager
     );
 
     // Initialize usage command handlers
@@ -104,7 +110,8 @@ export class ExtensionBootstrap {
       this.usageTracker,
       this.statusBarManager,
       this.configManager,
-      this.augmentDetector
+      this.augmentDetector,
+      this.auggieCliSource
     );
 
     this.providerRegistry = new ProviderRegistry([
@@ -141,7 +148,8 @@ export class ExtensionBootstrap {
       this.augmentDetector,
       this.usageTracker,
       this.statusBarManager,
-      this.providerUsageService
+      this.providerUsageService,
+      this.auggieCliSource
     );
   }
 

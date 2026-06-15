@@ -47,8 +47,29 @@ describe("Smart Sign In (unit)", () => {
     const configManager = {
       getSmartSignInQuickWatchMs: () => options?.quickWatchMs ?? 0,
       getSmartSignInWebsiteWatchMs: () => options?.websiteWatchMs ?? 500,
+      getDataSource: () => "cookie",
     } as any;
-    const auth = new AuthCommands(augmentDetector, usageTracker, statusBarManager, configManager);
+
+    const auggieCliSource = {
+      detectBinary: async () => null,
+      fetchUsage: async () => ({ status: "cli-missing" }),
+      isAuthenticatedCached: () => false,
+      reset: () => {},
+    } as any;
+
+    const storageManager = {
+      isCliAuthDisabled: () => false,
+      setCliAuthDisabled: async () => {},
+    } as any;
+
+    const auth = new AuthCommands(
+      augmentDetector,
+      usageTracker,
+      statusBarManager,
+      configManager,
+      auggieCliSource,
+      storageManager
+    );
     const disposables = auth.registerCommands();
 
     return { apiClient, augmentDetector, usageTracker, statusBarManager, calls, disposables };
