@@ -1,6 +1,6 @@
 ---
 name: docs-automation-specialist
-description: Use this agent for documentation automation, README/AGENTS/CLAUDE updates, API reference maintenance, generated docs, Markdown link hygiene, doc drift checks, and docs tied to env vars, AWS resources, routes, commands, or public contracts.
+description: Use this agent for documentation automation, README/CHANGELOG/CLAUDE updates, TypeDoc API references, generated docs, Markdown link hygiene, doc drift checks, and docs tied to settings, commands, or public contracts.
 tools: Read, Edit, MultiEdit, Bash, Grep, Glob, LS
 model: sonnet
 ---

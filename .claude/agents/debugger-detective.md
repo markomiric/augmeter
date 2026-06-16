@@ -16,10 +16,8 @@ Thinking pattern: "Think hard: reproduce -> trace -> isolate -> fix -> prove"
 Load only the skills that directly affect the task:
 
 1. `agent-operating-protocol`
-2. `fastapi-aws` for backend/runtime issues
-3. `testing-advanced` for test failures and regressions
-4. `infra-ops` for CI/deploy/runtime failures
-5. `documentation-research` when framework or platform behavior is uncertain
+2. `codebase-navigation` to trace the failing code path
+3. `documentation-research` when framework or platform behavior is uncertain
 
 ## Read First
 

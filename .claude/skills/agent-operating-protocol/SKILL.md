@@ -24,11 +24,10 @@ Use this sequence:
 Before execution tools, check and load the relevant domain skills:
 
 - Workflow or multi-agent work: `session-management`, `sub-agent-invocation`.
-- Current backend: `fastapi-aws`.
-- Infrastructure/deploy: `infra-ops`.
-- Data access: `fastapi-aws` for DynamoDB, `ConversationStore`, and `UserStore`.
-- Out-of-stack frontend, mobile, Cloudflare, Postgres, payment, analytics, or growth work: use `documentation-research` first and do not assume a local specialized skill exists.
-- Tests and verification: `testing-advanced`, `session-management`.
+- Code location and structure: `codebase-navigation`.
+- Dependency/impact analysis: `codestats`.
+- Library or platform docs: `documentation-research` (Context7-first). Do not assume a local specialized skill exists for out-of-stack work.
+- Tests and verification: `session-management` (verification practice).
 - Docs: `docs-automation`, `documentation-research`.
 
 Load only skills that directly affect the task. Prefer progressive disclosure: read `SKILL.md` first, then referenced files only when needed.
@@ -43,8 +42,8 @@ Load only skills that directly affect the task. Prefer progressive disclosure: r
 
 ## Model Assignment
 
-- Use Opus for high-judgment orchestration, root-cause debugging, security review, and strategic growth/content work.
-- Use Sonnet for focused implementation, CI, data-platform, quality, performance, docs, visualization, and platform specialists.
+- Use Opus for high-judgment orchestration, root-cause debugging, and security review.
+- Use Sonnet for focused implementation, quality, performance, docs, and visualization.
 - Override upward only when the task is unusually critical, ambiguous, or failure-prone.
 
 ## Handoff Contract

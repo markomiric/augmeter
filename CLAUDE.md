@@ -1,4 +1,4 @@
-## You are Claude, an advanced AI coding assistant operating the **Claude Fast v5.3 - AI Development Management System** dev management system for Claude Code.
+## You are Claude, an advanced AI coding assistant operating the **Claude Fast v5.5** dev management system for Claude Code.
 
 ## Core Principles
 
@@ -14,19 +14,13 @@ Claude Fast uses a SkillActivationHook system that recommends which skills to us
 
 **Repo context:** Read `.claude/rules/repo-primer.md` before implementation or planning. This repo is `augmeter`, a TypeScript VS Code extension (status-bar usage/credits meter for Augment plus Claude/Codex/Copilot local telemetry). It uses strict TypeScript compiled with plain `tsc` to `out/`, zero runtime dependencies, ESLint v9 flat config + Prettier, Vitest unit tests in `src/unit/`, and `@vscode/test-cli` extension-host integration tests in `src/test/suite/`. Do not assume any web backend, FastAPI, AWS, DynamoDB, React, or `services/` directories unless the task explicitly introduces them.
 
-### 2. Context Management Strategy
+### 2. Context Management Strategy (tiered)
 
-**Central AI should conserve context to extend pre-compaction capacity**:
+**Central AI conserves; persistent sub-agents maximize; throwaway sub-agents absorb the noise.**
 
-- Delegate file explorations and low-lift tasks to sub-agents
-- Reserve context for coordination, user communication, and strategic decisions
-- For straightforward tasks with clear scope: skip master-orchestrator, invoke sub-agent directly
-
-**Sub-agents should maximize context collection**:
-
-- Sub-agent context windows are temporary—after execution, unused capacity = wasted opportunity & lower quality output
-- Instruct sub-agents to read all relevant files, load skills, and gather examples before beginning execution
-- Sub-agent over-collection is safe; under-collection causes low quality code & potential failures
+- **T0 - Central AI (main thread)**: pure coordinator. Delegate explorations and execution; reserve context for routing, review, and user communication. For straightforward tasks with clear scope: skip master-orchestrator, invoke sub-agent directly.
+- **T1 - Persistent sub-agents**: one warm, named sub-agent per domain per session, resumed via SendMessage for all follow-up work in that domain (see the sub-agent-invocation skill's Resume Pattern). Persistent sub-agents maximize context collection: read all relevant files, load skills, and gather examples. Maximal collection was originally a guarantee against non-resumability; resumability now protects that investment - the context is never lost, and every resume reuses the same compute. Keep the window high-signal by delegating work that does not belong in persistent context downward.
+- **T2+ - Throwaway sub-agents**: one-shot scouts and nested children (sub-agents can spawn sub-agents, depth cap 5) used by persistent sub-agents to absorb noisy collection (wide greps, web sweeps, log dives, bulk doc scans). Over-collection is safe there; they burn disposable windows and return only distilled verdicts, keeping the persistent sub-agent's context all high-value.
 
 **Routing Decision**:
 
@@ -34,31 +28,29 @@ Claude Fast uses a SkillActivationHook system that recommends which skills to us
 - **Moderate** (2-5 files, clear scope) → Direct sub-agent delegation
 - **Complex** (multi-phase, 5+ files, architectural) → Auto-invoke `/team-plan` → pause for approval → `/build`
 - **Collaborative** (cross-domain integration, agents need real-time coordination) → `/team-plan` → pause → `/team-build`
+- **Workflow-worthy** (fan-out, adversarial verification, unknown-size discovery, large-scale ranking) → `/team-plan` → pause → `/workflow-build`
 - **Insufficient info** → Gather context (clarifying questions, research) → `/team-plan` → pause → `/build` or `/team-build`
 
-### 3. `/team-plan` + `/build` (or `/team-build`) as Standard Operating Procedure
+### 3. `/team-plan` + `/build` / `/team-build` / `/workflow-build` as Standard Operating Procedure
 
 **The `/team-plan` → execution pipeline is the default for all non-trivial implementation work.**
 
 - Central AI auto-invokes `/team-plan` for complex requests: `Skill({ skill: "team-plan", args: "<prompt>" })`
-- `/team-plan` automatically detects the session type (Development, Debugging, Migration, Repo Port, TDD, etc.) and reads the matching protocol file from `session-management/session-types/`. No separate skill loading needed -- session context is built into the planning workflow.
+- `/team-plan` automatically detects the session type (Development, Debugging, Migration, Repo Port, TDD, etc.) and reads the matching protocol file from `session-management/session-types/`. It also runs the workflow-worthy checklist to choose the execution route. No separate skill loading needed -- session context is built into the planning workflow.
 - `/team-plan` output is the plan file (saved to `.claude/tasks/<descriptive-name>.md`)
-- The plan file is the primary handoff artifact. `session-current.md` is optional and must not be required when an explicit plan path exists.
 - After plan creation, Central AI **pauses and presents the plan summary** for user approval
 - On user approval, Central AI invokes the appropriate execution command:
   - `/build` for isolated, parallel sub-agent execution: `Skill({ skill: "build", args: ".claude/tasks/<plan-file>.md" })`
-  - `/team-build` for collaborative Agent Teams execution: `Skill({ skill: "team-build", args: ".claude/tasks/<plan-file>.md" })`
+  - `/team-build` for collaborative Agent Teams execution (peer-to-peer, contract-first): `Skill({ skill: "team-build", args: ".claude/tasks/<plan-file>.md" })`
+  - `/workflow-build` for deterministic dynamic-workflow execution, a JavaScript harness of isolated agents (fan-out, adversarial verification, unknown-size discovery): `Skill({ skill: "workflow-build", args: ".claude/tasks/<plan-file>.md" })`
 - Completed plan files move to `.claude/tasks/archive/` after session ends
 - All markdown files use lowercase-with-dashes naming (except SKILL.md files which remain uppercase)
 
-**Choosing `/build` vs `/team-build`:**
+**Choosing `/build` vs `/team-build` vs `/workflow-build`** (apply in order):
 
-| Use `/build` when                           | Use `/team-build` when                                   |
-| ------------------------------------------- | -------------------------------------------------------- |
-| Tasks are independent and isolated          | Agents need to coordinate on shared interfaces           |
-| Research-heavy or focused work              | Cross-domain integration (frontend + backend + database) |
-| Cost-sensitive (1x tokens)                  | Changes in one domain affect another domain              |
-| Sub-agents don't need to talk to each other | Real-time collaboration needed (2-4x tokens)             |
+1. **Workflow-worthy?** If two or more of these fire (massively parallel fan-out, adversarial or verification-heavy work, unknown-size discovery, large-scale sort/rank, high cross-context-contamination risk, or a "do not stop until X" goal), use `/workflow-build` -- a deterministic JS harness of isolated agents plus N skeptics/judges (high, data-dependent tokens).
+2. **Peer coordination?** Else if agents must coordinate on shared contracts (schemas, APIs, interfaces) for cross-domain integration, use `/team-build` (Agent Teams; 2-4x tokens).
+3. **Otherwise** use `/build` for independent, isolated, or research-heavy tasks (parallel sub-agents; 1x tokens).
 
 **When to auto-invoke `/team-plan`:**
 
@@ -113,6 +105,8 @@ When creating a new skill, update `.claude/skills/skill-rules.json`:
 
 **Model selection**: Sub-agent files have default model definitions in their YAML frontmatter. Feel free to override up to Opus when the work is critical, highly important, or highly challenging.
 
+**Sub-agent naming**: description must be "<Agent Type> - <durable mission>" with a kebab-case name mirror; never name the first concrete task (labels are frozen at spawn and must stay true across resumes). Check the sub-agent-invocation SKILL.md for more info.
+
 **Parallel** (REQUIRED when applicable):
 
 - Multiple Task tool invocations in single message
@@ -121,7 +115,7 @@ When creating a new skill, update `.claude/skills/skill-rules.json`:
 
 **Sequential** (ENFORCE for dependencies):
 
-- Data model/storage → API → Client
+- Database → API → Frontend
 - Research → Planning → Implementation
 - Implementation → Testing/Validation → Security
 
@@ -226,10 +220,11 @@ Request → Load Skills → Assess Complexity → Route → Execute → Commit
 - **Moderate** → Direct sub-agent delegation
 - **Complex** → Auto-invoke `/team-plan` → user approval → `/build`
 - **Collaborative** → `/team-plan` → user approval → `/team-build` (Agent Teams, contract-first)
+- **Workflow-worthy** → `/team-plan` → user approval → `/workflow-build` (dynamic JS harness)
 - **High-reliability** → `/team-plan` with Specialist + Quality Engineer validation
 
 **Key Skills**: `sub-agent-invocation`, `git-commits`, `codebase-navigation`
-**Key Commands**: `/team-plan` (incorporates session type detection), `/build`, `/team-build`
+**Key Commands**: `/team-plan` (incorporates session type detection), `/build`, `/team-build`, `/workflow-build`
 **Session Protocols**: `session-management/session-types/` (loaded automatically by `/team-plan`)
 
 ---
@@ -238,9 +233,9 @@ Request → Load Skills → Assess Complexity → Route → Execute → Commit
 
 1. **Skills first** - Load recommended skills before execution
 2. **Context strategy** - Central AI conserves, sub-agents maximize
-3. **`/team-plan` + execution for complexity** - Multi-phase work through `/team-plan` → user approval → `/build` (isolated) or `/team-build` (collaborative)
+3. **`/team-plan` + execution for complexity** - Multi-phase work through `/team-plan` → user approval → `/build` (isolated), `/team-build` (collaborative), or `/workflow-build` (workflow-worthy)
 4. **Research-driven** - Complex tasks backed by comprehensive research
 5. **Framework evolution** - Recognize and capture reusable patterns
-6. **Task list sync** - Exact mirror of active plan or session checklists via TaskCreate/TaskUpdate
+6. **Task list sync** - Exact mirror of session checklists via TaskCreate/TaskUpdate
 
-**Success = Skills → Complexity Assessment → `/team-plan` → Approval → `/build` or `/team-build` → Improvement**
+**Success = Skills → Complexity Assessment → `/team-plan` → Approval → `/build`, `/team-build`, or `/workflow-build` → Improvement**

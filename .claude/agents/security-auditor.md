@@ -1,6 +1,6 @@
 ---
 name: security-auditor
-description: Use this agent for security review of FastAPI, Cognito/API Gateway auth, JWT claim handling, DynamoDB owner isolation, IAM/serverless resources, CORS, secrets, dependency risk, and OWASP concerns.
+description: Use this agent for security review of the VS Code extension: secret/cookie/token handling (SecretStorage, never logging credentials), subprocess and input safety, VS Code API surface, supply-chain/dependency risk, and OWASP concerns.
 tools: Read, Bash, Grep, Glob, LS
 model: opus
 ---
@@ -16,10 +16,8 @@ Thinking pattern: "Think hard: trust boundary -> authn/authz -> input -> data ex
 Load only the skills that directly affect the task:
 
 1. `agent-operating-protocol`
-2. `fastapi-aws`
-3. `infra-ops` for IAM, Serverless, or AWS resource changes
-4. `testing-advanced` when recommending security regression tests
-5. `documentation-research` for current security-sensitive API docs
+2. `codebase-navigation` to map the affected code paths
+3. `documentation-research` for current security-sensitive API docs
 
 ## Read First
 

@@ -8,13 +8,13 @@ hooks:
     - hooks:
         - type: command
           command: >-
-            node "$CLAUDE_PROJECT_DIR/.claude/hooks/Validators/validate-new-file.mjs"
-            --directory "$CLAUDE_PROJECT_DIR/.claude/tasks"
+            node .claude/hooks/Validators/validate-new-file.mjs
+            --directory .claude/tasks
             --extension .md
         - type: command
           command: >-
-            node "$CLAUDE_PROJECT_DIR/.claude/hooks/Validators/validate-file-contains.mjs"
-            --directory "$CLAUDE_PROJECT_DIR/.claude/tasks"
+            node .claude/hooks/Validators/validate-file-contains.mjs
+            --directory .claude/tasks
             --extension .md
             --contains "## Task Description"
             --contains "## Objective"
@@ -43,9 +43,8 @@ GENERAL_PURPOSE_AGENT: `general-purpose`
 - If no `USER_PROMPT` is provided, stop and ask the user to provide it.
 - If `ORCHESTRATION_PROMPT` is provided, use it to guide team composition, task granularity, dependency structure, and parallel/sequential decisions.
 - Carefully analyze the user's requirements provided in the USER_PROMPT variable
-- Read `.claude/rules/repo-primer.md` before selecting agents, skills, files, or validation commands.
 - Determine the task type (chore|feature|refactor|fix|enhancement) and complexity (simple|medium|complex)
-- Think hard about the best approach to implement the requested functionality or solve the problem
+- Think deeply (ultrathink) about the best approach to implement the requested functionality or solve the problem
 - Understand the codebase directly without subagents to understand existing patterns and architecture
 - Follow the Plan Format below to create a comprehensive implementation plan
 - Include all required sections and conditional sections based on task type and complexity
@@ -55,8 +54,21 @@ GENERAL_PURPOSE_AGENT: `general-purpose`
 - Include code examples or pseudo-code where appropriate to clarify complex concepts
 - Consider edge cases, error handling, and scalability concerns
 - Understand your role as the team lead. Refer to the `Team Orchestration` section for more details.
-- After determining the session type, read the corresponding protocol file from `.claude/skills/session-management/session-types/`. Apply session-type-specific rules to the plan (e.g., migration plans must include a Feature Inventory, repo-port plans must include Source UI/UX Reference, debugging plans must document root cause hypothesis).
-- Treat the saved plan as the primary source of truth for `/build` and `/team-build`. `session-current.md` is optional and must not be required for execution.
+- After determining the session type, read the corresponding protocol file from `.claude/skills/session-management/session-types/`. Apply session-type-specific rules to the plan (e.g., migration plans must include a Feature Inventory, debugging plans must document root cause hypothesis).
+- After determining the session type, ALSO apply the Workflow-Worthy Checklist below to decide the execution mode. If two or more signals fire, the task is workflow-worthy: read `.claude/skills/session-management/practices/workflow-patterns.md` for the six patterns and emission rules, emit a `## Workflow Harness` section (template below) choosing the pattern(s) that fit, and recommend `/workflow-build` in the Report instead of `/build` or `/team-build`. If fewer than two fire, do not load the patterns file; route to `/build` or `/team-build` as usual. The session type is still recorded; the workflow is the execution primitive, not a replacement for the protocol.
+
+### Workflow-Worthy Checklist
+
+Apply this during Step 1, alongside session-type detection. Reading this checklist is enough to decide the execution mode; you do not need any other file to make the call. A task is workflow-worthy when its work is data-dependent, adversarial, or unbounded in a way a fixed agent graph cannot express. Two or more boxes checked points to a dynamic workflow rather than `/build` or `/team-build`:
+
+- [ ] **Massively parallel / fan-out**: the task decomposes into many small independent units (per-claim, per-file, per-row, per-rule) where each unit benefits from its own clean context window.
+- [ ] **Adversarial or verification-heavy**: the task asks Claude to verify, judge, grade, or rank its own or others' output, where self-preferential bias is a real risk and N independent skeptics or judges would raise reliability.
+- [ ] **Unknown-size discovery**: the amount of work is not known in advance (find ALL bugs, ALL recurring corrections, ALL broken links) and a fixed pass count would either stop early or waste compute.
+- [ ] **Large-scale sort or rank**: ordering more rows or candidates than fit reliably in one prompt (1000+ rows), where a single sort prompt degrades and a tournament or bucket-rank-then-merge is more reliable.
+- [ ] **High cross-context-contamination risk**: running the units in one context would let them bleed into each other (one finding biasing the next, one hypothesis anchoring the rest).
+- [ ] **"Do not stop until X" goal**: the success criterion is a hard completion bar (no new findings, zero errors in logs) rather than a fixed deliverable.
+
+If zero or one box is checked, route to `/build` or `/team-build` as usual. The token cost of a workflow is real (workflows use significantly more tokens), so the bar is deliberately set at two or more.
 
 ### Team Orchestration
 
@@ -157,32 +169,34 @@ Task({
 // Returns: agentId (e.g., "a1b2c3")
 ```
 
-#### Resume Pattern
+#### Resume Pattern (SendMessage)
 
-Store the agentId to continue an agent's work with preserved context:
+A completed agent's context can be resumed. The spawn result ends with its agentId; route follow-up work there instead of fresh spawns:
 
 ```typescript
 // First deployment - agent works on initial task
 Task({
-  description: "Build user service",
+  description: "General Purpose - user service",
   prompt: "Create the user service with CRUD operations...",
   subagent_type: "general-purpose",
 });
-// Returns: agentId: "abc123"
+// Result ends with: agentId: "aXXXX" (use SendMessage with to: '...' to continue)
 
-// Later - resume SAME agent with full context preserved
-Task({
-  description: "Continue user service",
-  prompt: "Now add input validation to the endpoints you created...",
-  subagent_type: "general-purpose",
-  resume: "abc123", // Continues with previous context
+// Later - resume the SAME agent with full context preserved
+SendMessage({
+  to: "aXXXX",
+  summary: "add validation",
+  message: "Now add input validation to the endpoints you created...",
 });
 ```
 
+The old Task-tool `resume` parameter was removed in Claude Code v2.1.77 and fails today. See the `sub-agent-invocation` skill's Resume Pattern for the full mechanics (delivery behavior, the `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` prerequisite and fresh-spawn fallback, persistence layers, compaction caveat, operating rules).
+
 When to resume vs start fresh:
 
-- **Resume**: Continuing related work, agent needs prior context
+- **Resume**: Continuing related work in the same domain, agent needs prior context
 - **Fresh**: Unrelated task, clean slate preferred
+- **Fork**: One-shot work that needs parent context (parent-context inheritance plus cache warmth, no identity continuity)
 
 #### Parallel Execution
 
@@ -228,15 +242,15 @@ TaskOutput({
 3. **Assign owners** with `TaskUpdate` + `owner`
 4. **Deploy agents** with `Task` to execute assigned work
 5. **Monitor progress** with `TaskList` and `TaskOutput`
-6. **Resume agents** with `Task` + `resume` for follow-up work
+6. **Resume agents** with `SendMessage` to their agentId for follow-up work
 7. **Mark complete** with `TaskUpdate` + `status: "completed"`
 
 ## Workflow
 
 IMPORTANT: **PLANNING ONLY** - Do not execute, build, or deploy. Output is a plan document.
 
-1. Analyze Requirements - Parse the USER_PROMPT to understand the core problem and desired outcome. Determine the session type by checking the user's request against the Session Type Detection table in `.claude/skills/session-management/SKILL.md`. Read the matching session type file (e.g., `session-types/debugging.md` for bug fixes, `session-types/repo-port.md` for porting from existing repos). The session type determines which protocols apply and whether special plan sections are required.
-2. Understand Codebase - Without subagents, directly understand existing patterns, architecture, and relevant files. **Recommended for large refactors, migrations, or codebase restructuring:** If not already provided in the USER_PROMPT, run the `codestats` skill to generate dependency graph data (blast radius, hotspot scores, dead code, centrality metrics). Use this data to inform the Relevant Files section, task ordering, and risk assessment in the plan. Key commands: `codestats impact --changed --json` (what breaks), `codestats communities --coupling --json` (module boundaries), `codestats flows --json` (critical paths), `codestats cycles --json` (circular deps to break first). **For repo-port sessions (porting from an existing repository):** When the session type is "Repo Port" (user references a source repo with "port from", "rebuild", "based on", or a GitHub URL), analyze the source repo across TWO layers: (1) Data/API layer -- endpoints, schemas, data flows (standard), and (2) UI/UX layer -- page layouts, interaction flows, component patterns, visual design tricks (frequently missed). Read the source repo's actual component files, not just API/data files. Document both layers in the plan's "Source UI/UX Reference" section. See `session-types/repo-port.md` for the full Source Analysis Phase protocol.
+1. Analyze Requirements - Parse the USER_PROMPT to understand the core problem and desired outcome. Determine the session type by checking the user's request against the Session Type Detection table in `.claude/skills/session-management/SKILL.md`. Read the matching session type file (e.g., `session-types/debugging.md` for bug fixes, `session-types/migration.md` for refactors or porting code in). The session type determines which protocols apply and whether special plan sections are required.
+2. Understand Codebase - Without subagents, directly understand existing patterns, architecture, and relevant files. **Recommended for large refactors, migrations, or codebase restructuring:** If not already provided in the USER_PROMPT, run the `codestats` skill to generate dependency graph data (blast radius, hotspot scores, dead code, centrality metrics). Use this data to inform the Relevant Files section, task ordering, and risk assessment in the plan. Key commands: `codestats impact --changed --json` (what breaks), `codestats communities --coupling --json` (module boundaries), `codestats flows --json` (critical paths), `codestats cycles --json` (circular deps to break first).
 3. Design Solution - Develop technical approach including architecture decisions and implementation strategy
 4. Define Team Members - Use `ORCHESTRATION_PROMPT` (if provided) to guide team composition. Identify specialist agents from `.claude/agents/*.md` or use `general-purpose`. For validation tasks, always assign to `quality-engineer`. Document in plan.
 5. Define Step by Step Tasks - Use `ORCHESTRATION_PROMPT` (if provided) to guide task granularity and parallel/sequential structure. Write out tasks with IDs, dependencies, assignments. Document in plan.
@@ -257,7 +271,7 @@ IMPORTANT: **PLANNING ONLY** - Do not execute, build, or deploy. Output is a pla
 
 <describe the task in detail based on the prompt>
 
-**Session Type**: <session type from detection table: Development | Debugging | Migration | Repo Port | Review | TDD | Research | Growth>
+**Session Type**: <session type from detection table: Development | Debugging | Migration | Review | TDD | Research>
 
 ## Objective
 
@@ -274,34 +288,66 @@ IMPORTANT: **PLANNING ONLY** - Do not execute, build, or deploy. Output is a pla
 <describe the proposed solution approach and how it addresses the objective>
 </if>
 
-<if session type is Repo Port:>
+<if the task is workflow-worthy (two or more signals from the workflow-worthy checklist):>
 
-## Source UI/UX Reference
+## Workflow Harness
 
-> MANDATORY for repo-port sessions. Documents the source app's visual and interaction
-> patterns that frontend agents MUST follow. Without this, frontend agents default to
-> generic DataTable/Sheet patterns.
+> Emitted only when the task is workflow-worthy. Consumed by `/workflow-build`, which
+> translates this section into a real JavaScript harness and runs it via the Workflow
+> tool. Ground every field in practices/workflow-patterns.md.
 
-### Layout Patterns
+### Chosen Pattern(s)
 
-<describe page layouts from the source: panel splits, stacking, responsive behavior.
-Be specific: "Keywords page uses two-panel flex split (table left, SERP + trend chart right)"
-not "Keywords page shows data in a table">
+<one or more of: classify-and-act, fan-out-and-synthesize, adversarial-verification,
+generate-and-filter, tournament, loop-until-done. State the composite shape in one
+sentence, e.g. "fan-out one verifier per claim (pipeline), then adversarial second
+pass, then synthesize (barrier)".>
 
-### Interaction Flows
+### Meta
 
-<describe cause-and-effect on user actions: "Clicking a keyword row highlights it and
-updates BOTH the stats bar and the right panel">
+- name: <kebab-case workflow name>
+- description: <one sentence describing what the harness does>
+- phases: <ordered list of phase titles, e.g. ["extract", "verify", "refute", "synthesize"]>
 
-### Component Patterns
+### Agent Roles
 
-<describe reusable UI patterns that differ from defaults: tabbed cards, inline panels,
-circular score badges, search history, filter panels, export dropdowns>
+<one entry per distinct agent role in the harness>
+- Role: <name, e.g. "claim-extractor">
+  - Phase: <which phase it runs in>
+  - Prompt: <the actual prompt text the agent receives>
+  - Schema: <reference to a schema in the Structured Output Schemas block, or "none (returns text)">
+  - Model: <"inherit" (default) or a named model with a one-line justification>
+  - Isolation: <"none" (default) or "worktree" with justification (parallel file mutation only)>
 
-### Source Files to Read
+### Structured Output Schemas
 
-<list specific source component files frontend agents must read before building.
-Format: file path -> what to learn from it>
+<one JSON Schema object per structured return, named so Agent Roles can reference them>
+
+- Schema "<name>": <the JSON Schema object>
+
+### Token Budget
+
+- total: <integer cap, e.g. 200000 ("use Nk tokens")>
+- enforcement: <where the harness checks budget.remaining() and what it does at the cap>
+
+### Worktree Usage
+
+<"none" if no agent mutates files, OR list which roles use isolation:'worktree' and why>
+
+### Stop Condition
+
+<required for loop-until-done; "n/a" otherwise. State the exact condition, e.g.
+"stop after K=2 consecutive rounds that surface zero new findings">
+
+### Verification / Adversarial Sub-Structure
+
+<if the harness verifies or judges, describe it: N skeptics per finding prompted to
+refute, majority kills; OR perspective-diverse verifiers each with a distinct lens; OR
+a judge panel scoring N independent attempts. Name N.>
+
+### Dropped-Coverage Logging
+
+<what the harness log()s when coverage is bounded or items are dropped (no silent caps)>
 
 </if>
 
@@ -343,15 +389,14 @@ Use these files to complete the task:
 
 <list the team members you'll use to execute the plan. Use specialist agents for building and quality-engineer for validation.>
 
-Available default specialist agents for this repo: `backend-engineer`, `database-platform-engineer`, `ci-release-engineer`, `docs-automation-specialist`, `security-auditor`, `performance-optimizer`, `quality-engineer`, `debugger-detective`, `deep-researcher`, `code-simplifier`, `visual-explainer`, `general-purpose`
-
-Out-of-stack work such as frontend, mobile, growth, SEO, payment, Cloudflare, Postgres, or Drizzle requires explicit user scope and current docs research before selecting any non-default specialist.
+Available specialist agents: `quality-engineer`, `security-auditor`, `performance-optimizer`, `debugger-detective`, `code-simplifier`, `docs-automation-specialist`, `deep-researcher`, `general-purpose` (use `general-purpose` for TypeScript/VS Code implementation work, briefed fully)
 
 - Specialist
   - Name: <unique name for this specialist - this allows you and other team members to reference THIS specialist by name. Take note there may be multiple specialists, the name makes them unique.>
   - Role: <the single role and focus of this specialist>
   - Agent Type: <the subagent type matching the specialist's domain from the available list above, or GENERAL_PURPOSE_AGENT for cross-domain work>
-  - Resume: <default true. This lets the agent continue working with the same context. Pass false if you want to start fresh with a new context.>
+  - Resume: <default true. Follow-up work routes to this agent via SendMessage to its agentId, preserving its context. Pass false to always spawn fresh.>
+  - Spawn Description: <required naming convention: spawn `description` = `<Agent Type> - <durable mission>` (plain hyphen) with `name` as its kebab-case mirror; never name the first concrete task>
 - Quality Engineer (Validator)
   - Name: <unique name, e.g., "validator" or "quality-check">
   - Role: Validate completed work against acceptance criteria (read-only inspection mode)
@@ -422,10 +467,8 @@ Apply these gates during execution:
 Execute these commands to validate the task is complete:
 
 <list specific commands to validate the work. Be precise about what to run>
-- Example: `cd services/backend && uv run pytest tests/` - Run backend tests
-- Example: `cd services/backend && uv run ruff format . --check` - Verify formatting
-- Example: `cd services/backend && uv run ruff check .` - Run lint
-- Example: `cd services/backend && uv run bandit -r . -c pyproject.toml` - Run security scan
+- Example: `pnpm build` - Verify the project builds without errors
+- Example: `pnpm test` - Run the test suite
 
 ## Notes
 
@@ -455,3 +498,5 @@ Team members:
 When you're ready, you can execute the plan in a new agent by running:
 /build <replace with path to plan>
 ```
+
+If the task is workflow-worthy (the plan contains a `## Workflow Harness` section), recommend `/workflow-build <path to plan>` instead of `/build`, and name the chosen pattern(s).

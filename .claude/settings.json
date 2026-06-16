@@ -58,11 +58,11 @@
       "Skill(sub-agent-invocation)",
       "Skill(git-commits)",
       "Skill(agent-operating-protocol)",
-      "Skill(fastapi-aws)",
-      "Skill(infra-ops)",
-      "Skill(testing-advanced)",
+      "Skill(agentic-builder)",
+      "Skill(codestats)",
       "Skill(docs-automation)",
-      "Skill(documentation-research)"
+      "Skill(documentation-research)",
+      "Skill(visual-explainer)"
     ],
     "deny": [],
     "ask": []

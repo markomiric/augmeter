@@ -1,83 +1,102 @@
 ---
 name: git-commits
-description: Git protocol for explicit commit, branch, push, and status requests. Use conventional commits, preserve unrelated work, validate before committing, and never run destructive git commands without permission.
+description: Git protocol with intelligent commit format
 ---
 
 # Git Protocol
 
-Use this skill when the user asks for git work: status, staging, commit messages, commits, branches, pushes, merges, or release handoff.
+## 🔄 Mandatory Auto-Commit System
 
-Do not commit merely because implementation work is complete. Commit only when the user asks, or when a command/plan explicitly requires a commit and the user has approved that workflow.
+**🚨 CRITICAL**: You MUST create a commit when session work completes. NO EXCEPTIONS.
 
-## Commit Workflow
+### Commit Triggers (ANY require immediate commit)
 
-1. **Inspect status first.** Run `git status --short` and identify unrelated or user-owned changes.
-2. **Review scope.** Use `git diff -- <path>` and `git diff --cached -- <path>` for files that will be staged.
-3. **Validate.** Run the narrow project commands that match the changed files. Use existing evidence only if it is fresh and after the final edit.
-4. **Stage intentionally.** Stage only files that belong to the requested change. Do not sweep in unrelated untracked files.
-5. **Commit.** Use a conventional commit subject under 50 characters. Add a body with concise bullets for non-trivial changes.
-6. **Report.** Give the commit hash, files included, and validation commands/outcomes.
+1. ✅ Session reaches completion (all Tasks marked `completed`)
+2. ✅ User completes work session
+3. ✅ Significant feature/fix implemented
+4. ✅ Before session archival
+5. ✅ User explicit request
 
-## Message Format
+### Intelligent Commit Orchestration
 
-Subject:
-
-```text
-<type>: <short imperative summary>
+```
+WHEN (All Tasks marked completed via TaskList check) THEN {
+  0. Detect: Use TaskList to verify all tasks have status "completed"
+  1. Analyze changes for the session
+  2. Generate commit message referencing session
+  3. Execute commit with session reference
+  4. Report completion to user
+  5. Prepare session for archival
+}
 ```
 
-Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `build`, `ci`.
+### Pre-Commit Analysis (Enhanced)
 
-Examples:
+- **Scan staged files**: `git diff --cached --name-only`
+- **Classify changes**: feat/fix/refactor/docs/style/test
+- **Check documentation**: Update README if outdated
+- **Group logically**: Decide single vs multi-commit strategy
 
-```text
-feat: add conversation export
-fix: preserve Cognito subject keys
-docs: refresh Claude skill guidance
+### Commit Message Generation
+
+**Format**: `{type}: {summary} - Session [number] completed 🤖`
+
+**Types**: feat, fix, refactor, docs, style, test, build, chore
+
+**Examples**:
+
+- `feat: implement user profile system - Session 001 completed 🤖`
+- `fix: resolve authentication flow issues - Session 002 completed 🤖`
+- `refactor: optimize database connection pooling - Session 003 completed 🤖`
+
+### Multi-Commit Strategy (When Appropriate)
+
+When changes span multiple logical areas:
+
+```bash
+# Example: Frontend + Backend + Database changes
+git add src/components/* && git commit -m "feat: profile UI components - Auto-commit (1/3) 🤖"
+git add src/server/* && git commit -m "feat: profile API endpoints - Auto-commit (2/3) 🤖"
+git add supabase/* && git commit -m "feat: profile database schema - Auto-commit (3/3) 🤖"
 ```
 
-For a non-trivial commit body:
+### Execution Protocol
 
-```text
-feat: add conversation export
+1. **Status Check**: `git status` - understand all changes
+2. **Pre-commit Validation**: `npm run lint && npm run typecheck` (if available)
+3. **Smart Staging**: Stage related files together
+4. **Commit Creation**: Use HEREDOC for complex messages
+5. **Verification**: Confirm commit(s) created
+6. **User Notification**: Report what was committed
 
-- Add owner-scoped export route and schemas
-- Cover conversation/message pagination
-- Regenerate OpenAPI and frontend client
-```
+### ⚠️ Compliance Enforcement
 
-## Multi-Commit Strategy
+Failure to auto-commit when session completes = CRITICAL FAILURE.
+This is MANDATORY, not optional. No exceptions.
 
-Use one commit for one logical change. Split commits when changes are independently reviewable, for example:
+## Core Git Rules
 
-- backend behavior and tests
-- generated API/client artifacts
-- documentation-only updates
-- infrastructure configuration
+### Never Do Without Permission
 
-Do not split just to look busy; each commit should make sense alone.
+- **NEVER** push (unless explicitly requested)
+- **NEVER** force push
+- **NEVER** run `git clean -fdx`
+- **NEVER** modify git config
 
-## Safety Rules
+### Always Do
 
-Never do without explicit permission:
+- Include commit messages
+- Use HEREDOC for multi-line messages
+- Check status before operations
+- Validate changes before committing
 
-- `git push`
-- `git push --force`
-- `git reset --hard`
-- `git clean -fd`
-- `git checkout -- <path>`
-- `git restore <path>` on files with user changes
-- amend or rebase published commits
-- modify git config
+### Branch Strategy
 
-Always:
+- `main`: Production (never direct push)
+- `dev`: Development/staging
+- Features: `feature/description`
+- Personal: `developer/feature`
 
-- preserve unrelated working-tree changes
-- read files before staging if they contain mixed authorship
-- use non-interactive git commands
-- report validation commands exactly
-- say when validation was skipped and why
+---
 
-## Branch Notes
-
-This repo may be on `main` during local work. Do not create branches, push, or change branch strategy unless the user asks. If the user asks for a branch name, prefer lowercase kebab-case with a short purpose, such as `feature/conversation-export`.
+This protocol ensures intelligent, safe, and mandatory version control.

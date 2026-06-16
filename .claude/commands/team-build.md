@@ -19,16 +19,20 @@ PATH_TO_PLAN: $ARGUMENTS
 
 ## Prerequisites
 
-Agent Teams must be enabled. Verify `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is set to `1` in `~/.claude/settings.json` under `env` or exported as an environment variable. If not enabled, STOP and instruct the user how to enable it.
+Agent Teams must be enabled via the `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` environment variable. This flag may be set several ways: persisted in `~/.claude/settings.json` under `env`, exported in the shell, or injected at launch (e.g. `just teams` / `just cc`). The AUTHORITATIVE check is the live process environment of the running session, NOT any single config file:
+
+- bash: `echo "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-UNSET}"`
+- PowerShell: `$env:CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`
+
+A value of `1` means enabled. Do NOT conclude it is disabled because the key is absent from `settings.json` -- a launcher may have injected it into the process env without writing it there. Only if the live env check returns empty/unset: STOP and instruct the user to enable it (add to `settings.json` `env` and restart, or relaunch via `just teams`).
 
 ## Workflow
 
 ### Phase 1: Plan Ingestion
 
 1. If no `PATH_TO_PLAN` is provided, STOP and ask the user to provide it.
-2. Read `.claude/rules/repo-primer.md`.
-3. Read the plan at `PATH_TO_PLAN`.
-4. Extract from the plan:
+2. Read the plan at `PATH_TO_PLAN`.
+3. Extract from the plan:
    - **Team Members**: Names, roles, agent types from `## Team Orchestration > ### Team Members`
    - **Task Graph**: All tasks from `## Step by Step Tasks` with their `Depends On` fields
    - **Acceptance Criteria**: From `## Acceptance Criteria`
@@ -46,8 +50,8 @@ Analyze the task dependency graph to determine spawning order. The goal: no agen
    - **Final Wave**: Validation tasks that depend on everything else
 
 2. **Identify Contracts** -- for each wave boundary, determine what the completing wave produces that the next wave needs:
-   - Database/platform agent completes --> produces DynamoDB access-pattern contract (PK/SK, GS1, owner scopes, item shapes)
-   - Backend agent completes --> produces FastAPI contract (endpoints, request/response schemas, auth requirements)
+   - Database agent completes --> produces schema contract (table definitions, types, relationships)
+   - Backend agent completes --> produces API contract (endpoints, request/response shapes, auth requirements)
    - Any agent that creates shared types, interfaces, or configuration --> that output is a contract
 
 3. **Identify Parallel Opportunities** within each wave:
@@ -59,15 +63,15 @@ Analyze the task dependency graph to determine spawning order. The goal: no agen
 
 ```
 Plan Tasks:
-  Task 1: Define DynamoDB access pattern -> Depends On: none
-  Task 2: Build FastAPI endpoints        -> Depends On: Task 1
-  Task 3: Update client integration      -> Depends On: Task 2
-  Task 4: Write integration tests        -> Depends On: Task 1, Task 2, Task 3
+  Task 1: Setup database schema       -> Depends On: none
+  Task 2: Build API endpoints          -> Depends On: Task 1
+  Task 3: Build frontend components    -> Depends On: Task 2
+  Task 4: Write integration tests      -> Depends On: Task 1, Task 2, Task 3
 
 Derived Contract Chain:
-  Wave 1: [database-agent]     -> produces DynamoDB access-pattern contract
-  Wave 2: [api-agent]          -> consumes storage contract, produces API contract
-  Wave 3: [client-agent]       -> consumes API contract
+  Wave 1: [database-agent]     -> produces schema contract
+  Wave 2: [api-agent]          -> consumes schema, produces API contract
+  Wave 3: [frontend-agent]     -> consumes API contract
   Final:  [quality-engineer]   -> validates everything
 ```
 
@@ -89,7 +93,6 @@ Create the agent team based on the plan's Team Members section.
 3. **Single responsibility** -- each teammate gets ONE clear focus area. Do not give a teammate tasks across unrelated domains.
 4. **File ownership boundaries** -- assign each teammate exclusive ownership of specific files/directories. No two teammates should modify the same file. State this explicitly in each teammate's prompt.
 5. **Full context per teammate** -- every teammate receives:
-   - `.claude/rules/repo-primer.md`
    - The complete plan OR their relevant sections
    - Their specific task assignments from the task list
    - Upstream contracts they depend on (actual content, not references to "what the other agent did")
@@ -113,7 +116,7 @@ Execute in waves. This is the critical pattern that prevents wasted work.
 
 **Wave 1 -- Foundation:**
 
-1. Spawn upstream teammate(s) with no dependencies. **Every teammate's prompt must instruct them to read `.claude/rules/repo-primer.md` and the full plan file at `PATH_TO_PLAN` as their first action.** Do not summarize or excerpt the plan for them -- they read it themselves, in full.
+1. Spawn upstream teammate(s) with no dependencies. **Every teammate's prompt must instruct them to read the full plan file at `PATH_TO_PLAN` as their first action.** Do not summarize or excerpt the plan for them -- they read it themselves, in full.
 2. They work on foundational tasks: schemas, shared types, interfaces, configuration
 3. **Wait for their contracts.** Do not proceed to Wave 2 until:
    - The upstream teammate marks their foundation task as complete

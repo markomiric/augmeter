@@ -42,16 +42,16 @@ Load only the skills that directly affect the task:
 
 ## Agent Routing Defaults
 
-- Backend/API/runtime: `backend-engineer`
-- DynamoDB/data access: `database-platform-engineer`
-- CI/deploy/release: `ci-release-engineer`
-- Security: `security-auditor`
 - Tests/quality gates: `quality-engineer`
+- Security review: `security-auditor`
+- Performance (activation, polling, package size): `performance-optimizer`
 - Root-cause debugging: `debugger-detective`
 - External docs/best practices: `deep-researcher`
 - Docs: `docs-automation-specialist`
-- Future frontend only when present or requested: `frontend-specialist`
 - Simplification/refactoring: `code-simplifier`
+- Visualizations: `visual-explainer`
+- Session/task housekeeping: `session-librarian`
+- Domain-specific implementation: `general-purpose` (no built-in TypeScript/VS Code specialist; brief it fully)
 
 ## Plan Output Requirements
 

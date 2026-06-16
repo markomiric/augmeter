@@ -20,15 +20,14 @@ Before ANY status claim (completed, passing, working, fixed):
 
 What command proves this claim?
 
-| Claim                  | Verification Command                                          |
-| ---------------------- | ------------------------------------------------------------- |
-| "Tests pass"           | `cd services/backend && uv run pytest tests/`                 |
-| "Formatting is clean"  | `cd services/backend && uv run ruff format . --check`         |
-| "No lint errors"       | `cd services/backend && uv run ruff check .`                  |
-| "Security scan passes" | `cd services/backend && uv run bandit -r . -c pyproject.toml` |
-| "Server starts"        | Start server, show output                                     |
-| "Bug is fixed"         | Run reproducer, show it works                                 |
-| "Feature works"        | Execute feature, show result                                  |
+| Claim            | Verification Command          |
+| ---------------- | ----------------------------- |
+| "Tests pass"     | `npm test` / `pytest`         |
+| "Build succeeds" | `npm run build`               |
+| "No lint errors" | `npm run lint`                |
+| "Server starts"  | Start server, show output     |
+| "Bug is fixed"   | Run reproducer, show it works |
+| "Feature works"  | Execute feature, show result  |
 
 ### Step 2: Execute
 
@@ -63,8 +62,9 @@ State your claim WITH output:
 All 47 tests pass:
 ```
 
-cd services/backend && uv run pytest tests/
-47 passed in 3.2s
+npm test
+
+> 47 passing (3.2s)
 
 ```
 
@@ -118,8 +118,13 @@ I've fixed the bug. The tests should pass now.
 Bug fixed. Verification:
 
 ```bash
-cd services/backend && uv run pytest tests/
-2 passed in 0.24s
+npm test
+PASS src/auth.test.ts
+  - validates token correctly (3ms)
+  - rejects expired tokens (2ms)
+
+Test Suites: 1 passed, 1 total
+Tests: 2 passed, 2 total
 ```
 ````
 

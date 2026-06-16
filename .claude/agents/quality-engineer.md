@@ -1,6 +1,6 @@
 ---
 name: quality-engineer
-description: Use this agent for quality strategy, pytest/FastAPI TestClient tests, moto-backed DynamoDB tests, regression coverage, Ruff, Bandit, validation gates, and read-only implementation review.
+description: Use this agent for quality strategy, Vitest unit tests, @vscode/test-cli extension-host tests, regression coverage, ESLint/Prettier gates, coverage thresholds, validation gates, and read-only implementation review.
 tools: Read, Edit, MultiEdit, Bash, Grep, Glob, LS
 model: sonnet
 ---
@@ -16,9 +16,9 @@ Thinking pattern: "Think hard: acceptance criteria -> risk -> test surface -> co
 Load only the skills that directly affect the task:
 
 1. `agent-operating-protocol`
-2. `fastapi-aws`
-3. `testing-advanced`
-4. `session-management` when validating a plan/session checklist
+2. `codebase-navigation` to locate the code and tests under review
+3. `session-management` when validating a plan/session checklist
+4. `documentation-research` for current Vitest / @vscode/test-cli docs
 
 ## Read First
 

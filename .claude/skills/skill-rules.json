@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "Skill activation rules for this FastAPI/AWS repo. Contains only repo-specific skills plus core/general workflow skills.",
+  "description": "Skill activation rules for the augmeter TypeScript VS Code extension. Contains repo-specific plus core/general workflow skills.",
   "skills": {
     "agentic-builder": {
       "type": "domain",
@@ -46,59 +46,6 @@
         ]
       }
     },
-    "fastapi-aws": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "high",
-      "description": "FastAPI backend workflows for this repo: AWS Lambda/API Gateway, Serverless Framework, DynamoDB, Cognito/JWT auth, Bedrock AI/RAG, uv, pytest, Ruff, mypy, and Bandit.",
-      "promptTriggers": {
-        "keywords": [
-          "FastAPI",
-          "AWS Lambda",
-          "Lambda",
-          "API Gateway",
-          "Serverless",
-          "serverless.yml",
-          "DynamoDB",
-          "Cognito",
-          "JWT",
-          "authorization header",
-          "backend",
-          "API endpoint",
-          "route",
-          "health-check",
-          "ConversationStore",
-          "UserStore",
-          "Bedrock",
-          "RAG",
-          "Knowledge Base",
-          "Polar webhook",
-          "boto3",
-          "Mangum",
-          "pytest",
-          "Ruff",
-          "mypy",
-          "Bandit",
-          "uv",
-          "services/backend",
-          "CORS",
-          "ALLOWED_ORIGINS",
-          "TABLE_NAME",
-          "DYNAMODB_URL"
-        ],
-        "intentPatterns": [
-          "(create|build|implement|update).*?(API|endpoint|route|handler)",
-          "(FastAPI|Lambda|API Gateway|Serverless).*?(route|handler|deploy|configuration)",
-          "(DynamoDB|boto3|ConversationStore|UserStore).*?(query|table|access|model|test)",
-          "(Bedrock|RAG|Knowledge Base|AI|agent).*?(chat|route|endpoint|tool|test|error)",
-          "(Polar|webhook|billing).*?(signature|route|endpoint|secret)",
-          "(Cognito|JWT|authorization|auth).*?(security|claim|header|endpoint)",
-          "(pytest|Ruff|mypy|Bandit|uv).*?(test|lint|format|quality|failure|type)",
-          "(CORS|ALLOWED_ORIGINS).*?(config|issue|problem)",
-          "(serverless.yml|resources).*?(Cognito|DynamoDB|Lambda|deploy)"
-        ]
-      }
-    },
     "codebase-navigation": {
       "type": "domain",
       "enforcement": "suggest",
@@ -118,7 +65,6 @@
           "how is organized",
           "directory",
           "folder",
-          "monorepo",
           "packages",
           "agents folder",
           "skills folder",
@@ -217,89 +163,11 @@
         ]
       }
     },
-    "infra-ops": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "high",
-      "description": "Infrastructure operations for this repo: AWS Lambda/API Gateway, Serverless Framework, DynamoDB, Cognito, Bedrock, CloudFront, GitHub Actions, uv, npm ci, deployment checks, DNS, SSL, and explicit non-default deployments.",
-      "promptTriggers": {
-        "keywords": [
-          "VPS",
-          "server",
-          "SSH",
-          "deploy",
-          "deployment",
-          "Docker",
-          "Coolify",
-          "Nginx",
-          "SSL",
-          "firewall",
-          "UFW",
-          "fail2ban",
-          "infrastructure",
-          "DevOps",
-          "security hardening",
-          "email server",
-          "Maillayer",
-          "maillayer contacts",
-          "contact list",
-          "contact API",
-          "add contact",
-          "add subscriber",
-          "email list",
-          "subscriber",
-          "newsletter signup",
-          "AWS",
-          "Lightsail",
-          "EC2",
-          "S3",
-          "CloudFront",
-          "Bedrock",
-          "Knowledge Base",
-          "Polar webhook",
-          "Cloudflare",
-          "DNS",
-          "production server",
-          "container",
-          "docker-compose",
-          "Let's Encrypt",
-          "certbot",
-          "reverse proxy",
-          "systemd",
-          "service",
-          "self-host",
-          "self-hosted",
-          "CI/CD",
-          "pipeline",
-          "database migration",
-          "Drizzle migration",
-          "production deployment"
-        ],
-        "intentPatterns": [
-          "(ssh|connect|access).*?(server|VPS|remote)",
-          "(deploy|push|release).*?(app|application|site|service)",
-          "(setup|configure|install).*?(Docker|Nginx|SSL|firewall|server)",
-          "(secure|harden).*?(server|VPS|SSH)",
-          "(manage|administer).*?(server|infrastructure|VPS)",
-          "(email|SMTP|Maillayer).*?(setup|configure|deploy)",
-          "(maillayer|mail layer).*?(contact|subscriber|list|API)",
-          "(add|update|sync).*?(contact|subscriber).*?(maillayer|list|email)",
-          "(contact|subscriber).*?(list|API|management)",
-          "(Serverless|AWS|Lambda|API Gateway|Cognito|DynamoDB|Bedrock|CloudFront|Coolify|Lightsail|S3|Cloudflare).*?(setup|configure|deploy)",
-          "(Polar|webhook).*?(CloudFront|headers|signature|deploy|configure)",
-          "(docker|container).*?(build|run|deploy|compose)",
-          "(SSL|certificate|cert).*?(renew|install|configure)",
-          "(self[- ]host|self[- ]hosted).*?(deploy|setup|run)",
-          "(CI|CD|pipeline).*?(setup|configure|deploy)",
-          "(database|db|drizzle).*?(migrate|migration)"
-        ]
-      }
-    },
     "session-management": {
       "type": "domain",
       "enforcement": "suggest",
       "priority": "critical",
-      "description": "Session type detection and protocol reference for implementation tasks. Supports 8 session types: Development, Debugging, Migration, Review, TDD, Research, Growth, Repo-Port.",
+      "description": "Session type detection and protocol reference for implementation tasks. Supports 6 session types: Development, Debugging, Migration, Review, TDD, Research.",
       "promptTriggers": {
         "keywords": [
           "feature",
@@ -350,7 +218,7 @@
       "type": "domain",
       "enforcement": "suggest",
       "priority": "critical",
-      "description": "Coordination and delegation protocols for sub-agent specialist assignments. Covers parallel vs sequential dispatch, context transfer, and agent routing.",
+      "description": "Coordination and delegation protocols for sub-agent specialist assignments. Covers parallel vs sequential dispatch, resumable persistent sub-agents (SendMessage), context transfer, and agent routing.",
       "promptTriggers": {
         "keywords": [
           "agent",
@@ -370,8 +238,8 @@
           "handoff",
           "context transfer",
           "specialist agent",
-          "frontend-specialist",
-          "backend-engineer",
+          "resume agent",
+          "SendMessage",
           "quality-engineer",
           "security-auditor",
           "assign agent",
@@ -384,8 +252,9 @@
           "master[- ]orchestrator",
           "(coordinate|manage).*?(specialist|agent)",
           "(handoff|hand off|pass).*?(to|context|agent)",
+          "(resume|continue|warm).*?(agent|sub-agent)",
           "(split|divide|break).*?(work|task).*?(agent|specialist)",
-          "(frontend|backend|quality|security).*?(specialist|engineer|agent)",
+          "(quality|security|performance).*?(specialist|engineer|agent)",
           "context.*?(transfer|passing|handoff)"
         ]
       }
@@ -487,7 +356,7 @@
       "type": "domain",
       "enforcement": "suggest",
       "priority": "high",
-      "description": "Documentation automation for README, AGENTS, API references, changelogs, onboarding docs, generated docs, drift checks, and docs quality gates.",
+      "description": "Documentation automation for README, CHANGELOG, TypeDoc API references, generated docs, drift checks, and docs quality gates.",
       "promptTriggers": {
         "keywords": [
           "docs automation",
@@ -496,13 +365,13 @@
           "docs",
           "API reference",
           "changelog",
+          "CHANGELOG",
           "release notes",
-          "onboarding docs",
+          "TypeDoc",
           "architecture docs",
           "generated docs",
           "doc sync",
           "documentation update",
-          "MCP API reference",
           "docs quality"
         ],
         "intentPatterns": [
@@ -511,232 +380,6 @@
           "(document|explain).*?(architecture|workflow|API|setup)",
           "(release notes|changelog).*?(generate|update|prepare)",
           "(docs|documentation).*?(automation|quality|gate|audit)"
-        ]
-      }
-    },
-    "shadcn": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "high",
-      "description": "shadcn/ui workflows for the React frontend: component discovery, CLI usage, composition patterns, Tailwind v4 styling, accessibility, and forms.",
-      "promptTriggers": {
-        "keywords": [
-          "shadcn",
-          "shadcn/ui",
-          "component",
-          "components.json",
-          "Tailwind",
-          "Tailwind v4",
-          "Radix",
-          "button",
-          "card",
-          "dialog",
-          "sheet",
-          "tabs",
-          "form",
-          "input",
-          "field",
-          "frontend UI",
-          "React component",
-          "services/frontend"
-        ],
-        "intentPatterns": [
-          "(add|install|update).*?(shadcn|component|ui)",
-          "(build|create|implement).*?(React|frontend).*?(component|form|page|layout)",
-          "(shadcn|Tailwind).*?(style|theme|component|form|composition)",
-          "(dialog|sheet|tabs|card|button|input|field).*?(component|accessibility|layout)"
-        ]
-      }
-    },
-    "testing-advanced": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "high",
-      "description": "Advanced testing patterns for pytest, FastAPI TestClient, moto-backed DynamoDB tests, API integration tests, contract tests, flaky test debugging, fixtures, Ruff/Bandit gates, and coverage strategy.",
-      "promptTriggers": {
-        "keywords": [
-          "test",
-          "tests",
-          "testing",
-          "pytest",
-          "FastAPI TestClient",
-          "moto",
-          "Ruff",
-          "Bandit",
-          "integration test",
-          "unit test",
-          "contract test",
-          "fixture",
-          "mock",
-          "flaky test",
-          "coverage",
-          "API test",
-          "Bedrock",
-          "MSW",
-          "Vitest"
-        ],
-        "intentPatterns": [
-          "(write|create|add).*?(test|tests|testing)",
-          "(unit|integration|E2E|contract).*?(test|testing)",
-          "(pytest|FastAPI TestClient|moto|Ruff|mypy|Bandit|Vitest|MSW).*?(test|setup|debug|failure)",
-          "(Bedrock|AI|RAG|agent).*?(mock|fake|test|fixture)",
-          "(flaky|unstable).*?(test|tests)",
-          "(fixture|mock|stub).*?(strategy|setup|test)",
-          "(coverage|quality).*?(test|testing|gate)"
-        ]
-      }
-    },
-    "dynamodb-access-patterns": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "medium",
-      "description": "Design a DynamoDB single-table schema (PK/SK/GSIs) from entities and required access patterns; evaluate GSIs and avoid Scans. Knows this repo's ConversationStore/UserStore key conventions.",
-      "promptTriggers": {
-        "keywords": [
-          "DynamoDB",
-          "single-table",
-          "single table design",
-          "access pattern",
-          "partition key",
-          "sort key",
-          "GSI",
-          "secondary index",
-          "GS1",
-          "table schema",
-          "key schema",
-          "Scan",
-          "hot partition",
-          "ConversationStore",
-          "UserStore"
-        ],
-        "intentPatterns": [
-          "(design|create|model|add).*?(DynamoDB|table|GSI|index|partition key|sort key)",
-          "(query|access pattern).*?(turning into|becoming|doing).*?(scan)",
-          "(add|need|evaluate|should I add).*?(GSI|secondary index|access pattern)",
-          "(DynamoDB|single[- ]table).*?(schema|design|model|key)"
-        ]
-      }
-    },
-    "lambda-log-diagnostics": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "medium",
-      "description": "Diagnose a misbehaving AWS Lambda from CloudWatch Logs: pull events, classify error class (timeout, IAM, import, OOM, cold start, app bug), and propose an evidence-anchored fix.",
-      "promptTriggers": {
-        "keywords": [
-          "Lambda failing",
-          "Lambda error",
-          "Lambda logs",
-          "CloudWatch",
-          "CloudWatch Logs",
-          "Logs Insights",
-          "log group",
-          "filter-log-events",
-          "Task timed out",
-          "cold start",
-          "500 error",
-          "AccessDenied",
-          "ImportModuleError",
-          "debug the deploy",
-          "why is my Lambda",
-          "what's throwing"
-        ],
-        "intentPatterns": [
-          "(why|what).*?(Lambda|function|deploy).*?(failing|throwing|500|error|broken)",
-          "(check|pull|read|tail|grep).*?(logs|CloudWatch).*?(Lambda|function|<function>)?",
-          "(debug|diagnose|investigate).*?(Lambda|deploy|function|production)",
-          "(Task timed out|cold start|timeout|AccessDenied|ImportModuleError|OOM).*?(Lambda|function|log)?",
-          "(CloudWatch|log group|Logs Insights).*?(query|filter|error|investigate)"
-        ]
-      }
-    },
-    "dynamodb-migrations": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "medium",
-      "description": "Produce a safe, resumable, idempotent DynamoDB migration: backfill an attribute, populate a new GSI, rewrite a key, or split/merge entity types -- with dry-run, checkpointing, verification, and a runbook.",
-      "promptTriggers": {
-        "keywords": [
-          "DynamoDB migration",
-          "migrate DynamoDB",
-          "backfill",
-          "GSI backfill",
-          "schema migration",
-          "key rewrite",
-          "delete-then-put",
-          "shadow table",
-          "dual-write",
-          "cutover",
-          "parallel scan",
-          "resumable migration",
-          "idempotent migration",
-          "PITR",
-          "point-in-time recovery"
-        ],
-        "intentPatterns": [
-          "(migrate|backfill|populate|rewrite|evolve|reshape).*?(DynamoDB|table|GSI|index|attribute|key|schema|item)",
-          "(add|populate).*?(attribute|GSI|index).*?(existing|all).*?(item|record)",
-          "(split|merge|rename).*?(entity|item type|key|PK|SK)",
-          "(shadow table|dual-write|cutover|point-in-time|PITR).*?(migration|table|DynamoDB)?"
-        ]
-      }
-    },
-    "moto-test-fixtures": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "medium",
-      "description": "Scaffold Moto-based pytest fixtures that mirror the project's real AWS infrastructure (DynamoDB tables, S3 buckets, SQS/SNS, Cognito) so tests catch schema mismatches before staging.",
-      "promptTriggers": {
-        "keywords": [
-          "moto",
-          "mock_aws",
-          "moto fixture",
-          "mock AWS",
-          "mock DynamoDB",
-          "mock S3",
-          "scaffold fixture",
-          "test fixture",
-          "pytest fixture",
-          "conftest",
-          "dynamodb_table fixture",
-          "mock boto3",
-          "in-memory AWS"
-        ],
-        "intentPatterns": [
-          "(scaffold|create|add|write|generate).*?(moto|mock).*?(fixture|test)",
-          "mock.*?(DynamoDB|S3|SQS|SNS|Cognito|AWS).*?(test|fixture|pytest)",
-          "(add|write).*?(test|fixture).*?(store|table|bucket|queue|repository)",
-          "(pytest|conftest|fixture).*?(moto|mock_aws|AWS|DynamoDB)"
-        ]
-      }
-    },
-    "polar-billing": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "high",
-      "description": "Polar.sh billing integration: signed webhook handling, webhook-id idempotency, subscription status mapping, checkout creation, SSM secret resolution, and billing tests.",
-      "promptTriggers": {
-        "keywords": [
-          "Polar",
-          "polar-sdk",
-          "billing",
-          "webhook",
-          "checkout",
-          "subscription",
-          "subscription status",
-          "BillingStore",
-          "external_customer_id",
-          "POLAR_WEBHOOK_SECRET",
-          "POLAR_ACCESS_TOKEN",
-          "POLAR_PRODUCT_ID",
-          "idempotency",
-          "success_url",
-          "paywall"
-        ],
-        "intentPatterns": [
-          "(Polar|billing|webhook).*?(event|signature|idempotenc|replay|secret|verify)",
-          "(checkout|subscription).*?(create|cancel|status|state|plan|gate)",
-          "(implement|update|fix|test).*?(billing|webhook|checkout|subscription)"
         ]
       }
     }
@@ -750,34 +393,20 @@
     "priority_levels": {
       "critical": "Highest - Always trigger when matched (e.g., sub-agent-invocation before Task tool)",
       "high": "Important - Trigger for most matches (e.g., session-management, git-commits)",
-      "medium": "Moderate - Trigger for clear matches (e.g., skill creation, framework context)",
+      "medium": "Moderate - Trigger for clear matches (e.g., skill creation, tooling)",
       "low": "Optional - Trigger only for explicit matches"
     },
-    "customization": {
-      "keywords": "Add domain-specific terms that users naturally say when needing this skill",
-      "intentPatterns": "Use regex for flexible user intent matching",
-      "priority_rationale": "Critical: sub-agent, product contexts (prevents bad delegation, ensures context) | High: sessions, commits, navigation, design, auth | Medium: specialized tools, legacy skills"
-    },
     "skill_overview": {
-      "agentic-builder": "Skill/agent/command creation - triggers on creating skills, agents, slash commands. Covers eval loops, iterative improvement, template generation, benchmarking. Supersedes skill-creator.",
+      "agentic-builder": "Skill/agent/command creation - triggers on creating skills, agents, slash commands. Covers eval loops, iterative improvement, template generation, benchmarking.",
       "codebase-navigation": "Exploration - triggers on finding, searching, understanding structure, directories, agents, specialists",
       "documentation-research": "Library docs and skills registries - triggers on documentation requests, Context7, ctx7 CLI, skills.sh, API references, skill installation",
-      "fastapi-aws": "FastAPI backend on AWS - triggers on API endpoints, Lambda/API Gateway, Serverless, DynamoDB, Cognito/JWT, Bedrock AI/RAG, uv, pytest, Ruff, mypy, and Bandit.",
       "git-commits": "Version control - triggers on explicit commits, pushes, save work, branch operations, scoped staging, and commit messages.",
-      "infra-ops": "Infrastructure - AWS Lambda/API Gateway, Serverless, DynamoDB, Cognito, Bedrock, CloudFront, GitHub Actions, uv, npm ci, deploy checks; non-default hosting only when explicitly requested.",
-      "session-management": "Core workflow - triggers on implementation, features, bugs, refactoring, plus all 8 session types (development, debugging, migration, review, TDD, research, growth, repo-port)",
-      "sub-agent-invocation": "Critical coordination - triggers before ANY agent/Task tool usage, parallel/sequential dispatch, handoffs, specialist routing",
+      "session-management": "Core workflow - triggers on implementation, features, bugs, refactoring, plus all 6 session types (development, debugging, migration, review, TDD, research)",
+      "sub-agent-invocation": "Critical coordination - triggers before ANY agent/Task tool usage, parallel/sequential dispatch, resumable persistent sub-agents (SendMessage), handoffs, specialist routing",
       "visual-explainer": "Visual HTML generation - triggers on diagrams, architecture overviews, flowcharts, plan reviews, comparison tables, data visualizations. Produces self-contained HTML files with Mermaid diagrams, CSS Grid layouts, styled tables, Google Fonts, light/dark themes, staggered animations.",
       "agent-operating-protocol": "Shared agent protocol - Think Hard, Skill-First startup, source-first work, scoped tool use, handoff contract, evidence-before-completion gate.",
       "codestats": "CodeStats - local dependency graph, impact analysis, risk scoring, dead code detection, communities, circular dependencies, architecture wiki.",
-      "docs-automation": "Documentation automation - README/API docs sync, changelogs, release notes, onboarding guides, generated docs and quality gates.",
-      "shadcn": "shadcn/ui - React frontend component discovery, CLI usage, composition patterns, Tailwind v4 styling, accessibility, and forms.",
-      "testing-advanced": "Advanced testing - pytest, FastAPI TestClient, moto-backed DynamoDB tests, API integration, contracts, Ruff/Bandit gates, fixtures, flaky test debugging, coverage strategy.",
-      "dynamodb-access-patterns": "DynamoDB single-table design - turns entities + access patterns into PK/SK/GSI key schemas, evaluates GSIs, avoids Scans; aware of this repo's GS1 and ConversationStore/UserStore conventions.",
-      "lambda-log-diagnostics": "Lambda CloudWatch Logs diagnosis - pulls and classifies error events (timeout, IAM, import, OOM, cold start, app bug) and proposes evidence-anchored fixes; knows this repo's function name, log group, region, and retention.",
-      "dynamodb-migrations": "DynamoDB schema migration - produces resumable, idempotent, throttle-aware backfill/GSI/key-rewrite/split scripts with dry-run, verification, and runbook; flags that this dev-phase repo can often destroy-and-recreate instead.",
-      "moto-test-fixtures": "Moto pytest fixture scaffolding - generates in-memory AWS mocks (DynamoDB/S3/SQS/SNS/Cognito) that mirror the IaC; mirrors this repo's tests/conftest.py style (mock_aws, table-name fixture, UserStore/ConversationStore dependency_overrides). Companion to testing-advanced.",
-      "polar-billing": "Polar billing integration - webhook TYPE discriminator, payload-status mapping, idempotency-after-success, runtime SSM secrets, checkout external_customer_id, success_url origin pinning, and the billing test patterns in tests/test_billing.py."
+      "docs-automation": "Documentation automation - README/CHANGELOG/TypeDoc sync, release notes, generated docs and quality gates."
     }
   }
 }

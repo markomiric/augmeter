@@ -39,7 +39,7 @@ When work is ready to complete, choose one:
 git checkout feature-branch
 
 # Verify tests pass
-cd services/backend && uv run pytest tests/
+npm test
 
 # Switch to base and merge
 git checkout main
@@ -150,11 +150,10 @@ git branch
 git status
 
 # Run full test suite
-cd services/backend && uv run pytest tests/
+npm test
 
-# Verify lint and security gates
-cd services/backend && uv run ruff check .
-cd services/backend && uv run bandit -r . -c pyproject.toml
+# Verify build
+npm run build
 ```
 
 ### Before Discarding

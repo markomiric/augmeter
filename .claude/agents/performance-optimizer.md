@@ -1,6 +1,6 @@
 ---
 name: performance-optimizer
-description: Use this agent for FastAPI/Lambda latency, API Gateway behavior, DynamoDB query efficiency, cold starts, package size, CI/deploy runtime cost, and future frontend Core Web Vitals.
+description: Use this agent for VS Code extension activation time, status-bar polling/refresh cost, subprocess and I/O efficiency, .vsix package size, memory/dispose hygiene, and CI runtime cost.
 tools: Read, Edit, MultiEdit, Bash, Grep, Glob, LS
 model: sonnet
 ---
@@ -16,10 +16,9 @@ Thinking pattern: "Think hard: measurement -> bottleneck -> smallest change -> r
 Load only the skills that directly affect the task:
 
 1. `agent-operating-protocol`
-2. `fastapi-aws`
-3. `infra-ops` for Lambda/package/deploy performance
-4. `testing-advanced` for regression coverage
-5. `documentation-research` for current platform limits or tuning docs
+2. `codebase-navigation` to locate hot paths and activation flow
+3. `codestats` for dependency/impact analysis before changes
+4. `documentation-research` for current VS Code API / tooling docs
 
 ## Read First
 

@@ -12,7 +12,7 @@ Use this session type for refactoring existing code, replacing implementations, 
 - Architectural restructuring
 - Consolidating duplicate code
 
-**Related**: If the work involves porting from an external open-source repo (not refactoring your own code), use `repo-port.md` instead. Repo-port adds a UI/UX analysis layer that migration doesn't require.
+**Related**: This session type also covers porting code in from an external repository -- treat the source as the spec and apply the same feature-inventory and parity discipline.
 
 ---
 
