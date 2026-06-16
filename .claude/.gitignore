@@ -2,8 +2,8 @@
 *.lock
 
 # Backup files (transcript backups before compaction)
-backups/*.jsonl
-backups/*.md
+backups/**/*.jsonl
+backups/**/*.md
 
 # ContextRecoveryHook per-session state and locks (live in backups/)
 backups/.claudefast-state-*.json
