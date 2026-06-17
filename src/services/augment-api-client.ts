@@ -37,6 +37,7 @@ export class AugmentApiClient {
   private readonly DEFAULT_API_BASE_URL = "https://app.augmentcode.com/api";
   private sessionCookie: string | null = null; // normalized like `_session=abc...`
   private secretsManager: SecureSecretsManager | null = null;
+  private secretsInit: Promise<void> | null = null;
   private inFlightRequests: Map<string, Promise<AugmentApiResponse>> = new Map();
   private http: HttpClient = new HttpClient();
   private retry: RetryHandler = new RetryHandler();
@@ -57,9 +58,20 @@ export class AugmentApiClient {
    * validates it, and sets up authentication for subsequent requests.
    * Also performs migration from old workspace storage if needed.
    *
+   * Memoized: the migration + cookie read runs at most once per client. The
+   * constructor kicks this off eagerly and the bootstrap awaits it again; both
+   * share the same in-flight promise so SecretStorage I/O is not duplicated and
+   * the two callers cannot race.
+   *
    * @throws {AugmeterError} When cookie validation fails
    */
   async initializeFromSecrets(): Promise<void> {
+    if (!this.secretsManager) return;
+    this.secretsInit ??= this.loadFromSecrets();
+    return this.secretsInit;
+  }
+
+  private async loadFromSecrets(): Promise<void> {
     if (!this.secretsManager) return;
 
     try {
@@ -245,7 +257,20 @@ export class AugmentApiClient {
       return tenantResp;
     }
 
-    // If not available on tenant, try shared app base with the same cookie (single-flight)
+    // Only fall back to the shared app base when the tenant base looks like a
+    // routing miss (it does not serve /credits) rather than an upstream outage.
+    // A 5xx means the same backend is down, so a second full RetryHandler cycle
+    // (3 attempts x 30s timeout + backoff) would just double the worst-case
+    // stall without a better chance of success. Likewise skip the fallback when
+    // the tenant base already IS the shared base (no different base to try).
+    const status = tenantResp.status;
+    const isUpstreamOutage = typeof status === "number" && status >= 500 && status <= 599;
+    if (isUpstreamOutage || apiBaseUrl === this.DEFAULT_API_BASE_URL) {
+      return tenantResp;
+    }
+
+    // If not available on tenant (routing miss), try shared app base with the
+    // same cookie (single-flight).
     return await this.fetchWithSingleFlight("/credits", this.DEFAULT_API_BASE_URL);
   }
 
@@ -301,6 +326,8 @@ export class AugmentApiClient {
   }
 
   async clearAllAuth(): Promise<void> {
+    // Allow a subsequent initializeFromSecrets() to re-read after a full reset.
+    this.secretsInit = null;
     if (this.secretsManager) {
       try {
         await this.secretsManager.clearAll();

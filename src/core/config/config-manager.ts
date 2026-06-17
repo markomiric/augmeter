@@ -60,6 +60,18 @@ export class ConfigManager {
     return n;
   }
 
+  // Multiplier applied to the polling interval while the editor window is
+  // unfocused, so a backgrounded editor polls less aggressively.
+  // Clamp to [1, 20]; coerce non-numbers to default (5). A value of 1 disables
+  // background slowdown.
+  getBackgroundMultiplier(): number {
+    const raw = this.config.get<number>("backgroundMultiplier", 5);
+    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 5;
+    if (n < 1) return 1;
+    if (n > 20) return 20;
+    return n;
+  }
+
   shouldShowInStatusBar(): boolean {
     return this.config.get<boolean>("showInStatusBar", true);
   }

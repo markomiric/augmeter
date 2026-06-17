@@ -63,16 +63,28 @@ export class UsageTracker implements vscode.Disposable {
   private intervals: NodeJS.Timeout[] = [];
   private pollTimeout: NodeJS.Timeout | null = null;
   private disposed: boolean = false;
+  private tracking: boolean = false;
   private nextFetchSource: string = "poller";
+  private windowFocused: boolean = true;
+  private readonly randomFn: () => number;
   private subscriptionType: string | undefined;
   private renewalDate: string | undefined;
   private lastFetchedAt: Date | undefined;
   private onChangedEmitter: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onChanged: vscode.Event<void> = this.onChangedEmitter.event;
 
-  constructor(storageManager: StorageManager, configManager: ConfigManager) {
+  /**
+   * @param randomFn Injectable source of randomness for jitter, defaulting to
+   *   `Math.random`. Provided for deterministic testing of polling intervals.
+   */
+  constructor(
+    storageManager: StorageManager,
+    configManager: ConfigManager,
+    randomFn: () => number = Math.random
+  ) {
     this.storageManager = storageManager;
     this.configManager = configManager;
+    this.randomFn = randomFn;
     void this.loadCurrentUsage();
   }
 
@@ -86,6 +98,15 @@ export class UsageTracker implements vscode.Disposable {
     if (!this.configManager.isEnabled()) {
       return;
     }
+
+    // Idempotency guard: startTracking() is called at init AND again when
+    // augmeter.enabled flips back to true. Without this guard each re-enable
+    // would leak another 24h cleanup interval. stopDataFetching()/dispose()
+    // reset the flag so a later re-enable can start cleanly.
+    if (this.tracking) {
+      return;
+    }
+    this.tracking = true;
 
     // Periodic cleanup of old data
     const cleanupInterval = setInterval(
@@ -476,11 +497,38 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   private getJitteredIntervalMs(): number {
-    const base = this.configManager.getRefreshInterval() * 1000;
+    // Lengthen the polling cadence while the editor window is unfocused so a
+    // backgrounded editor does not keep hitting the API at full speed.
+    const multiplier = this.windowFocused ? 1 : this.configManager.getBackgroundMultiplier();
+    const base = this.configManager.getRefreshInterval() * 1000 * multiplier;
     const jitterFactor = 0.2; // +/- 20%
     const min = base * (1 - jitterFactor);
     const max = base * (1 + jitterFactor);
-    return Math.floor(min + Math.random() * (max - min));
+    return Math.floor(min + this.randomFn() * (max - min));
+  }
+
+  /**
+   * Update window focus state. On a transition the poller is rescheduled so the
+   * effective interval reflects the new state: blurring lengthens the next
+   * interval (by the configured background multiplier) and focusing shortens it
+   * back. The active poll loop is only rescheduled; manual/focus refreshes are
+   * untouched. Has no effect if the focus state is unchanged.
+   */
+  setWindowFocused(focused: boolean): void {
+    if (this.windowFocused === focused) {
+      return;
+    }
+    this.windowFocused = focused;
+    // Only reschedule when the self-rescheduling poll loop is active; do not
+    // resurrect timers when polling has been stopped/disabled.
+    if (this.pollTimeout) {
+      this.scheduleNextFetch(this.getJitteredIntervalMs(), "focus-change");
+    }
+  }
+
+  /** Whether the editor window is currently considered focused. */
+  isWindowFocused(): boolean {
+    return this.windowFocused;
   }
 
   private scheduleNextFetch(delayMs: number, source: string = "poller"): void {
@@ -541,11 +589,15 @@ export class UsageTracker implements vscode.Disposable {
       this.pollTimeout = null;
     }
 
+    // Allow a later startTracking() (e.g. on re-enable) to start cleanly.
+    this.tracking = false;
+
     this.onChangedEmitter.fire();
   }
 
   dispose(): void {
     this.disposed = true;
+    this.tracking = false;
 
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];

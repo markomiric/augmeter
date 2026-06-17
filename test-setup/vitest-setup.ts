@@ -1,10 +1,10 @@
 /**
  * Vitest setup file for mocking VS Code API and other dependencies.
  */
-import { vi } from 'vitest';
+import { vi } from "vitest";
 
 // Simple in-memory clipboard and command registry for unit tests
-const globalClipboard = { value: '' };
+const globalClipboard = { value: "" };
 const globalCommands = new Map<string, (...args: any[]) => any>();
 const globalOpenCalls: any[] = [];
 
@@ -37,7 +37,7 @@ const vscode = {
       return { dispose: vi.fn() };
     }),
     executeCommand: vi.fn(async (id: string, ...args: any[]) => {
-      if (id === 'vscode.open') {
+      if (id === "vscode.open") {
         globalOpenCalls.push(args);
         return;
       }
@@ -49,7 +49,7 @@ const vscode = {
     clipboard: {
       readText: vi.fn(async () => globalClipboard.value),
       writeText: vi.fn(async (text: string) => {
-        globalClipboard.value = text || '';
+        globalClipboard.value = text || "";
       }),
     },
   },
@@ -60,6 +60,19 @@ const vscode = {
     Notification: 15,
   },
   ThemeColor: class {},
+  EventEmitter: class<T> {
+    private listeners: Array<(e: T) => void> = [];
+    event = (listener: (e: T) => void) => {
+      this.listeners.push(listener);
+      return { dispose: () => {} };
+    };
+    fire(data: T) {
+      for (const listener of this.listeners) listener(data);
+    }
+    dispose() {
+      this.listeners = [];
+    }
+  },
   CancellationTokenSource: class {
     token: any;
     constructor() {
@@ -76,10 +89,10 @@ const vscode = {
 };
 
 // Mock vscode module
-vi.mock('vscode', () => vscode);
+vi.mock("vscode", () => vscode);
 
 // Mock SecureLogger
-vi.mock('./src/core/logging/secure-logger', () => ({
+vi.mock("./src/core/logging/secure-logger", () => ({
   SecureLogger: {
     init: vi.fn(),
     info: vi.fn(),
@@ -104,7 +117,7 @@ class AugmeterError extends Error {
     retryAction?: () => void
   ) {
     super(message);
-    this.name = 'AugmeterError';
+    this.name = "AugmeterError";
     this.type = type;
     this.userMessage = userMessage;
     this.recoverable = recoverable;
@@ -112,23 +125,23 @@ class AugmeterError extends Error {
   }
 
   static network(message: string, userMessage: string, retryAction?: () => void) {
-    return new AugmeterError('network', message, userMessage, true, retryAction);
+    return new AugmeterError("network", message, userMessage, true, retryAction);
   }
 
   static validation(message: string, userMessage: string) {
-    return new AugmeterError('validation', message, userMessage, true);
+    return new AugmeterError("validation", message, userMessage, true);
   }
 
   static authentication(message: string, userMessage: string) {
-    return new AugmeterError('authentication', message, userMessage, true);
+    return new AugmeterError("authentication", message, userMessage, true);
   }
 
   static storage(message: string, userMessage: string) {
-    return new AugmeterError('storage', message, userMessage, true);
+    return new AugmeterError("storage", message, userMessage, true);
   }
 }
 
-vi.mock('./src/core/errors/augmeter-error', () => ({
+vi.mock("./src/core/errors/augmeter-error", () => ({
   AugmeterError,
   ErrorHandler: {
     withErrorHandling: vi.fn(async (fn: () => any) => await fn()),
@@ -136,4 +149,3 @@ vi.mock('./src/core/errors/augmeter-error', () => ({
     handle: vi.fn(async () => {}),
   },
 }));
-

@@ -286,6 +286,15 @@ export class RuntimeCoordinator implements vscode.Disposable {
 
   private registerFocusListener(): void {
     const disposable = vscode.window.onDidChangeWindowState(event => {
+      // Update the tracker's focus state first so any reschedule it triggers
+      // uses the correct (background vs foreground) interval. Blurring lengthens
+      // the poll cadence so an unfocused editor stops hammering the API.
+      try {
+        this.usageTracker.setWindowFocused(event.focused);
+      } catch (error) {
+        SecureLogger.warn("Failed to update window focus state", error);
+      }
+
       if (!event.focused) {
         return;
       }
