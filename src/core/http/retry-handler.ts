@@ -166,8 +166,14 @@ export class RetryHandler {
   /**
    * Determine if an error should trigger a retry
    */
-  private shouldRetry(error: any): boolean {
+  private shouldRetry(error: unknown): boolean {
     if (error instanceof AugmeterError) {
+      // Timeouts are explicitly non-retriable: retrying a 30s timeout up to
+      // 3 attempts with backoff blocks the poller ~90s and masks a slow
+      // upstream behind a retry storm. Let the caller see the timeout and
+      // back off on its own schedule (next poll tick).
+      if (error.type === "timeout") return false;
+
       // Don't retry validation or authentication errors
       return error.type === "network" || error.type === "api";
     }

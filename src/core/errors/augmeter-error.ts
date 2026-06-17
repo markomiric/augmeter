@@ -7,6 +7,7 @@ import { UserNotificationService } from "../notifications/user-notification-serv
 export enum ErrorType {
   AUTHENTICATION = "authentication",
   NETWORK = "network",
+  TIMEOUT = "timeout",
   VALIDATION = "validation",
   CONFIGURATION = "configuration",
   STORAGE = "storage",
@@ -60,6 +61,19 @@ export class AugmeterError extends Error {
       userMessage || "Network error occurred. Please check your connection.",
       true,
       retryAction
+    );
+  }
+
+  /**
+   * Create timeout error (non-retriable by design — surfaces a slow upstream
+   * rather than masking it with backoff storms)
+   */
+  static timeout(message: string, userMessage?: string): AugmeterError {
+    return new AugmeterError(
+      ErrorType.TIMEOUT,
+      message,
+      userMessage || "Request timed out. Please check your connection and try again.",
+      true
     );
   }
 
@@ -190,6 +204,7 @@ export class ErrorHandler {
         break;
 
       case ErrorType.NETWORK:
+      case ErrorType.TIMEOUT:
         await UserNotificationService.showNetworkError(error.userMessage, error.retryAction);
         break;
 

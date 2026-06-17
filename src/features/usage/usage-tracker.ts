@@ -62,6 +62,7 @@ export class UsageTracker implements vscode.Disposable {
   private realDataFetcher: (() => Promise<void>) | null = null;
   private intervals: NodeJS.Timeout[] = [];
   private pollTimeout: NodeJS.Timeout | null = null;
+  private disposed: boolean = false;
   private nextFetchSource: string = "poller";
   private subscriptionType: string | undefined;
   private renewalDate: string | undefined;
@@ -487,9 +488,18 @@ export class UsageTracker implements vscode.Disposable {
       clearTimeout(this.pollTimeout);
       this.pollTimeout = null;
     }
+    if (this.disposed) {
+      return;
+    }
     this.nextFetchSource = source;
     this.pollTimeout = setTimeout(async () => {
+      if (this.disposed) {
+        return;
+      }
       await this.fetchRealUsageData();
+      if (this.disposed) {
+        return;
+      }
       this.scheduleNextFetch(this.getJitteredIntervalMs(), "poller");
     }, delayMs);
   }
@@ -535,12 +545,22 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
+
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];
 
     // Clear all intervals to prevent memory leaks
     this.intervals.forEach(interval => clearInterval(interval));
     this.intervals = [];
+
+    // Clear the self-rescheduling poll timer so we don't keep the event loop
+    // (and the captured configManager / storageManager closures) alive after
+    // deactivation or unit-test teardown.
+    if (this.pollTimeout) {
+      clearTimeout(this.pollTimeout);
+      this.pollTimeout = null;
+    }
 
     this.realDataFetcher = null;
     this.onChangedEmitter.dispose();

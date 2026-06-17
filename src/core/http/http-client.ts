@@ -69,7 +69,7 @@ export class HttpClient {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === "AbortError") {
-          throw AugmeterError.network(
+          throw AugmeterError.timeout(
             `Request timeout after ${timeout}ms: ${fullUrl}`,
             "Request timed out. Please check your connection and try again."
           );

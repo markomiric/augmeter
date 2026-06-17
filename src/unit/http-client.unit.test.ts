@@ -86,7 +86,7 @@ describe("HttpClient (unit) Test Suite", () => {
     expect(String(res.error)).toMatch(/rate limited/);
   });
 
-  it("Timeout maps to AugmeterError.network with AbortError", async () => {
+  it("Timeout maps to AugmeterError.timeout with AbortError", async () => {
     const fakeFetch = (_url: string, init: any) => {
       return new Promise((_resolve, reject) => {
         const err: any = new Error("aborted");
@@ -100,7 +100,7 @@ describe("HttpClient (unit) Test Suite", () => {
     await expect(
       client.get("/timeout", { baseUrl: "https://example.com", timeout: 5 })
     ).rejects.toMatchObject({
-      type: "network",
+      type: "timeout",
     });
   });
 

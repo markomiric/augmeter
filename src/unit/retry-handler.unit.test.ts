@@ -63,4 +63,32 @@ describe("RetryHandler (unit) Test Suite", () => {
 
     expect(attempts).toBe(1);
   });
+
+  it("executeWithRetry does not retry on AugmeterError.timeout", async () => {
+    const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
+
+    let attempts = 0;
+    await expect(
+      rh.executeWithRetry(async () => {
+        attempts++;
+        throw AugmeterError.timeout("Request timeout after 30000ms");
+      }, "timeout op")
+    ).rejects.toThrow(/Request timeout/);
+
+    expect(attempts).toBe(1);
+  });
+
+  it("executeHttpWithRetry does not retry on AugmeterError.timeout thrown by op", async () => {
+    const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
+
+    let attempts = 0;
+    await expect(
+      rh.executeHttpWithRetry(async () => {
+        attempts++;
+        throw AugmeterError.timeout("Request timeout after 30000ms");
+      }, "http timeout op")
+    ).rejects.toThrow(/Request timeout/);
+
+    expect(attempts).toBe(1);
+  });
 });
