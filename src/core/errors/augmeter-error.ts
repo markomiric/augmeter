@@ -9,10 +9,6 @@ export enum ErrorType {
   NETWORK = "network",
   TIMEOUT = "timeout",
   VALIDATION = "validation",
-  CONFIGURATION = "configuration",
-  STORAGE = "storage",
-  API = "api",
-  UNKNOWN = "unknown",
 }
 
 /**
@@ -88,82 +84,6 @@ export class AugmeterError extends Error {
       true
     );
   }
-
-  /**
-   * Create configuration error
-   */
-  static configuration(message: string, userMessage?: string): AugmeterError {
-    return new AugmeterError(
-      ErrorType.CONFIGURATION,
-      message,
-      userMessage || "Configuration error. Please check your settings.",
-      true
-    );
-  }
-
-  /**
-   * Create storage error
-   */
-  static storage(message: string, userMessage?: string): AugmeterError {
-    return new AugmeterError(
-      ErrorType.STORAGE,
-      message,
-      userMessage || "Storage error occurred. Please try again.",
-      true
-    );
-  }
-
-  /**
-   * Create API error
-   */
-  static api(message: string, statusCode?: number, userMessage?: string): AugmeterError {
-    let defaultUserMessage = "API error occurred. Please try again.";
-
-    if (statusCode) {
-      switch (statusCode) {
-        case 401:
-          defaultUserMessage = "Authentication expired. Please sign in again.";
-          break;
-        case 403:
-          defaultUserMessage = "Access denied. Please check your permissions.";
-          break;
-        case 404:
-          defaultUserMessage = "Service not found. Please try again later.";
-          break;
-        case 429:
-          defaultUserMessage = "Too many requests. Please wait a moment and try again.";
-          break;
-        case 500:
-        case 502:
-        case 503:
-        case 504:
-          defaultUserMessage = "Server error. Please try again later.";
-          break;
-      }
-    }
-
-    return new AugmeterError(
-      ErrorType.API,
-      `${message} (Status: ${statusCode || "unknown"})`,
-      userMessage || defaultUserMessage,
-      statusCode !== 403 // Forbidden errors are typically not recoverable
-    );
-  }
-
-  /**
-   * Create unknown error
-   */
-  static unknown(message: string, originalError?: unknown): AugmeterError {
-    const errorMessage =
-      originalError instanceof Error ? `${message}: ${originalError.message}` : message;
-
-    return new AugmeterError(
-      ErrorType.UNKNOWN,
-      errorMessage,
-      "An unexpected error occurred. Please try again.",
-      true
-    );
-  }
 }
 
 /**
@@ -208,17 +128,10 @@ export class ErrorHandler {
         await UserNotificationService.showNetworkError(error.userMessage, error.retryAction);
         break;
 
-      case ErrorType.CONFIGURATION:
-        await UserNotificationService.showConfigError(error.userMessage);
-        break;
-
       case ErrorType.VALIDATION:
         await UserNotificationService.showWarning(error.userMessage || error.message);
         break;
 
-      case ErrorType.STORAGE:
-      case ErrorType.API:
-      case ErrorType.UNKNOWN:
       default:
         if (error.retryAction) {
           await UserNotificationService.showError(error.userMessage || error.message, {

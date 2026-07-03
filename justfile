@@ -187,6 +187,4 @@ clean:
 # Dead code, unused exports/deps, and duplication reports
 analyze:
     npm run analyze:knip
-    npm run analyze:prune
-    npm run analyze:depcheck
     npm run analyze:jscpd

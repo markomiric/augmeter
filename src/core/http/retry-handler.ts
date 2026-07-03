@@ -10,10 +10,6 @@ export interface RetryConfig {
   jitter: boolean;
 }
 
-export interface RetryableOperation<T> {
-  (): Promise<T>;
-}
-
 /**
  * Handles retry logic with exponential backoff and jitter
  * Separated from HTTP client to allow reuse for other operations
@@ -32,66 +28,11 @@ export class RetryHandler {
   }
 
   /**
-   * Execute operation with retry logic
-   */
-  async executeWithRetry<T>(
-    operation: RetryableOperation<T>,
-    context: string = "operation"
-  ): Promise<T> {
-    const config = { ...this.defaultConfig, ...this.config };
-    let lastError: any;
-
-    for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
-      try {
-        const result = await operation();
-
-        if (attempt > 1) {
-          SecureLogger.info(`${context} succeeded on attempt ${attempt}`);
-        }
-
-        return result;
-      } catch (error) {
-        lastError = error;
-
-        // Don't retry on certain types of errors
-        if (!this.shouldRetry(error)) {
-          SecureLogger.warn(
-            `${context} failed with non-retriable error on attempt ${attempt}`,
-            error
-          );
-          throw error;
-        }
-
-        if (attempt < config.maxAttempts) {
-          const delay = this.calculateDelay(attempt, config);
-          SecureLogger.warn(
-            `${context} failed on attempt ${attempt}/${config.maxAttempts}, retrying in ${delay}ms`,
-            error
-          );
-          await this.sleep(delay);
-        } else {
-          SecureLogger.error(`${context} failed after ${config.maxAttempts} attempts`, error);
-        }
-      }
-    }
-
-    // All attempts failed
-    if (lastError instanceof AugmeterError) {
-      throw lastError;
-    }
-
-    throw AugmeterError.network(
-      `Operation failed after ${config.maxAttempts} attempts: ${lastError}`,
-      "Operation failed after multiple attempts. Please try again later."
-    );
-  }
-
-  /**
    * Execute HTTP operation with retry logic
    * Specialized for HTTP responses
    */
   async executeHttpWithRetry(
-    operation: RetryableOperation<HttpResponse>,
+    operation: () => Promise<HttpResponse>,
     context: string = "HTTP request"
   ): Promise<HttpResponse> {
     const config = { ...this.defaultConfig, ...this.config };
@@ -175,7 +116,7 @@ export class RetryHandler {
       if (error.type === "timeout") return false;
 
       // Don't retry validation or authentication errors
-      return error.type === "network" || error.type === "api";
+      return error.type === "network";
     }
 
     if (error instanceof Error) {
@@ -232,13 +173,6 @@ export class RetryHandler {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * Update retry configuration
-   */
-  updateConfig(newConfig: Partial<RetryConfig>): void {
-    this.config = { ...this.config, ...newConfig };
   }
 
   /**

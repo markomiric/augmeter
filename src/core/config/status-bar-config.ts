@@ -1,4 +1,5 @@
 import type * as vscode from "vscode";
+import { toRoundedNumber } from "./config-value-utils";
 
 export type StatusBarDisplayMode = "used" | "remaining" | "remainingOnly" | "both" | "percentage";
 export type StatusBarDensity = "auto" | "compact" | "detailed";
@@ -71,19 +72,19 @@ export class StatusBarConfigSection {
 
     const critical = Math.max(
       80,
-      Math.min(100, this.toRoundedNumber(value.critical, defaults.critical))
+      Math.min(100, toRoundedNumber(value.critical, defaults.critical))
     );
     const highWarning = Math.max(
       70,
-      Math.min(critical - 1, this.toRoundedNumber(value.highWarning, defaults.highWarning))
+      Math.min(critical - 1, toRoundedNumber(value.highWarning, defaults.highWarning))
     );
     const warning = Math.max(
       50,
-      Math.min(highWarning - 1, this.toRoundedNumber(value.warning, defaults.warning))
+      Math.min(highWarning - 1, toRoundedNumber(value.warning, defaults.warning))
     );
     const caution = Math.max(
       25,
-      Math.min(warning - 1, this.toRoundedNumber(value.caution, defaults.caution))
+      Math.min(warning - 1, toRoundedNumber(value.caution, defaults.caution))
     );
 
     return { critical, highWarning, warning, caution };
@@ -113,13 +114,6 @@ export class StatusBarConfigSection {
       enhancedReadability: this.isEnhancedReadabilityEnabled(),
       autoDetectHighContrast: this.shouldAutoDetectHighContrast(),
     };
-  }
-
-  private toRoundedNumber(value: unknown, fallback: number): number {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return Math.round(value);
-    }
-    return fallback;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

@@ -34,28 +34,28 @@ suite("RetryHandler Test Suite", () => {
     assert.strictEqual(attempts, 1);
   });
 
-  test("executeWithRetry retries on network error and then succeeds", async () => {
+  test("executeHttpWithRetry retries on thrown network error and then succeeds", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
-    const result = await rh.executeWithRetry(async () => {
+    const res = await rh.executeHttpWithRetry(async () => {
       attempts++;
       if (attempts < 2) {
         throw AugmeterError.network("net down");
       }
-      return "ok";
+      return { success: true, status: 200, data: { ok: true } };
     }, "network op");
 
-    assert.strictEqual(result, "ok");
+    assert.strictEqual(res.success, true);
     assert.ok(attempts >= 2);
   });
 
-  test("executeWithRetry does not retry on validation error", async () => {
+  test("executeHttpWithRetry does not retry on thrown validation error", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
     await assert.rejects(
-      rh.executeWithRetry(async () => {
+      rh.executeHttpWithRetry(async () => {
         attempts++;
         throw AugmeterError.validation("bad input");
       }, "validation op"),

@@ -113,18 +113,6 @@ export class UserNotificationService {
   }
 
   /**
-   * Show configuration error with settings action
-   */
-  static async showConfigError(userMessage?: string): Promise<void> {
-    const message = userMessage || "Configuration error. Please check your settings.";
-
-    await this.showError(message, {
-      text: "Open Settings",
-      action: async () => await vscode.commands.executeCommand("augmeter.openSettings"),
-    });
-  }
-
-  /**
    * Show success message (brief, non-intrusive)
    */
   static showSuccess(message: string): void {

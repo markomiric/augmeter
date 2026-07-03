@@ -34,46 +34,32 @@ describe("RetryHandler (unit) Test Suite", () => {
     expect(attempts).toBe(1);
   });
 
-  it("executeWithRetry retries on network error and then succeeds", async () => {
+  it("executeHttpWithRetry retries on thrown network error and then succeeds", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
-    const result = await rh.executeWithRetry(async () => {
+    const res = await rh.executeHttpWithRetry(async () => {
       attempts++;
       if (attempts < 2) {
         throw AugmeterError.network("net down");
       }
-      return "ok";
+      return { success: true, status: 200, data: { ok: true } };
     }, "network op");
 
-    expect(result).toBe("ok");
+    expect(res.success).toBe(true);
     expect(attempts).toBeGreaterThanOrEqual(2);
   });
 
-  it("executeWithRetry does not retry on validation error", async () => {
+  it("executeHttpWithRetry does not retry on thrown validation error", async () => {
     const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
 
     let attempts = 0;
     await expect(
-      rh.executeWithRetry(async () => {
+      rh.executeHttpWithRetry(async () => {
         attempts++;
         throw AugmeterError.validation("bad input");
       }, "validation op")
     ).rejects.toThrow(/bad input/);
-
-    expect(attempts).toBe(1);
-  });
-
-  it("executeWithRetry does not retry on AugmeterError.timeout", async () => {
-    const rh = new RetryHandler({ maxAttempts: 3, baseDelayMs: 1, jitter: false });
-
-    let attempts = 0;
-    await expect(
-      rh.executeWithRetry(async () => {
-        attempts++;
-        throw AugmeterError.timeout("Request timeout after 30000ms");
-      }, "timeout op")
-    ).rejects.toThrow(/Request timeout/);
 
     expect(attempts).toBe(1);
   });

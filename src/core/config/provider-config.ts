@@ -1,6 +1,7 @@
 import type * as vscode from "vscode";
 import { type KnownProviderId, type ProviderId } from "../types/provider-usage";
 import type { AlertThresholdConfig } from "./alert-config";
+import { toRoundedNumber } from "./config-value-utils";
 
 export interface ProviderAlertThresholdConfig {
   warning: number;
@@ -35,7 +36,7 @@ export class ProviderConfigSection {
         if (!normalizedKey) {
           continue;
         }
-        const target = this.toRoundedNumber(value, 0);
+        const target = toRoundedNumber(value, 0);
         if (target > 0) {
           targets[normalizedKey] = target;
         }
@@ -80,19 +81,19 @@ export class ProviderConfigSection {
 
     const warning = Math.max(
       50,
-      Math.min(99, this.toRoundedNumber(entry.warningPercent, fallback.warning))
+      Math.min(99, toRoundedNumber(entry.warningPercent, fallback.warning))
     );
     const high = Math.max(
       warning + 1,
-      Math.min(99, this.toRoundedNumber(entry.highPercent, fallback.high))
+      Math.min(99, toRoundedNumber(entry.highPercent, fallback.high))
     );
     const critical = Math.max(
       high + 1,
-      Math.min(100, this.toRoundedNumber(entry.criticalPercent, fallback.critical))
+      Math.min(100, toRoundedNumber(entry.criticalPercent, fallback.critical))
     );
     const runOutDays = Math.max(
       0,
-      Math.min(30, this.toRoundedNumber(entry.runOutDays, fallback.runOutDays))
+      Math.min(30, toRoundedNumber(entry.runOutDays, fallback.runOutDays))
     );
 
     return { warning, high, critical, runOutDays };
@@ -179,7 +180,7 @@ export class ProviderConfigSection {
     }
 
     const timeoutMsRaw = this.config.get<number>("providers.copilot.api.timeoutMs", 6000);
-    const timeoutMs = Math.max(1000, Math.min(30000, this.toRoundedNumber(timeoutMsRaw, 6000)));
+    const timeoutMs = Math.max(1000, Math.min(30000, toRoundedNumber(timeoutMsRaw, 6000)));
 
     return {
       enabled,
@@ -195,13 +196,6 @@ export class ProviderConfigSection {
       return "";
     }
     return value.trim().toLowerCase();
-  }
-
-  private toRoundedNumber(value: unknown, fallback: number): number {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return Math.round(value);
-    }
-    return fallback;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

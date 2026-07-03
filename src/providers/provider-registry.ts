@@ -22,10 +22,6 @@ export class ProviderRegistry {
     this.adapters.set(adapter.id, adapter);
   }
 
-  unregister(providerId: ProviderId): void {
-    this.adapters.delete(providerId);
-  }
-
   get(providerId: ProviderId): ProviderAdapter | undefined {
     return this.adapters.get(providerId);
   }

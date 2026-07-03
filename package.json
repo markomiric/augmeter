@@ -482,8 +482,6 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "prepare": "husky",
     "analyze:knip": "knip --reporter json --no-progress",
-    "analyze:prune": "ts-prune -p tsconfig.eslint.json || true",
-    "analyze:depcheck": "depcheck --json || true",
     "analyze:jscpd": "jscpd --silent --reporters json --min-lines 12 --threshold 0 src || true"
   },
   "devDependencies": {
@@ -496,7 +494,6 @@
     "@vitest/ui": "^3.2.4",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
-    "depcheck": "^1.4.7",
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
@@ -507,7 +504,6 @@
     "lint-staged": "^16.1.6",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
-    "ts-prune": "^0.10.3",
     "typedoc": "^0.28.13",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
