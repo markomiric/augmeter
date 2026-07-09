@@ -11,6 +11,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Automatic sign-in via the Auggie CLI: when `auggie` is installed and logged in, usage appears with no cookie or manual steps (`auggie account status` is parsed; credentials are never read). New settings: `augmeter.dataSource` (`auto`/`auggie-cli`/`cookie`) and `augmeter.auggieCli.path`.
 - Sign-in flow offers a one-click terminal `auggie login` when the CLI is installed but signed out
 - Diagnostics now report the data-source mode and Auggie CLI detection/auth state
+- `SECURITY.md` documenting the subprocess trust model (`sqlite3`, `auggie` CLI), SecretStorage secret handling, and untrusted-workspace restrictions
+- Dependabot configuration for automated weekly devDependency and GitHub Actions update PRs
+
+### Changed
+
+- Shared JSONL incremental-scan engine extracted from Claude and Codex provider adapters; each adapter now injects only its provider-specific predicate and timestamp extractor (internal refactor, no behavior change)
+- CI matrix extended to ubuntu, macOS, and Windows; integration tests remain Linux-only (xvfb); packaging runs once on Ubuntu
 
 ### Fixed
 

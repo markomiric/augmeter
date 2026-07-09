@@ -179,6 +179,8 @@ The icon always appears in non-data states (signed out / loading) regardless of 
 - Augmeter currently does not send extension analytics/telemetry events
 - Session/provider file tracking is automatically disabled in untrusted workspaces
 
+Augmeter has zero runtime dependencies and runs no third-party code in your editor. External binaries (`sqlite3`, `auggie`) are invoked via argument arrays, never shell strings, and custom binary paths are restricted to user settings (never workspace settings). See [SECURITY.md](SECURITY.md) for the full subprocess and secret trust model.
+
 ## Known issues & troubleshooting
 
 - **"Augmeter" with no data** — Cookie not detected or invalid. Visit https://app.augmentcode.com and copy the `_session` cookie again.
