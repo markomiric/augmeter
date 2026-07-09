@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { type KnownProviderId, type ProviderId } from "../types/provider-usage";
 import { AlertConfigSection, type AlertThresholdConfig } from "./alert-config";
+import { toRoundedNumber } from "./config-value-utils";
 import {
   ProviderConfigSection,
   type CopilotApiConfig,
@@ -54,7 +55,7 @@ export class ConfigManager {
   // Clamp to [1, 300] and coerce non-numbers to default (60)
   getRefreshInterval(): number {
     const raw = this.config.get<number>("refreshInterval", 60);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 60;
+    const n = toRoundedNumber(raw, 60);
     if (n < 1) return 1;
     if (n > 300) return 300;
     return n;
@@ -66,7 +67,7 @@ export class ConfigManager {
   // background slowdown.
   getBackgroundMultiplier(): number {
     const raw = this.config.get<number>("backgroundMultiplier", 5);
-    const n = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : 5;
+    const n = toRoundedNumber(raw, 5);
     if (n < 1) return 1;
     if (n > 20) return 20;
     return n;
