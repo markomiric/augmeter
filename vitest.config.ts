@@ -13,13 +13,13 @@ export default defineConfig({
       reporter: ["text", "html", "lcov", "json"],
       reportsDirectory: "./coverage",
       exclude: [...coverageConfigDefaults.exclude, "docs/**", "src/test/**", "test-setup/**"],
-      // Measured 2026-06-12: 51.7 lines / 67.5 branches / 62.3 functions.
+      // Measured 2026-07-04: 53.7 lines / 69.73 branches / 60.74 functions.
       // Gates sit ~5 points below measured; raise them as coverage grows.
       thresholds: {
-        lines: 45,
+        lines: 48,
         functions: 57,
-        branches: 62,
-        statements: 45,
+        branches: 64,
+        statements: 48,
       },
     },
     setupFiles: ["./test-setup/vitest-setup.ts"],

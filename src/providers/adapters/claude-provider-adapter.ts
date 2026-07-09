@@ -1,18 +1,28 @@
-import { promises as fs, createReadStream } from "node:fs";
 import { type ProviderAdapter, type ProviderAdapterResult } from "../provider-adapter";
 import { collectFilesRecursive, directoryExists, resolveHomePath } from "../local-file-utils";
+import { JsonlSessionScanner, asRecord, toTimestamp } from "./jsonl-session-scanner";
 
-interface ClaudeUsageCounts {
-  rollingFiveHourMessages: number;
-  weeklyMessages: number;
-  filesScanned: number;
-}
+/**
+ * Claude session logs mark user turns with `{"type":"user", ...}`; count those.
+ */
+function extractClaudeTimestamp(line: string): number | null {
+  if (!line.includes('"type":"user"') || !line.includes('"timestamp"')) {
+    return null;
+  }
 
-interface ClaudeFileScanState {
-  mtimeMs: number;
-  sizeBytes: number;
-  weeklyTimestamps: number[];
-  trailingFragment: string;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  const event = asRecord(parsed);
+  if (!event || event.type !== "user") {
+    return null;
+  }
+
+  return toTimestamp(event.timestamp);
 }
 
 export class ClaudeProviderAdapter implements ProviderAdapter {
@@ -22,7 +32,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   private readonly minRefreshMs = 5 * 60 * 1000;
   private lastCollectedAt = 0;
   private lastResult: ProviderAdapterResult | null = null;
-  private fileScanState = new Map<string, ClaudeFileScanState>();
+  private readonly scanner = new JsonlSessionScanner(extractClaudeTimestamp);
 
   constructor(private readonly resolveCustomPath: () => string = () => "") {}
 
@@ -97,7 +107,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     const cutoffFiveHour = nowMs - 5 * 60 * 60 * 1000;
     const cutoffWeekly = nowMs - 7 * 24 * 60 * 60 * 1000;
 
-    const counts = await this.countMessages(files, cutoffFiveHour, cutoffWeekly);
+    const counts = await this.scanner.countMessages(files, cutoffFiveHour, cutoffWeekly);
     const nowIso = context.now.toISOString();
 
     const result: ProviderAdapterResult = {
@@ -148,188 +158,5 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   private cache(result: ProviderAdapterResult, nowMs: number): void {
     this.lastCollectedAt = nowMs;
     this.lastResult = result;
-  }
-
-  private async countMessages(
-    files: string[],
-    cutoffFiveHour: number,
-    cutoffWeekly: number
-  ): Promise<ClaudeUsageCounts> {
-    let rollingFiveHourMessages = 0;
-    let weeklyMessages = 0;
-    let filesScanned = 0;
-
-    const activeFiles = new Set(files);
-    for (const existingPath of Array.from(this.fileScanState.keys())) {
-      if (!activeFiles.has(existingPath)) {
-        this.fileScanState.delete(existingPath);
-      }
-    }
-
-    for (const filePath of files) {
-      const stats = await this.getStats(filePath);
-      if (!stats) {
-        continue;
-      }
-
-      const previous = this.fileScanState.get(filePath);
-      if (!previous && stats.mtimeMs < cutoffWeekly) {
-        continue;
-      }
-
-      filesScanned += 1;
-
-      const next = await this.readTimestampsIncremental(filePath, stats, previous);
-      const weeklyTimestamps = next.weeklyTimestamps
-        .filter(timestamp => timestamp >= cutoffWeekly)
-        .sort((a, b) => a - b);
-
-      this.fileScanState.set(filePath, {
-        mtimeMs: next.mtimeMs,
-        sizeBytes: next.sizeBytes,
-        weeklyTimestamps,
-        trailingFragment: next.trailingFragment,
-      });
-
-      weeklyMessages += weeklyTimestamps.length;
-      for (const timestamp of weeklyTimestamps) {
-        if (timestamp >= cutoffFiveHour) {
-          rollingFiveHourMessages += 1;
-        }
-      }
-    }
-
-    return { rollingFiveHourMessages, weeklyMessages, filesScanned };
-  }
-
-  private async getStats(filePath: string): Promise<{ mtimeMs: number; sizeBytes: number } | null> {
-    try {
-      const stats = await fs.stat(filePath);
-      return { mtimeMs: stats.mtimeMs, sizeBytes: stats.size };
-    } catch {
-      return null;
-    }
-  }
-
-  private async readTimestampsIncremental(
-    filePath: string,
-    stats: { mtimeMs: number; sizeBytes: number },
-    previous: ClaudeFileScanState | undefined
-  ): Promise<ClaudeFileScanState> {
-    if (
-      !previous ||
-      stats.sizeBytes < previous.sizeBytes ||
-      stats.mtimeMs < previous.mtimeMs ||
-      (stats.mtimeMs > previous.mtimeMs && stats.sizeBytes === previous.sizeBytes)
-    ) {
-      const full = await this.readChunk(filePath, 0, "");
-      return {
-        mtimeMs: stats.mtimeMs,
-        sizeBytes: stats.sizeBytes,
-        weeklyTimestamps: full.timestamps,
-        trailingFragment: full.trailingFragment,
-      };
-    }
-
-    if (stats.sizeBytes === previous.sizeBytes && stats.mtimeMs === previous.mtimeMs) {
-      return previous;
-    }
-
-    const delta = await this.readChunk(filePath, previous.sizeBytes, previous.trailingFragment);
-    return {
-      mtimeMs: stats.mtimeMs,
-      sizeBytes: stats.sizeBytes,
-      weeklyTimestamps: previous.weeklyTimestamps.concat(delta.timestamps),
-      trailingFragment: delta.trailingFragment,
-    };
-  }
-
-  private async readChunk(
-    filePath: string,
-    startByte: number,
-    initialFragment: string
-  ): Promise<{ timestamps: number[]; trailingFragment: string }> {
-    return await new Promise((resolve, reject) => {
-      const timestamps: number[] = [];
-      const stream = createReadStream(filePath, {
-        encoding: "utf8",
-        start: Math.max(0, startByte),
-      });
-      let buffer = initialFragment;
-
-      stream.on("data", chunk => {
-        buffer += chunk;
-        let nextBreak = buffer.indexOf("\n");
-        while (nextBreak >= 0) {
-          const line = buffer.slice(0, nextBreak).replace(/\r$/, "");
-          buffer = buffer.slice(nextBreak + 1);
-          this.collectTimestampFromLine(line, timestamps);
-          nextBreak = buffer.indexOf("\n");
-        }
-      });
-
-      stream.on("error", reject);
-      stream.on("end", () => {
-        const trailingFragment = this.flushTrailingFragment(buffer, timestamps);
-        resolve({ timestamps, trailingFragment });
-      });
-    });
-  }
-
-  private collectTimestampFromLine(line: string, target: number[]): void {
-    if (!line.includes('"type":"user"') || !line.includes('"timestamp"')) {
-      return;
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      return;
-    }
-
-    const event = this.asRecord(parsed);
-    if (!event || event.type !== "user") {
-      return;
-    }
-
-    const timestamp = this.toTimestamp(event.timestamp);
-    if (timestamp !== null) {
-      target.push(timestamp);
-    }
-  }
-
-  private flushTrailingFragment(fragment: string, target: number[]): string {
-    if (fragment.length === 0) {
-      return "";
-    }
-
-    const trimmed = fragment.trim();
-    if (trimmed.length === 0) {
-      return "";
-    }
-
-    const beforeCount = target.length;
-    this.collectTimestampFromLine(trimmed, target);
-    if (target.length > beforeCount) {
-      return "";
-    }
-
-    return fragment.length > 4096 ? fragment.slice(-4096) : fragment;
-  }
-
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return null;
-    }
-    return value as Record<string, unknown>;
-  }
-
-  private toTimestamp(value: unknown): number | null {
-    if (typeof value !== "string") {
-      return null;
-    }
-    const ts = Date.parse(value);
-    return Number.isFinite(ts) ? ts : null;
   }
 }

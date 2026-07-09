@@ -62,6 +62,48 @@ describe("ClaudeProviderAdapter", () => {
     expect(result.health.status).toBe("restricted");
   });
 
+  it("returns degraded health when the directory has no JSONL files", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "augmeter-claude-empty-"));
+    tempDirs.push(root);
+
+    const adapter = new ClaudeProviderAdapter(() => root);
+    const result = await adapter.collectUsage({
+      now: new Date("2026-02-16T12:00:00.000Z"),
+      workspaceTrusted: true,
+      forceRefresh: true,
+    });
+
+    expect(result.health.status).toBe("degraded");
+    expect(result.snapshots).toHaveLength(0);
+  });
+
+  it("does not throw and does not count a partial trailing JSON fragment with no terminating newline", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "augmeter-claude-trailing-"));
+    tempDirs.push(root);
+
+    const now = new Date("2026-02-16T12:00:00.000Z");
+    const valid = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const filePath = path.join(root, "session.jsonl");
+
+    // One complete user line, then a partial JSON object with no closing brace and no newline.
+    // flushTrailingFragment receives the fragment, JSON.parse fails, it is kept but not counted.
+    fs.writeFileSync(
+      filePath,
+      `${JSON.stringify({ type: "user", timestamp: valid })}\n{"type":"user","timestamp":`,
+      "utf8"
+    );
+
+    const adapter = new ClaudeProviderAdapter(() => root);
+    const result = await adapter.collectUsage({
+      now,
+      workspaceTrusted: true,
+      forceRefresh: true,
+    });
+
+    expect(result.health.status).toBe("connected");
+    expect(result.snapshots.find(s => s.windowType === "weekly_7d")?.used).toBe(1);
+  });
+
   it("ignores malformed lines and supports incremental append scans", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "augmeter-claude-incremental-"));
     tempDirs.push(root);
