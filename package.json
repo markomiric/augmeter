@@ -500,7 +500,7 @@
     "compile-tests": "npm run clean && tsc -p ./tsconfig.test.json",
     "watch": "tsc -watch -p ./",
     "package": "npm run compile && npx @vscode/vsce package",
-    "clean": "rimraf out *.vsix",
+    "clean": "rimraf --glob out \"*.vsix\"",
     "sbom": "cyclonedx-npm --output-file sbom.json",
     "pretest": "npm run compile && npm run lint",
     "test": "vitest run",
