@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter: Assistant Usage",
   "description": "Track local Claude Code, Codex, and GitHub Copilot activity alongside connected Augment credits in VS Code.",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "publisher": "kamacode",
   "author": {
     "name": "Marko",

@@ -6,35 +6,36 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-16
+
 ### Added
 
-- Automatic Augment connection through Auggie CLI when `auggie` is installed and already signed in. Augmeter reads `auggie account status` without reading CLI credentials. New settings: `augmeter.dataSource` (`auto`/`auggie-cli`/`cookie`) and `augmeter.auggieCli.path`.
-- The Augment connection flow can open a terminal for `auggie login` when the CLI is installed but signed out
-- Diagnostics now report the data-source mode and Auggie CLI detection/auth state
-- `SECURITY.md` documenting the subprocess trust model (`sqlite3`, `auggie` CLI), SecretStorage secret handling, and untrusted-workspace restrictions
-- Dependabot configuration for automated weekly devDependency and GitHub Actions update PRs
+- Local activity tracking for Claude Code, Codex, and GitHub Copilot, with source-specific labels and timestamps.
+- Assistant usage dashboard, CSV/JSON exports, and diagnostics covering local activity and connected Augment data.
+- Automatic Augment connection through Auggie CLI, including a guided `auggie login` terminal flow when needed.
+- Optional official GitHub Copilot premium-request usage through `GITHUB_TOKEN`.
+- `SECURITY.md` documenting subprocess, secret-storage, and untrusted-workspace behavior.
+- Cross-platform CI and Dependabot coverage for dependencies and GitHub Actions.
 
 ### Changed
 
-- Reframed the product around Claude Code, Codex, and GitHub Copilot activity alongside optional Augment credit data. The overview now leads with assistant activity and labels local versus official usage.
-- Renamed the extension display name to **Augmeter: Assistant Usage** so the Marketplace and Settings no longer imply an Augment-only product.
-- Reworked status-bar, connection, dashboard, settings, alerts, exports, diagnostics, empty states, and errors around consistent, action-specific language.
-- Renamed user commands to describe their exact scope, including **Connect Augment**, **Open Assistant Usage**, **Export Augment Credit History**, and **Export All Usage Data**.
-- Grouped settings by Assistant activity, Augment credits, Status bar, and General while preserving all existing setting keys.
-- Status-bar `both`, `auto`, and `showPercentInStatusBar` options now match their settings descriptions.
-- Renamed `augmeter.budget.monthlyTarget` to `augmeter.budget.cycleTarget` to match its billing-cycle scope. Existing values remain supported during migration.
-- Shared JSONL incremental-scan engine extracted from Claude and Codex provider adapters; each adapter now injects only its provider-specific predicate and timestamp extractor (internal refactor, no behavior change)
-- CI matrix extended to ubuntu, macOS, and Windows; integration tests remain Linux-only (xvfb); packaging runs once on Ubuntu
-- Assistant cards now label Claude Code and Codex values as local user turns, show source timestamps, explain counting rules, and identify the local Copilot value as a cumulative counter without a reliable time window.
-- README and usage-data documentation now include fresh Extension Development Host screenshots and source-by-source metric definitions.
+- Reframed the extension as **Augmeter: Assistant Usage**, with local assistant activity first and optional Augment credit data clearly separated.
+- Simplified the status bar to one consistent credit summary and reduced settings to supported, actionable controls.
+- Reworked commands, dashboard copy, tooltips, empty states, exports, and diagnostics around explicit data sources and user actions.
+- Shared incremental JSONL scanning between Claude Code and Codex for lower repeated-read overhead.
+- Updated README and usage-data documentation with current UI screenshots and source-by-source metric definitions.
 
 ### Fixed
 
-- Provider snapshot retention now honors the injected clock, making pruning deterministic
-- The `.vsix` no longer ships development dependencies or agent files (package size reduced to about 143 KB)
-- Claude Code activity no longer counts tool-result or metadata records, and Claude Code/Codex activity no longer includes agent/subagent sessions.
-- Balance-only Auggie CLI responses no longer appear as `0 used`; Augmeter shows the reported balance and monthly allowance while withholding unsupported percentage, pace, target, and trend calculations.
-- Renewal cards no longer derive a potentially misleading day countdown from a date-only Auggie response.
+- Claude Code activity excludes tool-result and metadata records; Claude Code and Codex totals exclude agent/subagent sessions.
+- Balance-only Auggie CLI responses no longer appear as `0 used` or produce unsupported percentage and trend calculations.
+- Renewal cards no longer derive a misleading countdown from date-only data.
+- Provider snapshot retention and JSONL stream completion are deterministic.
+- Packaging and clean scripts work across supported operating systems; the `.vsix` no longer ships development or agent files and is approximately 130 KB.
+
+### Removed
+
+- Experimental Augment session tracking, provider targets and alerts, redundant status-bar customization, and unused internal wrappers and tooling.
 
 ## [1.0.3] - 2026-01-30
 
