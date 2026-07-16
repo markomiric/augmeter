@@ -39,7 +39,21 @@ export class AlertConfigSection {
   }
 
   getMonthlyTarget(): number {
-    const raw = this.config.get<number>("budget.monthlyTarget", 0);
+    const inspected = this.config.inspect?.<number>("budget.cycleTarget");
+    const hasConfiguredCycleTarget = Boolean(
+      inspected &&
+        [
+          inspected.globalValue,
+          inspected.workspaceValue,
+          inspected.workspaceFolderValue,
+          inspected.globalLanguageValue,
+          inspected.workspaceLanguageValue,
+          inspected.workspaceFolderLanguageValue,
+        ].some(value => value !== undefined)
+    );
+    const raw = hasConfiguredCycleTarget
+      ? this.config.get<number>("budget.cycleTarget", 0)
+      : this.config.get<number>("budget.monthlyTarget", 0);
     return Math.max(0, toRoundedNumber(raw, 0));
   }
 }

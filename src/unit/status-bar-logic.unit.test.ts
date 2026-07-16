@@ -23,19 +23,33 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     const fmt = (n: number) => `#${n}`; // deterministic
     expect(computeValueText("used", 1200, 2000, 800, fmt)).toBe("#1200/#2000");
     expect(computeValueText("remaining", 1200, 2000, 800, fmt)).toBe("#800/#2000");
-    expect(computeValueText("both", 1200, 2000, 800, fmt)).toBe("#1200/#2000");
+    expect(computeValueText("both", 1200, 2000, 800, fmt)).toBe("#1200/#2000 · #800 left");
+    expect(computeValueText("used", 1200, 2000, 800, fmt, true)).toBe("#1200/#2000 (60%)");
   });
 
   it("computeDisplayText applies density rules", () => {
     expect(computeDisplayText("detailed", "1/2", "dashboard")).toBe("$(dashboard) 1/2");
-    expect(computeDisplayText("auto", "1/2", "dashboard")).toBe("1/2");
+    expect(computeDisplayText("auto", "1/2", "dashboard")).toBe("$(dashboard) 1/2");
     expect(computeDisplayText("compact", "1/2", "dashboard")).toBe("1/2");
   });
 
   it("computeDisplayText uses icons when detailed", () => {
     expect(computeDisplayText("compact", "7/56", "graph-line")).toBe("7/56");
     expect(computeDisplayText("detailed", "7/56", "graph-line")).toBe("$(graph-line) 7/56");
-    expect(computeDisplayText("auto", "7/56", "graph-line")).toBe("7/56");
+    expect(computeDisplayText("auto", "7/56", "graph-line")).toBe("$(graph-line) 7/56");
+    expect(computeDisplayText("auto", "1,200/2,000 · 800 left", "graph-line")).toBe(
+      "1,200/2,000 · 800 left"
+    );
+  });
+
+  it("computeDisplayText identifies Augment without changing compact mode", () => {
+    expect(computeDisplayText("detailed", "45 left", "dashboard", "Augment")).toBe(
+      "$(dashboard) Augment · 45 left"
+    );
+    expect(computeDisplayText("auto", "1,200/2,000 · 800 left", "dashboard", "Augment")).toBe(
+      "Augment · 1,200/2,000 · 800 left"
+    );
+    expect(computeDisplayText("compact", "45 left", "dashboard", "Augment")).toBe("45 left");
   });
 
   it("buildMarkdownTooltip includes provider usage lines", () => {
@@ -49,10 +63,35 @@ describe("StatusBar Logic (unit) Test Suite", () => {
       providerUsageLines: ["Claude Code: 5h 12 • 7d 84", "Codex (local prompts): 5h 8 • 7d 42"],
     });
 
-    expect(tooltip).toContain("**Providers:**");
+    expect(tooltip).toContain("**Assistant activity:**");
     expect(tooltip).toContain("- Claude Code: 5h 12 • 7d 84");
     expect(tooltip).toContain("- Codex (local prompts): 5h 8 • 7d 42");
-    expect(tooltip).toContain("[Open dashboard](command:augmeter.openUsageDashboard)");
+    expect(tooltip).toContain("**Assistant usage**");
+    expect(tooltip.indexOf("**Assistant activity:**")).toBeLessThan(
+      tooltip.indexOf("**Augment credits**")
+    );
+    expect(tooltip).toContain("[Open assistant usage](command:augmeter.openUsageDashboard)");
+  });
+
+  it("buildMarkdownTooltip keeps local assistant activity visible without Augment credits", () => {
+    const tooltip = buildMarkdownTooltip({
+      used: 0,
+      limit: 0,
+      remaining: 0,
+      percentage: 0,
+      hasRealData: false,
+      clickAction: "refresh",
+      providerUsageLines: ["Claude Code: 12 messages in 5 hours · 84 in 7 days"],
+    });
+
+    expect(tooltip).toContain("**Assistant usage**");
+    expect(tooltip).toContain("**Augment credits:** Not connected");
+    expect(tooltip).toContain("Run **Augmeter: Connect Augment** to add live credit data.");
+    expect(tooltip).toContain("**Assistant activity:**");
+    expect(tooltip).toContain("Claude Code: 12 messages in 5 hours · 84 in 7 days");
+    expect(tooltip).toContain("Click to open assistant usage");
+    expect(tooltip).not.toContain("Click to connect Augment");
+    expect(tooltip).not.toContain("real usage");
   });
 
   it("buildProviderUsageLines orders providers and falls back to health status", () => {
@@ -86,9 +125,9 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     );
 
     expect(lines).toEqual([
-      "Claude Code: 7d 84",
-      "Codex (local prompts): 5h 8",
-      "GitHub Copilot: degraded",
+      "Claude Code: 84 turns in 7 days",
+      "Codex: 8 turns in 5 hours",
+      "GitHub Copilot: activity unavailable; check Output > Augmeter",
     ]);
   });
 
@@ -107,7 +146,84 @@ describe("StatusBar Logic (unit) Test Suite", () => {
       []
     );
 
-    expect(lines).toEqual(["GitHub Copilot: month 42"]);
+    expect(lines).toEqual(["GitHub Copilot: 42 official premium requests this month"]);
+  });
+
+  it("treats missing activity history as an empty state", () => {
+    const checkedAt = "2026-03-17T10:00:00.000Z";
+    const lines = buildProviderUsageLines(
+      [],
+      [
+        {
+          providerId: "claude",
+          status: "degraded",
+          checkedAt,
+          canCollectInCurrentWorkspace: true,
+          errorCode: "CLAUDE_NO_LOGS",
+        },
+        {
+          providerId: "codex",
+          status: "degraded",
+          checkedAt,
+          canCollectInCurrentWorkspace: true,
+          errorCode: "CODEX_NO_LOGS",
+        },
+        {
+          providerId: "copilot",
+          status: "degraded",
+          checkedAt,
+          canCollectInCurrentWorkspace: true,
+          errorCode: "COPILOT_COUNTERS_MISSING",
+        },
+      ]
+    );
+
+    expect(lines).toEqual([
+      "Claude Code: no activity recorded yet",
+      "Codex: no activity recorded yet",
+      "GitHub Copilot: no activity recorded yet",
+    ]);
+  });
+
+  it("labels custom-window Copilot API data as official", () => {
+    const lines = buildProviderUsageLines(
+      [
+        {
+          providerId: "copilot",
+          timestamp: "2026-03-17T10:00:00.000Z",
+          windowType: "custom",
+          metricType: "messages",
+          sourceKind: "api",
+          used: 42,
+        },
+      ],
+      []
+    );
+
+    expect(lines).toEqual([
+      "GitHub Copilot: 42 official premium requests in the current billing window",
+    ]);
+  });
+
+  it("shows balance-only Augment data without inventing cycle usage", () => {
+    const tooltip = buildMarkdownTooltip({
+      used: 0,
+      limit: 57306,
+      remaining: 57306,
+      percentage: 0,
+      hasRealData: true,
+      usageKnown: false,
+      monthlyAllowance: 40000,
+      clickAction: "refresh",
+      usageRatePerHour: 0,
+    });
+
+    expect(tooltip).toContain("**Remaining:** 57,306 credits left");
+    expect(tooltip).toContain("**Monthly allowance:** 40,000 credits");
+    expect(tooltip).toContain("Cycle usage unavailable from Auggie CLI");
+    expect(tooltip).not.toContain("**Used:**");
+    expect(tooltip).not.toContain("**Pace:**");
+    expect(tooltip).not.toContain("`[");
   });
 
   it("formatCompact adds locale separators for large numbers", () => {
@@ -270,23 +386,21 @@ describe("StatusBar Logic (unit) Test Suite", () => {
   describe("computeAccessibilityLabel", () => {
     it("generates label for normal usage", () => {
       const label = computeAccessibilityLabel(500, 1000, 500, 50);
-      expect(label).toContain("500");
-      expect(label).toContain("1000");
-      expect(label).toContain("50%");
+      expect(label).toBe("Augment credits: 500 of 1000 used, 500 left, 50 percent.");
     });
 
     it("generates label for high usage", () => {
       const label = computeAccessibilityLabel(900, 1000, 100, 90);
       expect(label).toContain("900");
       expect(label).toContain("1000");
-      expect(label).toContain("90%");
+      expect(label).toContain("90 percent");
     });
 
     it("generates label for near limit", () => {
       const label = computeAccessibilityLabel(980, 1000, 20, 98);
       expect(label).toContain("980");
       expect(label).toContain("1000");
-      expect(label).toContain("98%");
+      expect(label).toContain("98 percent");
     });
 
     it("handles zero values", () => {

@@ -4,14 +4,28 @@ import { ConfigManager } from "../../core/config/config-manager";
 import { StatusBarManager } from "../../ui/status-bar";
 
 class FakeUsageTracker {
+  private hasRealData = true;
+
   getCurrentUsage() {
     return 50;
   }
   getCurrentLimit() {
     return 100;
   }
-  hasRealUsageData() {
+  getRemainingCredits() {
+    return 50;
+  }
+  isCurrentUsageKnown() {
     return true;
+  }
+  getMonthlyAllowance() {
+    return null;
+  }
+  hasRealUsageData() {
+    return this.hasRealData;
+  }
+  setHasRealData(value: boolean) {
+    this.hasRealData = value;
   }
   getDataSource() {
     return "test";
@@ -115,20 +129,51 @@ suite("StatusBar tooltip Test Suite", () => {
 
     const rawTooltip = (manager as any).statusBarItem.tooltip;
     const tooltip = typeof rawTooltip === "string" ? rawTooltip : (rawTooltip?.value ?? "");
-    assert.ok(tooltip.includes("Augmeter"), `Tooltip should include title, got: ${tooltip}`);
-    assert.ok(tooltip.includes("50 / 100"), `Tooltip should include used/limit, got: ${tooltip}`);
+    assert.ok(
+      tooltip.includes("**Assistant usage**"),
+      `Tooltip should lead with assistant usage, got: ${tooltip}`
+    );
+    assert.ok(
+      tooltip.includes("Augment credits"),
+      `Tooltip should identify Augment credits, got: ${tooltip}`
+    );
+    assert.ok(
+      tooltip.includes("Used:** 50 of 100 credits"),
+      `Tooltip should include used credits and limit, got: ${tooltip}`
+    );
     assert.ok(tooltip.includes("Remaining"), `Tooltip should include remaining, got: ${tooltip}`);
     assert.ok(
-      tooltip.includes("**Providers:**"),
+      tooltip.includes("**Assistant activity:**"),
       `Tooltip should include providers, got: ${tooltip}`
     );
     assert.ok(
-      tooltip.includes("Claude Code: 5h 12 • 7d 84"),
+      tooltip.includes("Claude Code: 12 turns in 5 hours • 84 turns in 7 days"),
       `Tooltip should include Claude provider usage, got: ${tooltip}`
     );
     assert.ok(
-      tooltip.includes("Codex (local prompts): 5h 8 • 7d 42"),
+      tooltip.includes("Codex: 8 turns in 5 hours • 42 turns in 7 days"),
       `Tooltip should include Codex provider usage, got: ${tooltip}`
+    );
+  });
+
+  test("Tooltip keeps local assistant activity visible when Augment is disconnected", async () => {
+    config = new ConfigManager();
+    await config.updateConfig("enabled", true);
+
+    const tracker = new FakeUsageTracker();
+    tracker.setHasRealData(false);
+    manager = new StatusBarManager(tracker as any, config);
+    await manager.updateDisplay();
+
+    const rawTooltip = (manager as any).statusBarItem.tooltip;
+    const tooltip = typeof rawTooltip === "string" ? rawTooltip : (rawTooltip?.value ?? "");
+    assert.ok(
+      tooltip.includes("**Augment credits:** Not connected"),
+      `Tooltip should explain the disconnected Augment state, got: ${tooltip}`
+    );
+    assert.ok(
+      tooltip.includes("Claude Code: 12 turns in 5 hours • 84 turns in 7 days"),
+      `Tooltip should retain local activity, got: ${tooltip}`
     );
   });
 });
@@ -145,6 +190,7 @@ suite("StatusBar RemainingOnly Mode", () => {
       await config.updateConfig("displayMode", "both");
       await config.updateConfig("statusBarDensity", "auto");
       await config.updateConfig("statusBarIcon", "dashboard");
+      await config.updateConfig("showPercentInStatusBar", false);
     }
   });
 
@@ -184,5 +230,20 @@ suite("StatusBar RemainingOnly Mode", () => {
       tooltip.includes("**Remaining:** 50"),
       `Tooltip should clearly state remaining credits, got: ${tooltip}`
     );
+  });
+
+  test("show percent adds context to non-percentage modes", async () => {
+    config = new ConfigManager();
+    await config.updateConfig("enabled", true);
+    await config.updateConfig("showInStatusBar", true);
+    await config.updateConfig("displayMode", "used");
+    await config.updateConfig("statusBarDensity", "compact");
+    await config.updateConfig("showPercentInStatusBar", true);
+
+    manager = new StatusBarManager(new FakeUsageTracker() as any, config);
+    await manager.updateDisplay();
+
+    const text = (manager as any).statusBarItem.text as string;
+    assert.strictEqual(text, "50/100 (50%)");
   });
 });

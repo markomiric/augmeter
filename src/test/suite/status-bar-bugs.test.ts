@@ -9,6 +9,10 @@ class MockUsageTracker {
   private hasRealData = false;
   private currentUsage = 0;
   private currentLimit = 0;
+  private nextProviderRead: {
+    signalStarted: () => void;
+    wait: Promise<void>;
+  } | null = null;
 
   getCurrentUsage() {
     return this.currentUsage;
@@ -16,6 +20,18 @@ class MockUsageTracker {
 
   getCurrentLimit() {
     return this.currentLimit;
+  }
+
+  getRemainingCredits() {
+    return Math.max(this.currentLimit - this.currentUsage, 0);
+  }
+
+  isCurrentUsageKnown() {
+    return true;
+  }
+
+  getMonthlyAllowance() {
+    return null;
   }
 
   hasRealUsageData() {
@@ -28,6 +44,33 @@ class MockUsageTracker {
 
   setHasRealData(value: boolean) {
     this.hasRealData = value;
+  }
+
+  blockNextProviderRead(): { started: Promise<void>; release: () => void } {
+    let signalStarted = () => {};
+    let release = () => {};
+    const started = new Promise<void>(resolve => {
+      signalStarted = resolve;
+    });
+    const wait = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    this.nextProviderRead = { signalStarted, wait };
+    return { started, release };
+  }
+
+  async getProviderUsageSnapshots() {
+    const pending = this.nextProviderRead;
+    if (pending) {
+      this.nextProviderRead = null;
+      pending.signalStarted();
+      await pending.wait;
+    }
+    return [];
+  }
+
+  async getProviderHealthSnapshots() {
+    return [];
   }
 
   async resetUsage() {
@@ -181,7 +224,7 @@ suite("Status Bar Bugs Test Suite", () => {
     await config.updateConfig("showInStatusBar", true);
     manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
 
-    // Test sign in state click command
+    // The disconnected state remains useful for local assistant activity.
     mockDetector.setHasApiCookie(false);
     mockUsageTracker.setHasRealData(false);
     await manager.updateDisplay();
@@ -189,13 +232,13 @@ suite("Status Bar Bugs Test Suite", () => {
     let statusBarItem = (manager as any).statusBarItem;
     assert.strictEqual(
       statusBarItem.command,
-      "augmeter.smartSignIn",
-      "Sign in state should use smartSignIn command"
+      "augmeter.openUsageDashboard",
+      "Disconnected state should open the assistant usage overview"
     );
     assert.ok(
       typeof statusBarItem.tooltip !== "string" &&
         statusBarItem.tooltip?.value?.includes("command:augmeter.openUsageDashboard"),
-      "Sign in tooltip should include a dashboard link"
+      "Disconnected tooltip should include the assistant usage link"
     );
 
     // Test connected state click command
@@ -213,6 +256,35 @@ suite("Status Bar Bugs Test Suite", () => {
       typeof statusBarItem.tooltip !== "string" &&
         statusBarItem.tooltip?.value?.includes("command:augmeter.openUsageDashboard"),
       "Connected tooltip should include a dashboard link"
+    );
+  });
+
+  test("A slow disconnected render cannot overwrite a newer connected state", async () => {
+    await config.updateConfig("showInStatusBar", true);
+    manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
+    await manager.updateDisplay();
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    mockDetector.setHasApiCookie(false);
+    mockUsageTracker.setHasRealData(false);
+    const blockedRead = mockUsageTracker.blockNextProviderRead();
+    const disconnectedRender = manager.updateDisplay();
+    await blockedRead.started;
+
+    mockDetector.setHasApiCookie(true);
+    const connectedRender = manager.updateDisplay();
+    await connectedRender;
+
+    const statusBarItem = (manager as any).statusBarItem;
+    assert.strictEqual(statusBarItem.command, "augmeter.manualRefresh");
+
+    blockedRead.release();
+    await disconnectedRender;
+
+    assert.strictEqual(
+      statusBarItem.command,
+      "augmeter.manualRefresh",
+      "The stale disconnected render should not restore the sign-in command"
     );
   });
 });

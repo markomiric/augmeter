@@ -25,61 +25,65 @@ describe("SecureCookieUtils", () => {
     it("rejects empty string", () => {
       const result = SecureCookieUtils.validateCookieValue("");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("cannot be empty");
+      expect(result.error).toBe("Paste the _session cookie value.");
     });
 
     it("rejects whitespace-only string", () => {
       const result = SecureCookieUtils.validateCookieValue("   ");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("cannot be empty");
+      expect(result.error).toBe("Paste the _session cookie value.");
     });
 
     it("rejects literal '_session' string", () => {
       const result = SecureCookieUtils.validateCookieValue("_session");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("actual token value");
+      expect(result.error).toBe("Paste the cookie value, not _session.");
     });
 
     it("rejects '_session=' string", () => {
       const result = SecureCookieUtils.validateCookieValue("_session=");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("actual token value");
+      expect(result.error).toBe("Paste the cookie value, not _session.");
     });
 
     it("rejects placeholder text with 'your'", () => {
       const result = SecureCookieUtils.validateCookieValue("your-token-here");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("placeholder text");
+      expect(result.error).toBe("This looks like an example, not your cookie value.");
     });
 
     it("rejects placeholder text with 'cookie'", () => {
       const result = SecureCookieUtils.validateCookieValue("paste-cookie-value-here");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("placeholder text");
+      expect(result.error).toBe("This looks like an example, not your cookie value.");
     });
 
     it("rejects placeholder text with 'value'", () => {
       const result = SecureCookieUtils.validateCookieValue("enter-value-here");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("placeholder text");
+      expect(result.error).toBe("This looks like an example, not your cookie value.");
     });
 
     it("rejects placeholder text case-insensitive", () => {
       const result = SecureCookieUtils.validateCookieValue("YOUR-COOKIE-VALUE");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("placeholder text");
+      expect(result.error).toBe("This looks like an example, not your cookie value.");
     });
 
     it("rejects token shorter than 16 characters", () => {
       const result = SecureCookieUtils.validateCookieValue("short");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("too short");
+      expect(result.error).toBe(
+        "The cookie value looks incomplete. Copy the full value and try again."
+      );
     });
 
     it("rejects token with exactly 15 characters", () => {
       const result = SecureCookieUtils.validateCookieValue("A".repeat(15));
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("too short");
+      expect(result.error).toBe(
+        "The cookie value looks incomplete. Copy the full value and try again."
+      );
     });
 
     it("accepts token with exactly 16 characters", () => {
@@ -91,21 +95,27 @@ describe("SecureCookieUtils", () => {
       const token = "A".repeat(20) + " " + "B".repeat(20);
       const result = SecureCookieUtils.validateCookieValue(token);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("unexpected characters");
+      expect(result.error).toBe(
+        "The cookie value contains unsupported characters. Copy it again without editing it."
+      );
     });
 
     it("rejects token with invalid characters (special chars)", () => {
       const token = "A".repeat(20) + "@#$" + "B".repeat(20);
       const result = SecureCookieUtils.validateCookieValue(token);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("unexpected characters");
+      expect(result.error).toBe(
+        "The cookie value contains unsupported characters. Copy it again without editing it."
+      );
     });
 
     it("rejects token with newlines", () => {
       const token = "A".repeat(20) + "\n" + "B".repeat(20);
       const result = SecureCookieUtils.validateCookieValue(token);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("unexpected characters");
+      expect(result.error).toBe(
+        "The cookie value contains unsupported characters. Copy it again without editing it."
+      );
     });
   });
 
@@ -258,7 +268,9 @@ describe("SecureCookieUtils", () => {
       const validation = SecureCookieUtils.validateCookieValue(extracted);
 
       expect(validation.valid).toBe(false);
-      expect(validation.error).toContain("too short");
+      expect(validation.error).toBe(
+        "The cookie value looks incomplete. Copy the full value and try again."
+      );
     });
   });
 });

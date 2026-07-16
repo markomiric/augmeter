@@ -88,7 +88,7 @@ export class UsageCommands {
       SecureLogger.info("Manual refresh requested");
 
       await UserNotificationService.withProgress("Augmeter", async progress => {
-        progress.report({ message: "Refreshing your usage…" });
+        progress.report({ message: "Refreshing assistant activity and credits..." });
 
         // Trigger data refresh and then update status bar
         await this.usageTracker.refreshNow?.();
@@ -99,9 +99,9 @@ export class UsageCommands {
         await this.renderDashboard(this.dashboardPanel);
       }
 
-      UserNotificationService.showSuccess("Usage refreshed");
+      UserNotificationService.showSuccess("Assistant activity and credits refreshed");
       SecureLogger.info("Manual refresh completed");
-    }, "Manual refresh");
+    }, "refresh assistant activity and credits");
   }
 
   private async handleCopyUsageSummary(): Promise<void> {
@@ -111,7 +111,10 @@ export class UsageCommands {
       const hasRealData = this.usageTracker.hasRealUsageData();
 
       if (!hasRealData) {
-        UserNotificationService.showSuccess("No usage data yet — sign in first");
+        await UserNotificationService.showInfo("Connect Augment before copying a credit summary.", {
+          text: "Connect Augment",
+          action: async () => await vscode.commands.executeCommand("augmeter.smartSignIn"),
+        });
         return;
       }
 
@@ -119,20 +122,23 @@ export class UsageCommands {
         buildUsageSummaryText({
           usage,
           limit,
+          usageKnown: this.usageTracker.isCurrentUsageKnown(),
+          remainingCredits: this.usageTracker.getRemainingCredits(),
+          monthlyAllowance: this.usageTracker.getMonthlyAllowance(),
           subscriptionType: this.usageTracker.getSubscriptionType(),
           renewalDate: this.usageTracker.getRenewalDate(),
-          monthlyTarget: this.usageTracker.getMonthlyTarget(),
+          cycleTarget: this.usageTracker.getMonthlyTarget(),
           targetDelta: this.usageTracker.getTargetDelta(),
           projectedDays: await this.usageTracker.getProjectedDaysRemaining(),
           projectedDate: await this.usageTracker.getProjectedDepletionDate(),
           now: new Date(),
         })
       );
-      UserNotificationService.showSuccess("Usage summary copied");
+      UserNotificationService.showSuccess("Augment credit summary copied");
       SecureLogger.info("Usage summary copied to clipboard");
     } catch (error) {
       SecureLogger.error("Copy usage summary failed", error);
-      vscode.window.showErrorMessage("Failed to copy usage summary.");
+      vscode.window.showErrorMessage("Couldn't copy the Augment credit summary. Try again.");
     }
   }
 
@@ -146,7 +152,7 @@ export class UsageCommands {
 
       this.dashboardPanel = vscode.window.createWebviewPanel(
         "augmeter.usageDashboard",
-        "Augmeter Usage Dashboard",
+        "Augmeter: Assistant usage",
         vscode.ViewColumn.Active,
         {
           enableScripts: false,
@@ -161,7 +167,7 @@ export class UsageCommands {
       await this.renderDashboard(this.dashboardPanel);
     } catch (error) {
       SecureLogger.error("Open usage dashboard failed", error);
-      vscode.window.showErrorMessage("Failed to open usage dashboard.");
+      vscode.window.showErrorMessage("Couldn't open assistant usage. Try again.");
     }
   }
 
@@ -187,6 +193,9 @@ export class UsageCommands {
       limit,
       remaining,
       percentage,
+      usageKnown: this.usageTracker.isCurrentUsageKnown(),
+      monthlyAllowance: this.usageTracker.getMonthlyAllowance(),
+      creditFreshnessAt: this.usageTracker.getLastFetchedAt(),
       renewalDate: this.usageTracker.getRenewalDate(),
       subscriptionType: this.usageTracker.getSubscriptionType(),
       usageRatePerHour: usageRate,
@@ -208,7 +217,7 @@ export class UsageCommands {
     try {
       const snapshots = await this.usageTracker.getUsageSnapshots();
       if (snapshots.length === 0) {
-        void UserNotificationService.showInfo("No usage history available yet.");
+        void UserNotificationService.showInfo("No Augment credit history to export yet.");
         return;
       }
 
@@ -222,7 +231,7 @@ export class UsageCommands {
         filters: {
           CSV: ["csv"],
         },
-        saveLabel: "Export Usage History",
+        saveLabel: "Export Augment credit history",
       });
 
       if (!destination) {
@@ -230,14 +239,16 @@ export class UsageCommands {
       }
 
       await writeFile(destination.fsPath, buildUsageHistoryCsv(snapshots), "utf8");
-      UserNotificationService.showSuccess(`Usage history exported (${snapshots.length} rows)`);
+      UserNotificationService.showSuccess(
+        `Exported ${snapshots.length} credit rows to ${path.basename(destination.fsPath)}`
+      );
       SecureLogger.info("Usage history exported", {
         rows: snapshots.length,
         filePath: destination.fsPath,
       });
     } catch (error) {
       SecureLogger.error("Export usage history failed", error);
-      vscode.window.showErrorMessage("Failed to export usage history.");
+      vscode.window.showErrorMessage("Couldn't export Augment credit history. Try again.");
     }
   }
 
@@ -252,7 +263,7 @@ export class UsageCommands {
         providerSnapshots.length === 0 &&
         providerHealth.length === 0
       ) {
-        void UserNotificationService.showInfo("No usage history available yet.");
+        void UserNotificationService.showInfo("No credits or assistant activity to export yet.");
         return;
       }
 
@@ -266,7 +277,7 @@ export class UsageCommands {
         filters: {
           JSON: ["json"],
         },
-        saveLabel: "Export Usage Bundle",
+        saveLabel: "Export all usage data",
       });
 
       if (!destination) {
@@ -285,6 +296,8 @@ export class UsageCommands {
             currentUsage: this.usageTracker.getCurrentUsage(),
             currentLimit: this.usageTracker.getCurrentLimit(),
             remainingCredits: this.usageTracker.getRemainingCredits(),
+            usageKnown: this.usageTracker.isCurrentUsageKnown(),
+            monthlyAllowance: this.usageTracker.getMonthlyAllowance(),
             renewalDate: this.usageTracker.getRenewalDate(),
             subscriptionType: this.usageTracker.getSubscriptionType(),
             usageSnapshots,
@@ -295,7 +308,7 @@ export class UsageCommands {
             retentionDays: this.configManager.getHistoryRetentionDays(),
             alertThresholds: this.configManager.getAlertThresholds(),
             runOutDays: this.configManager.getRunOutAlertDays(),
-            monthlyTarget: this.configManager.getMonthlyTarget(),
+            cycleTarget: this.configManager.getMonthlyTarget(),
             enabledProviders: this.configManager.getEnabledProviderIds(),
             copilotApiConfig,
             copilotTokenPresent: Boolean(process.env[copilotApiConfig.tokenEnvVar]),
@@ -305,7 +318,9 @@ export class UsageCommands {
         ),
         "utf8"
       );
-      UserNotificationService.showSuccess("Usage bundle exported");
+      UserNotificationService.showSuccess(
+        `Exported all usage data to ${path.basename(destination.fsPath)}`
+      );
       SecureLogger.info("Usage bundle exported", {
         usageRows: usageSnapshots.length,
         providerRows: providerSnapshots.length,
@@ -314,7 +329,7 @@ export class UsageCommands {
       });
     } catch (error) {
       SecureLogger.error("Export usage bundle failed", error);
-      vscode.window.showErrorMessage("Failed to export usage bundle.");
+      vscode.window.showErrorMessage("Couldn't export usage data. Try again.");
     }
   }
 
@@ -359,7 +374,7 @@ export class UsageCommands {
             colorThresholds: this.configManager.getColorThresholds(),
             alertThresholds: this.configManager.getAlertThresholds(),
             runOutDays: this.configManager.getRunOutAlertDays(),
-            monthlyTarget: this.configManager.getMonthlyTarget(),
+            cycleTarget: this.configManager.getMonthlyTarget(),
             retentionDays: this.configManager.getHistoryRetentionDays(),
             sessionTrackingEnabled: this.configManager.isSessionTrackingEnabled(),
             sessionTrackingPath: this.configManager.getSessionTrackingPath() || "(default)",
@@ -383,10 +398,10 @@ export class UsageCommands {
       );
 
       const selection = await vscode.window.showInformationMessage(
-        "Diagnostics copied to clipboard.",
-        "Open Issue"
+        "Diagnostics copied. Paste them into a GitHub issue.",
+        "Report issue"
       );
-      if (selection === "Open Issue") {
+      if (selection === "Report issue") {
         await vscode.commands.executeCommand(
           "vscode.open",
           vscode.Uri.parse("https://github.com/markomiric/augmeter/issues/new")
@@ -396,7 +411,7 @@ export class UsageCommands {
       SecureLogger.info("Diagnostics collected");
     } catch (error) {
       SecureLogger.error("Run diagnostics failed", error);
-      vscode.window.showErrorMessage("Failed to collect diagnostics.");
+      vscode.window.showErrorMessage("Couldn't copy diagnostics. Try again.");
     }
   }
 
@@ -406,7 +421,7 @@ export class UsageCommands {
       void vscode.commands.executeCommand("workbench.action.openSettings", "augmeter");
     } catch (error) {
       SecureLogger.error("Open settings failed", error);
-      vscode.window.showErrorMessage("Failed to open settings.");
+      vscode.window.showErrorMessage("Couldn't open Augmeter settings. Try again.");
     }
   }
 }

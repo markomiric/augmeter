@@ -1,4 +1,10 @@
 import type { ProviderHealthSnapshot, ProviderUsageSnapshot } from "../core/types/provider-usage";
+import {
+  pluralize,
+  providerDisplayName,
+  providerHealthText,
+  providerMetricNoun,
+} from "../core/copy/provider-copy";
 
 export type DisplayMode = "used" | "remaining" | "remainingOnly" | "both" | "percentage";
 export type Density = "auto" | "compact" | "detailed";
@@ -19,7 +25,8 @@ export function computeValueText(
   used: number,
   limit: number,
   remaining: number,
-  fmt: (n: number) => string = formatCompact
+  fmt: (n: number) => string = formatCompact,
+  showPercent: boolean = false
 ): string {
   const u = fmt(used);
   const l = fmt(limit);
@@ -30,31 +37,45 @@ export function computeValueText(
     return displayMode === "percentage" ? u : u;
   }
 
+  let valueText: string;
   switch (displayMode) {
     case "used":
-      return `${u}/${l}`;
+      valueText = `${u}/${l}`;
+      break;
     case "remaining":
-      return `${r}/${l}`;
+      valueText = `${r}/${l}`;
+      break;
     case "remainingOnly":
-      return `${r}`;
+      valueText = r;
+      break;
     case "percentage":
       return `${computePercentage(used, limit)}%`;
     case "both":
+      valueText = `${u}/${l} · ${r} left`;
+      break;
     default:
-      // Show used/limit in compact bar; details go to tooltip
-      return `${u}/${l}`;
+      valueText = `${u}/${l}`;
+      break;
   }
+
+  return showPercent ? `${valueText} (${computePercentage(used, limit)}%)` : valueText;
 }
 
 export function computeDisplayText(
   density: Density,
   valueText: string,
-  iconName: string = "dashboard"
+  iconName: string = "dashboard",
+  label: string = ""
 ): string {
-  if (density === "detailed") {
-    return `$(${iconName}) ${valueText}`;
+  if (density === "compact") {
+    return valueText;
   }
-  return valueText;
+  const labeledValue = label ? `${label} · ${valueText}` : valueText;
+  const shouldShowIcon = density === "detailed" || (density === "auto" && valueText.length <= 12);
+  if (shouldShowIcon) {
+    return `$(${iconName}) ${labeledValue}`;
+  }
+  return labeledValue;
 }
 
 function buildUsageBar(percentage: number, width: number = 10): string {
@@ -65,18 +86,19 @@ function buildUsageBar(percentage: number, width: number = 10): string {
 
 export function formatRateLine(ratePerHour: number | null | undefined): string | null {
   if (ratePerHour === null || ratePerHour === undefined) return null;
-  if (ratePerHour === 0) return "**Rate:** No recent activity";
-  return `**Rate:** ~${Math.round(ratePerHour).toLocaleString()}/hr`;
+  if (ratePerHour === 0) return "**Pace:** No recent credit activity";
+  return `**Pace:** about ${Math.round(ratePerHour).toLocaleString()} credits per hour`;
 }
 
 export function formatProjectionLine(projectedDays: number | null | undefined): string | null {
   if (projectedDays === null || projectedDays === undefined) return null;
-  if (projectedDays === 0) return "**Projected:** Credits exhausted";
+  if (projectedDays === 0) return "**At this pace:** Credits exhausted";
   if (projectedDays < 1) {
     const hours = Math.max(1, Math.round(projectedDays * 24));
-    return `**Projected:** ~${hours}h remaining`;
+    return `**At this pace:** about ${hours} ${pluralize(hours, "hour")} left`;
   }
-  return `**Projected:** ~${Math.round(projectedDays)} days remaining`;
+  const days = Math.max(1, Math.round(projectedDays));
+  return `**At this pace:** about ${days} ${pluralize(days, "day")} left`;
 }
 
 export function formatTargetLine(
@@ -90,10 +112,10 @@ export function formatTargetLine(
 
   if (targetDelta >= 0) {
     const progress = targetProgressPercent ?? 0;
-    return `**Target:** ${Math.max(0, targetDelta).toLocaleString()} under target (${progress}%)`;
+    return `**Cycle target:** ${progress}% used · ${Math.max(0, targetDelta).toLocaleString()} credits under target`;
   }
 
-  return `**Target:** ${Math.abs(targetDelta).toLocaleString()} over target`;
+  return `**Cycle target:** ${Math.abs(targetDelta).toLocaleString()} credits over target`;
 }
 
 export function buildProviderUsageLines(
@@ -150,18 +172,42 @@ export function buildProviderUsageLines(
       const weekly = latestByWindow.get(`${providerId}:weekly_7d:messages`);
       const monthly = latestByWindow.get(`${providerId}:monthly:messages`);
       const cumulative = latestByWindow.get(`${providerId}:custom:messages`);
+      const metricNoun = providerMetricNoun(providerId);
 
       if (typeof rolling?.used === "number" && Number.isFinite(rolling.used)) {
-        usageParts.push(`5h ${Math.round(rolling.used).toLocaleString()}`);
+        const count = Math.round(rolling.used);
+        usageParts.push(`${count.toLocaleString()} ${pluralize(count, metricNoun)} in 5 hours`);
       }
       if (typeof weekly?.used === "number" && Number.isFinite(weekly.used)) {
-        usageParts.push(`7d ${Math.round(weekly.used).toLocaleString()}`);
+        const count = Math.round(weekly.used);
+        usageParts.push(`${count.toLocaleString()} ${pluralize(count, metricNoun)} in 7 days`);
       }
       if (typeof monthly?.used === "number" && Number.isFinite(monthly.used)) {
-        usageParts.push(`month ${Math.round(monthly.used).toLocaleString()}`);
+        const count = Math.round(monthly.used);
+        const label =
+          providerId === "copilot" && monthly.sourceKind === "api"
+            ? "official premium requests"
+            : pluralize(count, metricNoun);
+        usageParts.push(`${count.toLocaleString()} ${label} this month`);
       }
       if (typeof cumulative?.used === "number" && Number.isFinite(cumulative.used)) {
-        usageParts.push(`total ${Math.round(cumulative.used).toLocaleString()}`);
+        const count = Math.round(cumulative.used);
+        if (providerId === "copilot" && cumulative.sourceKind === "api") {
+          usageParts.push(
+            `${count.toLocaleString()} official premium requests in the current billing window`
+          );
+        } else {
+          if (providerId === "copilot" && cumulative.sourceKind === "file") {
+            usageParts.push(
+              `${count.toLocaleString()} cumulative requests • time window unavailable`
+            );
+          } else {
+            const local = cumulative.sourceKind === "file" ? "local " : "";
+            usageParts.push(
+              `${count.toLocaleString()} ${local}${pluralize(count, metricNoun)} recorded`
+            );
+          }
+        }
       }
 
       if (usageParts.length === 0) {
@@ -169,7 +215,7 @@ export function buildProviderUsageLines(
         if (!health) {
           return null;
         }
-        usageParts.push(health.status === "connected" ? "no usage snapshots yet" : health.status);
+        usageParts.push(providerHealthText(health));
       }
 
       return `${providerDisplayName(providerId)}: ${usageParts.join(" • ")}`;
@@ -183,6 +229,8 @@ export function buildMarkdownTooltip(params: {
   remaining: number;
   percentage: number;
   hasRealData: boolean;
+  usageKnown?: boolean | undefined;
+  monthlyAllowance?: number | null | undefined;
   clickAction: ClickAction;
   lastUpdated?: Date | undefined;
   subscriptionType?: string | undefined;
@@ -202,6 +250,8 @@ export function buildMarkdownTooltip(params: {
     limit,
     percentage,
     hasRealData,
+    usageKnown = true,
+    monthlyAllowance,
     clickAction,
     lastUpdated,
     subscriptionType,
@@ -218,31 +268,50 @@ export function buildMarkdownTooltip(params: {
 
   const lines: string[] = [];
 
-  // Header
-  if (subscriptionType) {
-    lines.push(`**Augmeter** — ${subscriptionType}`);
+  lines.push("**Assistant usage**");
+
+  if (providerUsageLines && providerUsageLines.length > 0) {
+    lines.push(
+      ["**Assistant activity:**", ...providerUsageLines.map(line => `- ${line}`)].join("\n")
+    );
+  }
+
+  if (hasRealData) {
+    lines.push("**Augment credits**");
+    if (subscriptionType) {
+      lines.push(`Plan: ${subscriptionType}`);
+    }
   } else {
-    lines.push("**Augmeter**");
+    lines.push("**Augment credits:** Not connected");
+    lines.push("Run **Augmeter: Connect Augment** to add live credit data.");
   }
 
   lines.push("");
 
-  if (!hasRealData) {
-    lines.push("Sign in for real usage data");
-  } else if (limit > 0) {
-    // Usage bar visualization
-    lines.push(buildUsageBar(percentage));
-    lines.push("");
+  if (hasRealData) {
+    if (!usageKnown) {
+      lines.push(`**Remaining:** ${remaining.toLocaleString()} credits left`);
+      if (monthlyAllowance !== null && monthlyAllowance !== undefined) {
+        lines.push(`**Monthly allowance:** ${monthlyAllowance.toLocaleString()} credits`);
+      }
+      lines.push("Cycle usage unavailable from Auggie CLI balance data.");
+    } else if (limit > 0) {
+      // Usage bar visualization
+      lines.push(buildUsageBar(percentage));
+      lines.push("");
 
-    // Usage details
-    lines.push(`**Used:** ${used.toLocaleString()} / ${limit.toLocaleString()}`);
-    lines.push(`**Remaining:** ${remaining.toLocaleString()}`);
-  } else {
-    lines.push(`**Used:** ${used.toLocaleString()}`);
+      // Usage details
+      lines.push(
+        `**Used:** ${used.toLocaleString()} of ${limit.toLocaleString()} credits (${percentage}%)`
+      );
+      lines.push(`**Remaining:** ${remaining.toLocaleString()} credits left`);
+    } else {
+      lines.push(`**Used:** ${used.toLocaleString()} credits`);
+    }
   }
 
-  // Rate and projection (only when we have real data)
-  if (hasRealData) {
+  // Credit pace and projection are available only with Augment credit data.
+  if (hasRealData && usageKnown) {
     const rateLine = formatRateLine(usageRatePerHour);
     if (rateLine) {
       lines.push(rateLine);
@@ -259,23 +328,19 @@ export function buildMarkdownTooltip(params: {
     }
 
     if (projectedDepletionDate) {
-      lines.push(`**Depletion:** ~${projectedDepletionDate.toLocaleDateString()}`);
+      lines.push(`**Estimated run-out:** ${projectedDepletionDate.toLocaleDateString()}`);
     }
   }
 
-  // Session activity (experimental, behind config flag — only with real data)
+  // Augment session activity is experimental and requires connected credit data.
   if (hasRealData && sessionActivity && sessionActivity.promptCount > 0) {
     lines.push(
       `**Today:** ${sessionActivity.promptCount} prompt${sessionActivity.promptCount !== 1 ? "s" : ""} across ${sessionActivity.sessionCount} session${sessionActivity.sessionCount !== 1 ? "s" : ""}`
     );
   }
 
-  if (hasRealData && providerUsageLines && providerUsageLines.length > 0) {
-    lines.push(["**Providers:**", ...providerUsageLines.map(line => `- ${line}`)].join("\n"));
-  }
-
   // Renewal date
-  if (renewalDate) {
+  if (hasRealData && renewalDate) {
     try {
       const date = new Date(renewalDate);
       if (!isNaN(date.getTime())) {
@@ -294,13 +359,14 @@ export function buildMarkdownTooltip(params: {
 
   // Action hint
   lines.push("");
-  const actionHint =
-    clickAction === "refresh"
+  const actionHint = !hasRealData
+    ? "Click to open assistant usage"
+    : clickAction === "refresh"
       ? "Click to refresh"
       : clickAction === "openWebsite"
-        ? "Click to open website"
+        ? "Click to open the Augment website"
         : "Click to open settings";
-  lines.push(`${actionHint} · [Open dashboard](command:augmeter.openUsageDashboard)`);
+  lines.push(`${actionHint} · [Open assistant usage](command:augmeter.openUsageDashboard)`);
 
   return lines.join("\n\n");
 }
@@ -373,7 +439,7 @@ function computeStandardColors(
   }
 
   // Below warning threshold:
-  // - If we have real data, use prominent foreground to keep the item visually present
+  // - If we have Augment credit data, keep the item visually present.
   // - If not, keep default theme color (undefined) to minimize noise
   if (hasRealData) {
     return { foreground: "statusBarItem.prominentForeground" };
@@ -424,7 +490,7 @@ function computeEnhancedReadabilityColors(
     return { foreground: "statusBarItem.prominentForeground" };
   }
 
-  // No real data - default
+  // No Augment credit data.
   return {};
 }
 
@@ -500,12 +566,5 @@ export function computeAccessibilityLabel(
   remaining: number,
   percentage: number
 ): string {
-  return `Augmeter usage ${used} used of ${limit}. ${remaining} remaining. ${percentage}% of limit.`;
-}
-
-function providerDisplayName(providerId: string): string {
-  if (providerId === "claude") return "Claude Code";
-  if (providerId === "codex") return "Codex (local prompts)";
-  if (providerId === "copilot") return "GitHub Copilot";
-  return providerId;
+  return `Augment credits: ${used} of ${limit} used, ${remaining} left, ${percentage} percent.`;
 }

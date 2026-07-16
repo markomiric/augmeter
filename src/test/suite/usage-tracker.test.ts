@@ -130,6 +130,24 @@ suite("UsageTracker Test Suite", () => {
     assert.ok(typeof currentLimit === "number", "Current limit should be a number");
   });
 
+  test("Should keep balance-only CLI data separate from known cycle usage", async () => {
+    await usageTracker.updateWithRealData({
+      totalUsage: 0,
+      usageLimit: 74722,
+      remainingCredits: 74722,
+      monthlyAllowance: 40000,
+      usageKnown: false,
+      sourceKind: "cli",
+      lastUpdate: new Date().toISOString(),
+    });
+
+    assert.strictEqual(usageTracker.hasRealUsageData(), true);
+    assert.strictEqual(usageTracker.isCurrentUsageKnown(), false);
+    assert.strictEqual(usageTracker.getRemainingCredits(), 74722);
+    assert.strictEqual(usageTracker.getMonthlyAllowance(), 40000);
+    assert.strictEqual(await usageTracker.getUsageRate(), null);
+  });
+
   test("Should handle real data fetcher setup", () => {
     const mockFetcher = async () => {
       // Mock fetcher that does nothing

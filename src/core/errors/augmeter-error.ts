@@ -38,7 +38,7 @@ export class AugmeterError extends Error {
     return new AugmeterError(
       ErrorType.AUTHENTICATION,
       message,
-      userMessage || "Authentication failed. Please sign in again.",
+      userMessage || "Your Augment connection expired. Connect again to refresh credits.",
       true
     );
   }
@@ -54,21 +54,21 @@ export class AugmeterError extends Error {
     return new AugmeterError(
       ErrorType.NETWORK,
       message,
-      userMessage || "Network error occurred. Please check your connection.",
+      userMessage || "Couldn't reach Augment. Check your connection and try again.",
       true,
       retryAction
     );
   }
 
   /**
-   * Create timeout error (non-retriable by design — surfaces a slow upstream
+   * Create timeout error (non-retriable by design; surfaces a slow upstream
    * rather than masking it with backoff storms)
    */
   static timeout(message: string, userMessage?: string): AugmeterError {
     return new AugmeterError(
       ErrorType.TIMEOUT,
       message,
-      userMessage || "Request timed out. Please check your connection and try again.",
+      userMessage || "Augment took too long to respond. Check your connection and try again.",
       true
     );
   }
@@ -80,7 +80,7 @@ export class AugmeterError extends Error {
     return new AugmeterError(
       ErrorType.VALIDATION,
       message,
-      userMessage || "Invalid input. Please check your data and try again.",
+      userMessage || "That value isn't valid. Check it and try again.",
       true
     );
   }
@@ -150,7 +150,7 @@ export class ErrorHandler {
    */
   private static async handleGenericError(error: Error, context: string): Promise<void> {
     SecureLogger.error(`${context}: ${error.message}`, error);
-    await UserNotificationService.showError("An unexpected error occurred. Please try again.");
+    await UserNotificationService.showError(`Couldn't ${context.toLowerCase()}. Try again.`);
   }
 
   /**
@@ -158,7 +158,7 @@ export class ErrorHandler {
    */
   private static async handleUnknownError(error: unknown, context: string): Promise<void> {
     SecureLogger.error(`${context}: Unknown error`, error);
-    await UserNotificationService.showError("An unexpected error occurred. Please try again.");
+    await UserNotificationService.showError(`Couldn't ${context.toLowerCase()}. Try again.`);
   }
 
   /**

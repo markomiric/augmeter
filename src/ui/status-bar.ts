@@ -44,6 +44,7 @@ export class StatusBarManager implements vscode.Disposable {
   private augmentDetector: AugmentDetector | null = null;
   private auggieCliSource: AuggieCliSource | null = null;
   private trackerSubscription?: vscode.Disposable;
+  private displayRevision = 0;
 
   constructor(
     usageTracker: UsageTracker,
@@ -83,7 +84,7 @@ export class StatusBarManager implements vscode.Disposable {
         this.statusBarItem.command = {
           command: "vscode.open",
           arguments: [vscode.Uri.parse("https://www.augmentcode.com")],
-          title: "Open Augment Website",
+          title: "Open Augment website",
         };
         break;
       case "refresh":
@@ -104,9 +105,16 @@ export class StatusBarManager implements vscode.Disposable {
     remaining: number,
     percentage: number
   ): void {
-    const valueText = computeValueText(displayMode, used, limit, remaining, sbFormatCompact);
-    const { density, iconName } = this.configManager.getStatusBarConfig();
-    this.statusBarItem.text = computeDisplayText(density, valueText, iconName);
+    const { density, iconName, showPercent } = this.configManager.getStatusBarConfig();
+    const valueText = computeValueText(
+      displayMode,
+      used,
+      limit,
+      remaining,
+      sbFormatCompact,
+      showPercent
+    );
+    this.statusBarItem.text = computeDisplayText(density, valueText, iconName, "Augment");
     this.statusBarItem.accessibilityInformation = {
       label: computeAccessibilityLabel(used, limit, remaining, percentage),
       role: "status",
@@ -118,8 +126,10 @@ export class StatusBarManager implements vscode.Disposable {
     limit: number,
     remaining: number,
     percentage: number,
-    hasRealData: boolean
-  ): Promise<void> {
+    hasRealData: boolean,
+    usageKnown: boolean,
+    revision: number
+  ): Promise<boolean> {
     const clickAction = this.configManager.getClickAction() as ClickAction;
 
     // Fetch rate, projection, and session activity data (non-blocking on errors)
@@ -131,36 +141,28 @@ export class StatusBarManager implements vscode.Disposable {
     let targetProgressPercent: number | null = null;
     let monthlyTarget: number | null = null;
     let providerUsageLines: string[] = [];
-    if (hasRealData) {
+    if (hasRealData && usageKnown) {
       try {
         usageRatePerHour = await this.usageTracker.getUsageRate();
         projectedDaysRemaining = await this.usageTracker.getProjectedDaysRemaining();
         projectedDepletionDate = await this.usageTracker.getProjectedDepletionDate();
       } catch {
-        // Silently degrade — rate data is optional
+        // Silently degrade because rate data is optional.
       }
       try {
         sessionActivity = this.usageTracker.getSessionActivity();
       } catch {
-        // Silently degrade — session tracking is optional/experimental
+        // Silently degrade because session tracking is optional and experimental.
       }
       try {
         monthlyTarget = this.usageTracker.getMonthlyTarget();
         targetDelta = this.usageTracker.getTargetDelta();
         targetProgressPercent = this.usageTracker.getTargetProgressPercent();
       } catch {
-        // Silently degrade — target tracking is optional
-      }
-      try {
-        const [providerSnapshots, providerHealth] = await Promise.all([
-          this.usageTracker.getProviderUsageSnapshots(),
-          this.usageTracker.getProviderHealthSnapshots(),
-        ]);
-        providerUsageLines = buildProviderUsageLines(providerSnapshots, providerHealth);
-      } catch {
-        // Silently degrade — provider tracking may be unavailable in some runtime/test contexts
+        // Silently degrade because target tracking is optional.
       }
     }
+    providerUsageLines = await this.getProviderUsageLines();
 
     const tooltipContent = buildMarkdownTooltip({
       used,
@@ -168,6 +170,8 @@ export class StatusBarManager implements vscode.Disposable {
       remaining,
       percentage,
       hasRealData,
+      usageKnown,
+      monthlyAllowance: this.usageTracker.getMonthlyAllowance(),
       clickAction,
       lastUpdated: this.usageTracker.getLastFetchedAt(),
       subscriptionType: this.usageTracker.getSubscriptionType(),
@@ -181,9 +185,25 @@ export class StatusBarManager implements vscode.Disposable {
       projectedDepletionDate,
       providerUsageLines,
     });
+    if (revision !== this.displayRevision) {
+      return false;
+    }
     const md = new vscode.MarkdownString(tooltipContent);
     md.isTrusted = true;
     this.statusBarItem.tooltip = md;
+    return true;
+  }
+
+  private async getProviderUsageLines(): Promise<string[]> {
+    try {
+      const [providerSnapshots, providerHealth] = await Promise.all([
+        this.usageTracker.getProviderUsageSnapshots(),
+        this.usageTracker.getProviderHealthSnapshots(),
+      ]);
+      return buildProviderUsageLines(providerSnapshots, providerHealth);
+    } catch {
+      return [];
+    }
   }
 
   private applyColors(percentage: number, hasRealData: boolean): void {
@@ -211,6 +231,7 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   async updateDisplay(): Promise<void> {
+    const revision = ++this.displayRevision;
     if (!this.configManager.isEnabled() || !this.configManager.shouldShowInStatusBar()) {
       this.statusBarItem.hide();
       return;
@@ -220,9 +241,13 @@ export class StatusBarManager implements vscode.Disposable {
     const limit = this.usageTracker.getCurrentLimit();
     const percentage = limit > 0 ? Math.round((usage / limit) * 100) : 0;
     const hasRealData = this.usageTracker.hasRealUsageData();
+    const usageKnown = this.usageTracker.isCurrentUsageKnown();
 
     // Check if we have authentication (even without usage data)
     const isAuthenticated = await this.checkAuthenticationStatus();
+    if (revision !== this.displayRevision) {
+      return;
+    }
 
     SecureLogger.info("StatusBar: updateDisplay called", {
       usage,
@@ -233,16 +258,16 @@ export class StatusBarManager implements vscode.Disposable {
       dataSource: this.usageTracker.getDataSource(),
     });
 
-    // If no real data yet, show connected or sign-in states
+    // If no Augment credit data exists yet, show the connection state.
     if (!hasRealData) {
-      SecureLogger.info("StatusBar: No real data, showing connection state", {
+      SecureLogger.info("StatusBar: No Augment credit data, showing connection state", {
         isAuthenticated,
-        willShow: isAuthenticated ? "Connected" : "Sign in",
+        willShow: isAuthenticated ? "Loading credits" : "Assistant usage",
       });
       if (isAuthenticated) {
-        this.updateConnectedStatus();
+        await this.updateConnectedStatus(revision);
       } else {
-        this.updateLogoutStatus();
+        await this.updateLogoutStatus(revision);
       }
       return;
     }
@@ -251,13 +276,38 @@ export class StatusBarManager implements vscode.Disposable {
     const displayMode = this.configManager.getDisplayMode() as DisplayMode;
 
     const used = usage;
-    const remaining = limit > 0 ? Math.max(limit - usage, 0) : 0;
+    const remaining = this.usageTracker.getRemainingCredits();
 
-    this.setDisplayTextAndA11y(displayMode, used, limit, remaining, percentage);
+    if (usageKnown) {
+      this.setDisplayTextAndA11y(displayMode, used, limit, remaining, percentage);
+    } else {
+      const { density, iconName } = this.configManager.getStatusBarConfig();
+      this.statusBarItem.text = computeDisplayText(
+        density,
+        `${sbFormatCompact(remaining)} left`,
+        iconName,
+        "Augment"
+      );
+      this.statusBarItem.accessibilityInformation = {
+        label: `Augment credits: ${remaining.toLocaleString()} remaining; cycle usage unavailable`,
+        role: "status",
+      };
+    }
 
-    await this.applyTooltip(used, limit, remaining, percentage, hasRealData);
+    const tooltipApplied = await this.applyTooltip(
+      used,
+      limit,
+      remaining,
+      percentage,
+      hasRealData,
+      usageKnown,
+      revision
+    );
+    if (!tooltipApplied || revision !== this.displayRevision) {
+      return;
+    }
 
-    this.applyColors(percentage, hasRealData);
+    this.applyColors(percentage, hasRealData && usageKnown);
 
     this.updateClickCommand();
     this.statusBarItem.show();
@@ -265,8 +315,9 @@ export class StatusBarManager implements vscode.Disposable {
 
   showLoading(): void {
     try {
+      this.displayRevision++;
       this.statusBarItem.text = `$(sync~spin) Augmeter`;
-      this.statusBarItem.tooltip = `Augmeter\n\nLoading your usage…\n\nClick to refresh`;
+      this.statusBarItem.tooltip = `Augmeter\n\nRefreshing assistant activity and credits...`;
       this.statusBarItem.backgroundColor = undefined;
       this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
       this.statusBarItem.show();
@@ -281,6 +332,7 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   hide(): void {
+    this.displayRevision++;
     this.statusBarItem.hide();
   }
 
@@ -314,30 +366,39 @@ export class StatusBarManager implements vscode.Disposable {
     }
   }
 
-  updateConnectedStatus(): void {
+  async updateConnectedStatus(revision: number = ++this.displayRevision): Promise<void> {
     if (!this.configManager.shouldShowInStatusBar()) {
       this.statusBarItem.hide();
       return;
     }
 
+    const providerUsageLines = await this.getProviderUsageLines();
+    if (revision !== this.displayRevision) {
+      return;
+    }
+
     // Always show spinner + "Augmeter" in connected state for clear branding and loading feedback
     this.statusBarItem.text = `$(sync~spin) Augmeter`;
-    this.statusBarItem.tooltip = this.createTooltipMarkdown([
-      "**Augmeter**",
-      "Loading usage data…",
-      "Click to refresh · [Open dashboard](command:augmeter.openUsageDashboard)",
-    ]);
+    const lines = ["**Assistant usage**"];
+    if (providerUsageLines.length > 0) {
+      lines.push(
+        ["**Assistant activity:**", ...providerUsageLines.map(line => `- ${line}`)].join("\n")
+      );
+    }
+    lines.push("**Augment credits**", "Loading Augment credits...");
+    lines.push("Click to refresh · [Open assistant usage](command:augmeter.openUsageDashboard)");
+    this.statusBarItem.tooltip = this.createTooltipMarkdown(lines);
     this.statusBarItem.command = "augmeter.manualRefresh";
     this.statusBarItem.backgroundColor = undefined;
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
-      label: "Augmeter: Loading usage data",
+      label: "Augmeter: Loading Augment credits",
       role: "status",
     };
     this.statusBarItem.show();
   }
 
-  updateLogoutStatus(): void {
+  async updateLogoutStatus(revision: number = ++this.displayRevision): Promise<void> {
     if (!this.configManager.shouldShowInStatusBar()) {
       this.statusBarItem.hide();
       return;
@@ -345,23 +406,35 @@ export class StatusBarManager implements vscode.Disposable {
 
     // Always show icon + "Augmeter" in non-data states for clear branding
     const config = this.configManager.getStatusBarConfig();
+    const providerUsageLines = await this.getProviderUsageLines();
+    if (revision !== this.displayRevision) {
+      return;
+    }
     this.statusBarItem.text = `$(${config.iconName}) Augmeter`;
-    this.statusBarItem.tooltip = this.createTooltipMarkdown([
-      "**Augmeter**",
-      "Sign in to see usage data",
-      "Click to sign in · [Open dashboard](command:augmeter.openUsageDashboard)",
-    ]);
-    this.statusBarItem.command = "augmeter.smartSignIn";
+    const tooltip = buildMarkdownTooltip({
+      used: 0,
+      limit: 0,
+      remaining: 0,
+      percentage: 0,
+      hasRealData: false,
+      clickAction: "refresh",
+      providerUsageLines,
+    });
+    const markdown = new vscode.MarkdownString(tooltip);
+    markdown.isTrusted = true;
+    this.statusBarItem.tooltip = markdown;
+    this.statusBarItem.command = "augmeter.openUsageDashboard";
     this.statusBarItem.backgroundColor = undefined;
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
-      label: "Augmeter: Sign in to see usage data",
+      label: "Augmeter: Assistant usage; Augment credits not connected",
       role: "status",
     };
     this.statusBarItem.show();
   }
 
   dispose(): void {
+    this.displayRevision++;
     this.trackerSubscription?.dispose();
     this.statusBarItem.dispose();
   }

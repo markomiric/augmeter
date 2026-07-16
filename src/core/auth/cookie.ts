@@ -23,7 +23,7 @@ export class SecureCookieUtils {
   // Validates that a cookie value looks like a real session token
   static validateCookieValue(value: string): { valid: boolean; error?: string } {
     if (!value || value.trim().length === 0) {
-      return { valid: false, error: "Cookie value cannot be empty" };
+      return { valid: false, error: "Paste the _session cookie value." };
     }
 
     const trimmed = value.trim();
@@ -32,8 +32,7 @@ export class SecureCookieUtils {
     if (trimmed === "_session" || trimmed === "_session=") {
       return {
         valid: false,
-        error:
-          "You entered '_session' but we need the actual token value. Please copy the VALUE from the DevTools cookie table, not the name.",
+        error: "Paste the cookie value, not _session.",
       };
     }
 
@@ -45,8 +44,7 @@ export class SecureCookieUtils {
     ) {
       return {
         valid: false,
-        error:
-          "This looks like placeholder text. Please copy the actual cookie VALUE from DevTools.",
+        error: "This looks like an example, not your cookie value.",
       };
     }
 
@@ -54,8 +52,7 @@ export class SecureCookieUtils {
     if (trimmed.length < 16) {
       return {
         valid: false,
-        error:
-          "Token seems too short. Please copy the complete VALUE from the cookie table (should be 100+ characters).",
+        error: "The cookie value looks incomplete. Copy the full value and try again.",
       };
     }
 
@@ -65,7 +62,7 @@ export class SecureCookieUtils {
       return {
         valid: false,
         error:
-          "Session token contains unexpected characters. Paste the VALUE exactly as shown in DevTools (it may include % and =).",
+          "The cookie value contains unsupported characters. Copy it again without editing it.",
       };
     }
 

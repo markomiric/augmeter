@@ -104,7 +104,9 @@ describe("CopilotProviderAdapter", () => {
 
     expect(result.snapshots).toHaveLength(0);
     expect(result.health.status).toBe("degraded");
-    expect(result.health.message).toContain("sqlite3 is not available");
+    expect(result.health.message).toContain(
+      "Install sqlite3 to read local GitHub Copilot activity"
+    );
   });
 
   it("prefers GitHub API usage when configured", async () => {

@@ -24,7 +24,7 @@ export class UserNotificationService {
           await actionable.action();
         } catch (error) {
           SecureLogger.error("Error executing notification action", error);
-          vscode.window.showErrorMessage("Failed to execute action. Please try again.");
+          vscode.window.showErrorMessage(`Couldn't complete "${actionable.text}". Try again.`);
         }
       }
     } else {
@@ -48,7 +48,7 @@ export class UserNotificationService {
           await actionable.action();
         } catch (error) {
           SecureLogger.error("Error executing notification action", error);
-          vscode.window.showErrorMessage("Failed to execute action. Please try again.");
+          vscode.window.showErrorMessage(`Couldn't complete "${actionable.text}". Try again.`);
         }
       }
     } else {
@@ -72,7 +72,7 @@ export class UserNotificationService {
           await actionable.action();
         } catch (error) {
           SecureLogger.error("Error executing notification action", error);
-          vscode.window.showErrorMessage("Failed to execute action. Please try again.");
+          vscode.window.showErrorMessage(`Couldn't complete "${actionable.text}". Try again.`);
         }
       }
     } else {
@@ -84,10 +84,10 @@ export class UserNotificationService {
    * Show authentication-specific error with sign-in action
    */
   static async showAuthError(userMessage?: string): Promise<void> {
-    const message = userMessage || "Authentication failed. Please sign in to continue.";
+    const message = userMessage || "Your Augment connection expired. Connect again to continue.";
 
     await this.showError(message, {
-      text: "Sign In",
+      text: "Connect Augment",
       action: async () => await vscode.commands.executeCommand("augmeter.signIn"),
     });
   }
@@ -99,8 +99,7 @@ export class UserNotificationService {
     userMessage?: string,
     retryAction?: () => void | Promise<void>
   ): Promise<void> {
-    const message =
-      userMessage || "Network error occurred. Please check your connection and try again.";
+    const message = userMessage || "Couldn't reach Augment. Check your connection and try again.";
 
     if (retryAction) {
       await this.showError(message, {

@@ -175,6 +175,10 @@ describe("ProviderUsageService", () => {
 
     expect(infoSpy).toHaveBeenCalledTimes(0);
     expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Claude Code activity is projected at 129% of your monthly turn target.",
+      expect.objectContaining({ text: "Open assistant usage" })
+    );
   });
 
   it("replaces stale provider snapshots when a provider is disabled", async () => {

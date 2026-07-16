@@ -113,7 +113,7 @@ export class AugmentApiClient {
       throw AugmeterError.validation(
         `Cookie validation failed: ${validation.error}`,
         validation.error ||
-          "Invalid session cookie format. Please copy the complete cookie value from your browser."
+          "That cookie value isn't valid. Copy the complete _session value and try again."
       );
     }
 

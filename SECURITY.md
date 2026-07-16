@@ -2,17 +2,17 @@
 
 ## Security & trust model
 
-Augmeter has **zero runtime dependencies** -- it uses only the VS Code API and the Node.js standard library, so no third-party package code runs in your editor.
+Augmeter ships with **zero runtime package dependencies**. Its extension code uses the VS Code API and the Node.js standard library.
 
-The extension may execute two external binaries, always via Node's `execFile` with an **argument array (never a shell command string)**, so file paths and arguments cannot be interpreted as shell commands:
+The extension can use two binaries already installed on your machine:
 
-- **`sqlite3`** -- resolved from your `PATH` -- to read GitHub Copilot request counters from VS Code's local `state.vscdb`. The SQL is a fixed, read-only `SELECT` with no interpolated input.
-- **`auggie`** -- the official Augment CLI -- run as `auggie account status` to read Augment usage without a session cookie. Augmeter never reads or stores the CLI's credentials.
+- **`sqlite3`** is resolved from your `PATH` and reads GitHub Copilot request counters from VS Code's local `state.vscdb`. The query is a fixed, read-only `SELECT` with no interpolated input.
+- **`auggie`** is the official Augment CLI. Background credit reads run `auggie account status` through Node's `execFile` with an argument array. Augmeter never reads or stores CLI credentials. If you explicitly choose the CLI sign-in option, Augmeter opens a VS Code terminal and runs `auggie login` there so you can complete Augment's sign-in flow.
 
-Custom binary/database paths (`auggieCli.path`, `providers.copilot.stateDbPath`, `providers.claude.path`, `providers.codex.path`) are user-controlled. The path settings that a repository could otherwise override are disabled in **untrusted workspaces** (VS Code Workspace Trust), and `auggieCli.path` is application-scoped so it can only ever be set in your own user settings -- a workspace can never point Augmeter at an untrusted executable. In an untrusted workspace, all local provider/session file scanning is disabled.
+Custom binary, database, and log paths (`auggieCli.path`, `providers.copilot.stateDbPath`, `providers.claude.path`, and `providers.codex.path`) are user-controlled. Settings that a repository could otherwise override are disabled in **untrusted workspaces** through VS Code Workspace Trust. `auggieCli.path` is application-scoped, so a workspace cannot point Augmeter at an executable. All local provider and session-file reading is disabled in untrusted workspaces.
 
-Your Augment session cookie is stored only in VS Code **SecretStorage** (the OS keychain), never in settings or files, and is redacted from all logs. If you enable Copilot GitHub-API tracking, the token is read from an environment variable you name and sent only to your configured GitHub API host; it is never written to logs or persisted by the extension.
+An Augment session cookie is stored only in VS Code **SecretStorage**, never in settings or extension data files, and is redacted from logs. Clipboard monitoring runs only during the cookie connection flow. If you enable GitHub Copilot API tracking, the token is read from the environment variable you name and sent only to the configured GitHub API host. Augmeter does not log or persist that token.
 
 ## Reporting a vulnerability
 
-Please use [GitHub private security advisories](https://github.com/markomiric/augmeter/security/advisories/new) to report security vulnerabilities privately -- do not open a public issue until the fix is ready. For general bugs and feature requests, use [GitHub Issues](https://github.com/markomiric/augmeter/issues).
+Use [GitHub private security advisories](https://github.com/markomiric/augmeter/security/advisories/new) to report vulnerabilities privately. Do not open a public issue until a fix is ready. For general bugs and feature requests, use [GitHub Issues](https://github.com/markomiric/augmeter/issues).

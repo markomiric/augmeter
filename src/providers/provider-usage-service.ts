@@ -7,6 +7,7 @@ import { type ConfigManager } from "../core/config/config-manager";
 import { type StorageManager } from "../core/storage/storage-manager";
 import { SecureLogger } from "../core/logging/secure-logger";
 import { UserNotificationService } from "../core/notifications/user-notification-service";
+import { pluralize, providerDisplayName, providerMetricNoun } from "../core/copy/provider-copy";
 import { type ProviderAdapter } from "./provider-adapter";
 import { type ProviderRegistry } from "./provider-registry";
 import * as vscode from "vscode";
@@ -38,7 +39,12 @@ export class ProviderUsageService {
     for (const adapter of adapters) {
       if (!enabledByConfig || !enabledIds.has(adapter.id)) {
         healthSnapshots.push(
-          this.createHealth(adapter, "disabled", now, "Provider is disabled by settings.")
+          this.createHealth(
+            adapter,
+            "disabled",
+            now,
+            `${adapter.displayName} activity tracking is off.`
+          )
         );
         continue;
       }
@@ -49,7 +55,7 @@ export class ProviderUsageService {
             adapter,
             "restricted",
             now,
-            "Provider tracking is disabled in untrusted workspaces."
+            `${adapter.displayName} activity is not read in untrusted workspaces.`
           )
         );
         continue;
@@ -79,7 +85,7 @@ export class ProviderUsageService {
             adapter,
             "degraded",
             now,
-            "Provider collection failed; see logs for details.",
+            `${adapter.displayName} activity couldn't be read. Check Output > Augmeter.`,
             "PROVIDER_COLLECTION_FAILED"
           )
         );
@@ -103,7 +109,7 @@ export class ProviderUsageService {
       await this.checkProviderAlerts(usageSnapshots, now);
     }
 
-    SecureLogger.info("Provider usage collection completed", {
+    SecureLogger.info("Assistant activity collection completed", {
       source: options.source ?? "unknown",
       workspaceTrusted: options.workspaceTrusted,
       enabledByConfig,
@@ -153,16 +159,19 @@ export class ProviderUsageService {
               threshold
             );
 
-            const remainingText =
-              basis.remaining !== null
-                ? `${Math.max(0, Math.round(basis.remaining)).toLocaleString()} remaining`
-                : "remaining estimate unavailable";
-            const scope = basis.usesConfiguredTarget ? "configured target" : "tracked limit";
-            const message = `Augmeter (${basis.label}): ${threshold}% of ${scope} reached (${remainingText}).`;
+            const message = basis.usesConfiguredTarget
+              ? basis.targetIsProjection
+                ? `${basis.label} activity is projected at ${basis.percentage}% of your monthly ${providerMetricNoun(providerId)} target.`
+                : `${basis.label} has used ${basis.percentage}% of your monthly ${providerMetricNoun(providerId)} target.`
+              : `${basis.label} has used ${basis.percentage}% of its tracked limit.${
+                  basis.remaining === null
+                    ? ""
+                    : ` ${Math.max(0, Math.round(basis.remaining)).toLocaleString()} ${pluralize(Math.max(0, Math.round(basis.remaining)), providerMetricNoun(providerId))} remain.`
+                }`;
 
             if (threshold >= alertConfig.critical) {
               void UserNotificationService.showWarning(message, {
-                text: "View Usage",
+                text: "Open assistant usage",
                 action: async () => {
                   await vscode.commands.executeCommand("augmeter.openUsageDashboard");
                 },
@@ -186,11 +195,15 @@ export class ProviderUsageService {
               true
             );
 
-            const scope = basis.usesConfiguredTarget ? "target" : "limit";
+            const days = Math.max(1, Math.round(basis.projectedDays));
+            const dayLabel = days === 1 ? "day" : "days";
+            const scope = basis.usesConfiguredTarget
+              ? `your monthly ${providerMetricNoun(providerId)} target`
+              : "its tracked limit";
             void UserNotificationService.showWarning(
-              `Augmeter (${basis.label}): At current pace, usage may hit ${scope} in ~${Math.max(1, Math.round(basis.projectedDays))} day(s).`,
+              `At the current pace, ${basis.label} may reach ${scope} in about ${days} ${dayLabel}.`,
               {
-                text: "View Usage",
+                text: "Open assistant usage",
                 action: async () => {
                   await vscode.commands.executeCommand("augmeter.openUsageDashboard");
                 },
@@ -216,6 +229,7 @@ export class ProviderUsageService {
     remaining: number | null;
     projectedDays: number | null;
     usesConfiguredTarget: boolean;
+    targetIsProjection: boolean;
   } | null {
     const sorted = snapshots
       .slice()
@@ -255,12 +269,13 @@ export class ProviderUsageService {
         remaining > 0 && dailyRate !== null && dailyRate > 0 ? remaining / dailyRate : null;
 
       return {
-        label: this.providerLabel(providerId),
+        label: providerDisplayName(providerId),
         cycleId: this.getCycleId(withLimit.resetAt, now),
         percentage,
         remaining,
         projectedDays,
         usesConfiguredTarget: false,
+        targetIsProjection: false,
       };
     }
 
@@ -294,6 +309,7 @@ export class ProviderUsageService {
 
     let dailyRate: number | null = null;
     let monthlyEstimate = usedRaw;
+    const targetIsProjection = source.windowType !== "monthly";
 
     if (source.windowType === "weekly_7d") {
       dailyRate = usedRaw / 7;
@@ -315,12 +331,13 @@ export class ProviderUsageService {
       dailyRate !== null && dailyRate > 0 && remaining > 0 ? remaining / dailyRate : null;
 
     return {
-      label: this.providerLabel(providerId),
+      label: providerDisplayName(providerId),
       cycleId: this.getCycleId(undefined, now),
       percentage,
       remaining,
       projectedDays,
       usesConfiguredTarget: true,
+      targetIsProjection,
     };
   }
 
@@ -360,14 +377,6 @@ export class ProviderUsageService {
       }
     }
     return `month-${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  }
-
-  private providerLabel(providerId: string): string {
-    if (providerId === "claude") return "Claude Code";
-    if (providerId === "codex") return "Codex";
-    if (providerId === "copilot") return "GitHub Copilot";
-    if (providerId === "augment") return "Augment";
-    return providerId;
   }
 
   private normalizeProviderId(providerId: ProviderId): string {

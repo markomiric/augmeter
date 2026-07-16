@@ -32,11 +32,16 @@ describe("CodexProviderAdapter", () => {
     const stale = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString();
 
     writeJsonl(path.join(nested, "session.jsonl"), [
+      { type: "session_meta", payload: { source: "vscode" } },
       { type: "event_msg", timestamp: recent, payload: { type: "user_message" } },
       { type: "event_msg", timestamp: weekly, payload: { type: "user_message" } },
       { type: "event_msg", timestamp: stale, payload: { type: "user_message" } },
       { type: "event_msg", timestamp: recent, payload: { type: "agent_message" } },
       { type: "response_item", timestamp: recent, payload: { type: "user_message" } },
+    ]);
+    writeJsonl(path.join(nested, "subagent.jsonl"), [
+      { type: "session_meta", payload: { source: { subagent: { thread_spawn: {} } } } },
+      { type: "event_msg", timestamp: recent, payload: { type: "user_message" } },
     ]);
 
     const adapter = new CodexProviderAdapter(() => root);

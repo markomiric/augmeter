@@ -71,21 +71,21 @@ export class HttpClient {
         if (error.name === "AbortError") {
           throw AugmeterError.timeout(
             `Request timeout after ${timeout}ms: ${fullUrl}`,
-            "Request timed out. Please check your connection and try again."
+            "Augment took too long to respond. Check your connection and try again."
           );
         }
 
         if (error.message.includes("ENOTFOUND") || error.message.includes("ECONNREFUSED")) {
           throw AugmeterError.network(
             `Network error: ${error.message}`,
-            "Unable to connect to the server. Please check your internet connection."
+            "Couldn't reach Augment. Check your connection and try again."
           );
         }
       }
 
       throw AugmeterError.network(
         `HTTP request failed: ${error}`,
-        "Network request failed. Please try again."
+        "Couldn't reach Augment. Check your connection and try again."
       );
     }
   }

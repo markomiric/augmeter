@@ -72,11 +72,10 @@ export class RuntimeCoordinator implements vscode.Disposable {
         checkedAt: new Date().toISOString(),
         canCollectInCurrentWorkspace: true,
         sourceKind: "cli",
-        message: "Signed out of the Auggie CLI usage source.",
+        message: "Auggie CLI credit source disconnected in Augmeter.",
         errorCode: "AUGGIE_CLI_SIGNED_OUT",
       });
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
-      void this.statusBarManager.updateDisplay();
       return true;
     }
 
@@ -86,6 +85,10 @@ export class RuntimeCoordinator implements vscode.Disposable {
       await this.usageTracker.updateWithRealData({
         totalUsage: result.data.totalUsage ?? 0,
         usageLimit: result.data.usageLimit ?? 0,
+        remainingCredits: result.data.remainingCredits,
+        monthlyAllowance: result.data.monthlyAllowance,
+        usageKnown: result.data.usageKnown,
+        sourceKind: "cli",
         dailyUsage: result.data.dailyUsage,
         lastUpdate: result.data.lastUpdate ?? new Date().toISOString(),
         subscriptionType: result.data.subscriptionType,
@@ -97,10 +100,12 @@ export class RuntimeCoordinator implements vscode.Disposable {
         checkedAt: new Date().toISOString(),
         canCollectInCurrentWorkspace: true,
         sourceKind: "cli",
-        message: "Connected via Auggie CLI.",
+        message:
+          result.data.usageKnown === false
+            ? "Connected via Auggie CLI; cycle usage is unavailable from its balance-only response."
+            : "Connected via Auggie CLI.",
       });
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
-      void this.statusBarManager.updateDisplay();
       SecureLogger.info(`Usage updated from Auggie CLI (source=${source})`);
       return true;
     }
@@ -131,7 +136,6 @@ export class RuntimeCoordinator implements vscode.Disposable {
         result.status === "cli-missing" ? "AUGGIE_CLI_MISSING" : "AUGGIE_CLI_UNAUTHENTICATED",
     });
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
-    void this.statusBarManager.updateDisplay();
     return true;
   }
 
@@ -157,12 +161,11 @@ export class RuntimeCoordinator implements vscode.Disposable {
             errorCode: "AUGMENT_SIGNED_OUT",
           });
           void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
-          void this.statusBarManager.updateDisplay();
           SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
           return;
         }
 
-        SecureLogger.info(`Fetching real usage data (source=${source})`);
+        SecureLogger.info(`Fetching Augment credit data (source=${source})`);
         const response = await apiClient.getUsageData();
         if (response.success) {
           const responseData =
@@ -182,16 +185,19 @@ export class RuntimeCoordinator implements vscode.Disposable {
             await this.usageTracker.updateWithRealData({
               totalUsage: parsed.totalUsage ?? 0,
               usageLimit: parsed.usageLimit ?? 0,
+              remainingCredits: parsed.remainingCredits,
+              monthlyAllowance: parsed.monthlyAllowance,
+              usageKnown: parsed.usageKnown,
+              sourceKind: "api",
               dailyUsage: parsed.dailyUsage,
               lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
               subscriptionType: parsed.subscriptionType,
               renewalDate: parsed.renewalDate,
             });
 
-            void this.statusBarManager.updateDisplay();
-            SecureLogger.info(`Real usage data updated successfully (source=${source})`);
+            SecureLogger.info(`Augment credit data updated successfully (source=${source})`);
           } else {
-            SecureLogger.warn(`Failed to parse usage data response (source=${source})`);
+            SecureLogger.warn(`Failed to parse Augment credit response (source=${source})`);
           }
         } else if (response.code === "UNAUTHENTICATED") {
           this.usageTracker.clearRealDataFlag();
@@ -204,14 +210,16 @@ export class RuntimeCoordinator implements vscode.Disposable {
             message: "Augment authentication expired or invalid.",
             errorCode: "AUGMENT_UNAUTHENTICATED",
           });
-          void this.statusBarManager.updateDisplay();
           SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
           return;
         } else {
-          SecureLogger.warn(`Failed to fetch real usage data (source=${source})`, response.error);
+          SecureLogger.warn(
+            `Failed to fetch Augment credit data (source=${source})`,
+            response.error
+          );
         }
       } catch (error) {
-        ErrorHandler.handleSilently(error, `Real data fetching (source=${source})`);
+        ErrorHandler.handleSilently(error, `Augment credit fetch (source=${source})`);
       } finally {
         try {
           await this.providerUsageService.collectUsage({
@@ -223,6 +231,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
         } catch (providerError) {
           SecureLogger.warn(`Provider collection failed (source=${source})`, providerError);
         }
+        await this.statusBarManager.updateDisplay();
       }
     };
 

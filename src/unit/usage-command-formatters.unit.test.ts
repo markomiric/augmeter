@@ -14,18 +14,40 @@ describe("usage-command-formatters", () => {
       limit: 2000,
       subscriptionType: "Pro",
       renewalDate: "2026-03-20T00:00:00.000Z",
-      monthlyTarget: 1500,
+      cycleTarget: 1500,
       targetDelta: 300,
       projectedDays: 2.4,
       projectedDate: new Date("2026-03-19T00:00:00.000Z"),
       now: new Date("2026-03-17T10:00:00.000Z"),
     });
 
-    expect(text).toContain("Augment Usage Summary");
+    expect(text).toContain("Augment credit summary");
     expect(text).toContain("Plan: Pro");
-    expect(text).toContain("Projected depletion: ~2 day(s)");
-    expect(text).toContain("Projected date:");
+    expect(text).toContain("At this pace: about 2 days left");
+    expect(text).toContain("Estimated run-out date:");
+    expect(text).toContain("Cycle target:");
     expect(text).toContain("Renews:");
+  });
+
+  it("buildUsageSummaryText labels balance-only CLI data without inventing cycle usage", () => {
+    const text = buildUsageSummaryText({
+      usage: 0,
+      limit: 0,
+      usageKnown: false,
+      remainingCredits: 57306,
+      monthlyAllowance: 40000,
+      subscriptionType: "Indie Plan",
+      cycleTarget: 0,
+      targetDelta: null,
+      projectedDays: null,
+      projectedDate: null,
+      now: new Date("2026-03-17T10:00:00.000Z"),
+    });
+
+    expect(text).toContain("Remaining: 57,306 credits");
+    expect(text).toContain("Monthly allowance: 40,000 credits");
+    expect(text).toContain("Cycle usage: unavailable from Auggie CLI balance data");
+    expect(text).not.toContain("Used: 0");
   });
 
   it("buildUsageHistoryCsv escapes fields and keeps headers", () => {
@@ -61,8 +83,8 @@ describe("usage-command-formatters", () => {
       retentionDays: 35,
       alertThresholds: { warning: 75, high: 90, critical: 95 },
       runOutDays: 3,
-      monthlyTarget: 0,
-      enabledProviders: ["augment", "claude"],
+      cycleTarget: 0,
+      enabledProviders: ["claude"],
       copilotApiConfig: {
         enabled: true,
         username: "octocat",
@@ -75,8 +97,47 @@ describe("usage-command-formatters", () => {
 
     expect(bundle.extensionVersion).toBe("1.2.3");
     expect(bundle.providers.targets).toEqual({ claude: 1000 });
-    expect(bundle.config.enabledProviders).toEqual(["augment", "claude"]);
+    expect(bundle.config.cycleTarget).toBe(0);
+    expect(bundle.config.enabledProviders).toEqual(["claude"]);
     expect(bundle.config.copilotApi.tokenPresent).toBe(true);
+  });
+
+  it("buildUsageBundle preserves balance-only Auggie semantics", () => {
+    const bundle = buildUsageBundle({
+      generatedAt: new Date("2026-03-17T10:00:00.000Z"),
+      extensionVersion: "1.2.3",
+      currentUsage: 0,
+      currentLimit: 0,
+      remainingCredits: 57306,
+      usageKnown: false,
+      monthlyAllowance: 40000,
+      usageSnapshots: [],
+      providerSnapshots: [],
+      providerHealth: [],
+      providerTargets: {},
+      providerAlertThresholds: {},
+      retentionDays: 35,
+      alertThresholds: { warning: 75, high: 90, critical: 95 },
+      runOutDays: 3,
+      cycleTarget: 0,
+      enabledProviders: [],
+      copilotApiConfig: {
+        enabled: false,
+        username: "",
+        tokenEnvVar: "GITHUB_TOKEN",
+        baseUrl: "https://api.github.com",
+        timeoutMs: 6000,
+      },
+      copilotTokenPresent: false,
+    });
+
+    expect(bundle.usage.current).toMatchObject({
+      used: 0,
+      limit: 0,
+      remaining: 57306,
+      usageKnown: false,
+      monthlyAllowance: 40000,
+    });
   });
 
   it("buildLatestProviderSnapshots keeps the newest snapshot per key", () => {
@@ -132,12 +193,12 @@ describe("usage-command-formatters", () => {
         colorThresholds: { critical: 95, highWarning: 85, warning: 75, caution: 50 },
         alertThresholds: { warning: 75, high: 90, critical: 95 },
         runOutDays: 3,
-        monthlyTarget: 0,
+        cycleTarget: 0,
         retentionDays: 35,
         sessionTrackingEnabled: false,
         sessionTrackingPath: "(default)",
         providerTrackingEnabled: true,
-        enabledProviders: ["augment", "claude"],
+        enabledProviders: ["claude"],
         providerTargets: {},
         providerAlertThresholds: {},
         claudeProjectsPath: "(default)",

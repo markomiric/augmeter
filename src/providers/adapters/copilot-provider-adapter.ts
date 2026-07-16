@@ -69,7 +69,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: false,
           sourceKind: "file",
-          message: "Workspace is untrusted; local provider scanning is disabled.",
+          message: "GitHub Copilot activity is not read in untrusted workspaces.",
         },
       };
     }
@@ -107,8 +107,8 @@ export class CopilotProviderAdapter implements ProviderAdapter {
           canCollectInCurrentWorkspace: true,
           sourceKind: "file",
           message: apiFallbackMessage
-            ? `${apiFallbackMessage} Also could not find VS Code state database for local fallback counters.`
-            : "VS Code state database was not found for Copilot counters.",
+            ? `${apiFallbackMessage} Augmeter also couldn't find local Copilot counters in VS Code.`
+            : "No local GitHub Copilot counters were found in VS Code.",
           errorCode: "COPILOT_STATE_DB_MISSING",
         },
       };
@@ -130,7 +130,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
             checkedAt: context.now.toISOString(),
             canCollectInCurrentWorkspace: true,
             sourceKind: "file",
-            message: "Copilot request counters were not found in state DB.",
+            message: "No GitHub Copilot requests have been recorded in VS Code yet.",
             errorCode: "COPILOT_COUNTERS_MISSING",
           },
         };
@@ -165,8 +165,8 @@ export class CopilotProviderAdapter implements ProviderAdapter {
           canCollectInCurrentWorkspace: true,
           sourceKind: "file",
           message: apiFallbackMessage
-            ? `${apiFallbackMessage} Falling back to local VS Code state counters.`
-            : "Read Copilot cumulative request counters from VS Code state DB.",
+            ? `${apiFallbackMessage} Showing local VS Code request counters instead.`
+            : "Read cumulative GitHub Copilot requests from VS Code.",
         },
       };
 
@@ -203,7 +203,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
       return {
         result: null,
         errorMessage:
-          "Copilot API tracking is enabled, but providers.copilot.api.username is not configured.",
+          "GitHub Copilot API tracking needs a username in augmeter.providers.copilot.api.username.",
       };
     }
 
@@ -211,8 +211,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     if (!tokenEnvVar) {
       return {
         result: null,
-        errorMessage:
-          "Copilot API tracking is enabled, but providers.copilot.api.tokenEnvVar is empty.",
+        errorMessage: "GitHub Copilot API tracking needs a token environment variable name.",
       };
     }
 
@@ -220,7 +219,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     if (!token || token.trim().length === 0) {
       return {
         result: null,
-        errorMessage: `Copilot API tracking enabled, but environment variable ${tokenEnvVar} is not set.`,
+        errorMessage: `GitHub Copilot API tracking can't find the ${tokenEnvVar} environment variable.`,
       };
     }
 
@@ -244,7 +243,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
       if (!response.ok) {
         return {
           result: null,
-          errorMessage: `Copilot API request failed (${response.status}).`,
+          errorMessage: `GitHub Copilot returned HTTP ${response.status}.`,
         };
       }
 
@@ -253,7 +252,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
       if (!usage || usage.used === null) {
         return {
           result: null,
-          errorMessage: "Copilot API response did not contain recognizable usage fields.",
+          errorMessage: "GitHub Copilot returned premium-request data Augmeter couldn't read.",
         };
       }
 
@@ -303,7 +302,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
             checkedAt: nowIso,
             canCollectInCurrentWorkspace: true,
             sourceKind: "api",
-            message: "Read Copilot premium request usage from GitHub API.",
+            message: "Read GitHub Copilot premium requests from GitHub.",
           },
         },
       };
@@ -311,7 +310,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
       const message = this.getErrorMessage(error);
       return {
         result: null,
-        errorMessage: `Copilot API unavailable (${message})`,
+        errorMessage: `GitHub Copilot API is unavailable (${message}).`,
       };
     } finally {
       clearTimeout(timer);
@@ -526,16 +525,16 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     if (errorRecord) {
       const code = errorRecord.code;
       if (code === "ENOENT") {
-        return "sqlite3 is not available; install sqlite3 to enable Copilot usage tracking.";
+        return "Install sqlite3 to read local GitHub Copilot activity";
       }
       if (code === "ABORT_ERR") {
-        return "request timed out";
+        return "the request timed out";
       }
       const short = typeof errorRecord.message === "string" ? errorRecord.message : null;
       if (short) {
         return short;
       }
     }
-    return "Failed to read Copilot usage counters from VS Code state DB.";
+    return "Augmeter couldn't read local GitHub Copilot counters.";
   }
 }

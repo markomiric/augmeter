@@ -2,9 +2,7 @@ import { type ProviderAdapter, type ProviderAdapterResult } from "../provider-ad
 import { collectFilesRecursive, directoryExists, resolveHomePath } from "../local-file-utils";
 import { JsonlSessionScanner, asRecord, toTimestamp } from "./jsonl-session-scanner";
 
-/**
- * Claude session logs mark user turns with `{"type":"user", ...}`; count those.
- */
+/** Claude logs also use `type: "user"` for tool results; count human input only. */
 function extractClaudeTimestamp(line: string): number | null {
   if (!line.includes('"type":"user"') || !line.includes('"timestamp"')) {
     return null;
@@ -18,7 +16,20 @@ function extractClaudeTimestamp(line: string): number | null {
   }
 
   const event = asRecord(parsed);
-  if (!event || event.type !== "user") {
+  if (!event || event.type !== "user" || event.isMeta === true) {
+    return null;
+  }
+
+  const message = asRecord(event.message);
+  const content = message?.content;
+  const hasHumanInput =
+    (typeof content === "string" && content.trim().length > 0) ||
+    (Array.isArray(content) &&
+      content.some(block => {
+        const item = asRecord(block);
+        return item?.type === "text" || item?.type === "image";
+      }));
+  if (!hasHumanInput) {
     return null;
   }
 
@@ -50,7 +61,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: false,
           sourceKind: "file",
-          message: "Workspace is untrusted; local provider scanning is disabled.",
+          message: "Claude Code activity is not read in untrusted workspaces.",
         },
       };
     }
@@ -74,7 +85,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: true,
           sourceKind: "file",
-          message: "Claude projects directory was not found.",
+          message: "No Claude Code history was found at the configured projects path.",
           errorCode: "CLAUDE_PATH_MISSING",
         },
       };
@@ -96,7 +107,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: true,
           sourceKind: "file",
-          message: "No Claude session logs found.",
+          message: "No Claude Code activity has been recorded at the configured path yet.",
           errorCode: "CLAUDE_NO_LOGS",
         },
       };
@@ -147,7 +158,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
         checkedAt: nowIso,
         canCollectInCurrentWorkspace: true,
         sourceKind: "file",
-        message: `Scanned ${counts.filesScanned} Claude log file(s).`,
+        message: `Read ${counts.filesScanned} Claude Code log ${counts.filesScanned === 1 ? "file" : "files"} for local user turns.`,
       },
     };
 

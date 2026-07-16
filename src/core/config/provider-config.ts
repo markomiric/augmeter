@@ -123,7 +123,7 @@ export class ProviderConfigSection {
   }
 
   getEnabledProviderIds(): KnownProviderId[] {
-    const defaults: KnownProviderId[] = ["augment", "claude", "codex", "copilot"];
+    const defaults: KnownProviderId[] = ["claude", "codex", "copilot"];
     const raw = this.config.get<string[]>("providers.enabledIds", defaults) ?? defaults;
     if (!Array.isArray(raw)) {
       return defaults;

@@ -28,7 +28,7 @@ export class AuthCommands {
 
   private async withSignInLock<T>(fn: () => Promise<T>): Promise<T | void> {
     if (this.signInInProgress) {
-      await UserNotificationService.showInfo("Sign-in is already in progress");
+      await UserNotificationService.showInfo("An Augment connection is already in progress.");
       return;
     }
     this.signInInProgress = true;
@@ -48,12 +48,12 @@ export class AuthCommands {
     } catch (error) {
       throw AugmeterError.validation(
         `Cookie validation failed: ${error}`,
-        "Invalid cookie format. Please copy the complete session cookie value from your browser."
+        "That cookie value isn't valid. Copy the complete _session value and try again."
       );
     }
 
-    await UserNotificationService.withProgress("Augmeter", async progress => {
-      progress.report({ message: "Signing in…" });
+    await UserNotificationService.withProgress("Connecting Augment", async progress => {
+      progress.report({ message: "Checking your Augment connection..." });
       const result = await apiClient.testConnection();
       if (!result.success) {
         await apiClient.clearSessionCookie();
@@ -61,22 +61,20 @@ export class AuthCommands {
         void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
         throw AugmeterError.authentication(
           result.error || "Authentication failed",
-          "Authentication failed. Please check your cookie and try again."
+          "Augment couldn't verify that cookie. Copy a fresh _session value and try again."
         );
       }
 
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
-      progress.report({ message: "Loading your usage…" });
+      progress.report({ message: "Loading Augment credits..." });
       this.statusBarManager.showLoading();
       await this.usageTracker.refreshNow();
       await this.statusBarManager.updateDisplay();
-      UserNotificationService.showSuccess("Signed in to Augment");
+      UserNotificationService.showSuccess("Augment connected");
     });
   }
 
-  private async finalizeAuthenticatedSession(
-    successMessage = "Signed in to Augment"
-  ): Promise<void> {
+  private async finalizeAuthenticatedSession(successMessage = "Augment connected"): Promise<void> {
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
     await this.usageTracker.refreshNow();
@@ -99,7 +97,7 @@ export class AuthCommands {
     if (!binary) {
       if (mode === "auggie-cli") {
         void UserNotificationService.showWarning(
-          "Auggie CLI not found. Install it (npm i -g @augmentcode/auggie) or set augmeter.auggieCli.path."
+          "Augmeter couldn't find Auggie CLI. Install it with npm i -g @augmentcode/auggie or set augmeter.auggieCli.path."
         );
         return true;
       }
@@ -110,22 +108,23 @@ export class AuthCommands {
     const result = await this.auggieCliSource.fetchUsage();
 
     if (result.status === "ok") {
-      await this.finalizeAuthenticatedSession("Signed in via Auggie CLI");
+      await this.finalizeAuthenticatedSession("Augment connected through Auggie CLI");
       return true;
     }
 
     if (result.status === "unauthenticated") {
       const cliItem = {
-        label: "$(terminal) Sign in with Auggie CLI",
-        description: "Opens a terminal running `auggie login`",
+        label: "$(terminal) Use Auggie CLI (recommended)",
+        description: "Opens Auggie sign-in. Augmeter does not read CLI credentials.",
       };
       const cookieItem = {
-        label: "$(key) Paste session cookie",
-        description: "Manual sign-in via app.augmentcode.com",
+        label: "$(key) Paste a session cookie",
+        description: "Stored in VS Code SecretStorage and used only for Augment requests.",
       };
       const items = mode === "auggie-cli" ? [cliItem] : [cliItem, cookieItem];
       const choice = await vscode.window.showQuickPick(items, {
-        placeHolder: "How do you want to sign in to Augment?",
+        title: "Connect Augment",
+        placeHolder: "Choose how Augmeter should read your Augment credits",
         ignoreFocusOut: true,
       });
 
@@ -138,10 +137,10 @@ export class AuthCommands {
 
       const signedIn = await this.runAuggieLoginFlow(binary);
       if (signedIn) {
-        await this.finalizeAuthenticatedSession("Signed in via Auggie CLI");
+        await this.finalizeAuthenticatedSession("Augment connected through Auggie CLI");
       } else if (mode !== "auggie-cli") {
         void UserNotificationService.showInfo(
-          "Auggie sign-in not detected. You can retry, or sign in with a session cookie."
+          "Augmeter couldn't detect an Auggie sign-in. Try again or use a session cookie."
         );
       }
       return true;
@@ -163,7 +162,7 @@ export class AuthCommands {
       return await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Augmeter — waiting for Auggie sign-in",
+          title: "Augmeter: Waiting for Auggie sign-in",
           cancellable: true,
         },
         async (_progress, token) => {
@@ -186,11 +185,11 @@ export class AuthCommands {
   }
 
   private async tryExistingCookieAndFinalize(apiClient: AugmentApiClient): Promise<boolean> {
-    return await UserNotificationService.withProgress("Augmeter", async progress => {
-      progress.report({ message: "Signing in…" });
+    return await UserNotificationService.withProgress("Connecting Augment", async progress => {
+      progress.report({ message: "Checking your Augment connection..." });
       const result = await apiClient.testConnection();
       if (result.success) {
-        progress.report({ message: "Loading your usage…" });
+        progress.report({ message: "Loading Augment credits..." });
         await this.finalizeAuthenticatedSession();
         return true;
       }
@@ -350,7 +349,7 @@ export class AuthCommands {
               await this.runSignInWithCookie(cookie);
             }
           });
-        }, "Sign in");
+        }, "connect to Augment");
       })
     );
 
@@ -410,7 +409,7 @@ export class AuthCommands {
               await this.runSignInWithCookie(cookie);
             }
           });
-        }, "Smart sign in");
+        }, "connect to Augment");
       })
     );
 
@@ -432,9 +431,7 @@ export class AuthCommands {
       await this.storageManager.setCliAuthDisabled(true);
       this.auggieCliSource.reset();
       if (wasCliAuthenticated) {
-        void UserNotificationService.showInfo(
-          "Signed out in Augmeter. The Auggie CLI itself stays logged in."
-        );
+        void UserNotificationService.showInfo("Augment disconnected. Auggie remains signed in.");
       }
 
       const apiClient = this.augmentDetector.getApiClient();
@@ -453,7 +450,7 @@ export class AuthCommands {
       await this.statusBarManager.updateDisplay();
       // No success popup - status bar shows signed out state
     } catch (error) {
-      SecureLogger.error("Sign out failed", error);
+      SecureLogger.error("Disconnect Augment failed", error);
       // No error popup - fail silently
     }
   }

@@ -77,7 +77,9 @@ export class ExtensionBootstrap {
       SecureLogger.info("Extension initialization completed successfully");
     } catch (error) {
       SecureLogger.error("Extension initialization failed", error);
-      vscode.window.showErrorMessage("Extension initialization failed. Please restart VS Code.");
+      vscode.window.showErrorMessage(
+        "Augmeter couldn't start. Restart VS Code, then check Output > Augmeter if it happens again."
+      );
       throw error;
     }
   }

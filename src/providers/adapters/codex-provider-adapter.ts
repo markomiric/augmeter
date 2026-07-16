@@ -1,4 +1,5 @@
 import { type ProviderAdapter, type ProviderAdapterResult } from "../provider-adapter";
+import { promises as fs } from "node:fs";
 import { collectFilesRecursive, directoryExists, resolveHomePath } from "../local-file-utils";
 import { JsonlSessionScanner, asRecord, toTimestamp } from "./jsonl-session-scanner";
 
@@ -31,6 +32,30 @@ function extractCodexTimestamp(line: string): number | null {
   return toTimestamp(event.timestamp);
 }
 
+async function isSubagentSession(filePath: string): Promise<boolean> {
+  let handle: fs.FileHandle | undefined;
+  try {
+    handle = await fs.open(filePath, "r");
+    const buffer = Buffer.alloc(64 * 1024);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const firstLine = buffer.subarray(0, bytesRead).toString("utf8").split(/\r?\n/, 1)[0];
+    if (!firstLine) {
+      return false;
+    }
+    const event = asRecord(JSON.parse(firstLine));
+    if (event?.type !== "session_meta") {
+      return false;
+    }
+    const payload = asRecord(event.payload);
+    const source = asRecord(payload?.source);
+    return source !== null && Object.hasOwn(source, "subagent");
+  } catch {
+    return false;
+  } finally {
+    await handle?.close();
+  }
+}
+
 export class CodexProviderAdapter implements ProviderAdapter {
   readonly id = "codex";
   readonly displayName = "Codex";
@@ -56,7 +81,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: false,
           sourceKind: "file",
-          message: "Workspace is untrusted; local provider scanning is disabled.",
+          message: "Codex activity is not read in untrusted workspaces.",
         },
       };
     }
@@ -80,7 +105,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: true,
           sourceKind: "file",
-          message: "Codex sessions directory was not found.",
+          message: "No Codex history was found at the configured sessions path.",
           errorCode: "CODEX_PATH_MISSING",
         },
       };
@@ -100,7 +125,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: true,
           sourceKind: "file",
-          message: "No Codex session logs found.",
+          message: "No Codex activity has been recorded at the configured path yet.",
           errorCode: "CODEX_NO_LOGS",
         },
       };
@@ -108,9 +133,16 @@ export class CodexProviderAdapter implements ProviderAdapter {
       return result;
     }
 
+    const userSessionFiles: string[] = [];
+    for (const file of files) {
+      if (!(await isSubagentSession(file))) {
+        userSessionFiles.push(file);
+      }
+    }
+
     const cutoffFiveHour = nowMs - 5 * 60 * 60 * 1000;
     const cutoffWeekly = nowMs - 7 * 24 * 60 * 60 * 1000;
-    const counts = await this.scanner.countMessages(files, cutoffFiveHour, cutoffWeekly);
+    const counts = await this.scanner.countMessages(userSessionFiles, cutoffFiveHour, cutoffWeekly);
 
     const nowIso = context.now.toISOString();
     const result: ProviderAdapterResult = {
@@ -150,7 +182,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
         checkedAt: nowIso,
         canCollectInCurrentWorkspace: true,
         sourceKind: "file",
-        message: `Scanned ${counts.filesScanned} Codex session file(s) for local prompt counts.`,
+        message: `Read ${counts.filesScanned} Codex session ${counts.filesScanned === 1 ? "file" : "files"} for local user turns; agent sessions were excluded.`,
       },
     };
 

@@ -108,17 +108,17 @@ describe("Tooltip Rate/Projection Formatting", () => {
     });
 
     it("returns no activity for zero rate", () => {
-      expect(formatRateLine(0)).toBe("**Rate:** No recent activity");
+      expect(formatRateLine(0)).toBe("**Pace:** No recent credit activity");
     });
 
     it("formats rate with rounding", () => {
-      expect(formatRateLine(520.7)).toBe("**Rate:** ~521/hr");
+      expect(formatRateLine(520.7)).toBe("**Pace:** about 521 credits per hour");
     });
 
     it("formats large rate", () => {
       const line = formatRateLine(1500);
-      expect(line).toContain("~");
-      expect(line).toContain("/hr");
+      expect(line).toContain("about 1,500");
+      expect(line).toContain("credits per hour");
     });
   });
 
@@ -132,21 +132,21 @@ describe("Tooltip Rate/Projection Formatting", () => {
     });
 
     it("returns exhausted for zero days", () => {
-      expect(formatProjectionLine(0)).toBe("**Projected:** Credits exhausted");
+      expect(formatProjectionLine(0)).toBe("**At this pace:** Credits exhausted");
     });
 
     it("shows hours when less than 1 day", () => {
       const line = formatProjectionLine(0.5);
-      expect(line).toContain("h remaining");
+      expect(line).toContain("hours left");
     });
 
     it("shows days for multi-day projection", () => {
-      expect(formatProjectionLine(22.3)).toBe("**Projected:** ~22 days remaining");
+      expect(formatProjectionLine(22.3)).toBe("**At this pace:** about 22 days left");
     });
 
     it("rounds hours to at least 1", () => {
       const line = formatProjectionLine(0.01);
-      expect(line).toBe("**Projected:** ~1h remaining");
+      expect(line).toBe("**At this pace:** about 1 hour left");
     });
   });
 
@@ -156,11 +156,13 @@ describe("Tooltip Rate/Projection Formatting", () => {
     });
 
     it("formats under-target status with progress", () => {
-      expect(formatTargetLine(1000, 250, 75)).toBe("**Target:** 250 under target (75%)");
+      expect(formatTargetLine(1000, 250, 75)).toBe(
+        "**Cycle target:** 75% used · 250 credits under target"
+      );
     });
 
     it("formats over-target status", () => {
-      expect(formatTargetLine(1000, -120, 112)).toBe("**Target:** 120 over target");
+      expect(formatTargetLine(1000, -120, 112)).toBe("**Cycle target:** 120 credits over target");
     });
   });
 
@@ -181,8 +183,8 @@ describe("Tooltip Rate/Projection Formatting", () => {
         usageRatePerHour: 520,
         projectedDaysRemaining: 22,
       });
-      expect(tooltip).toContain("**Rate:** ~520/hr");
-      expect(tooltip).toContain("**Projected:** ~22 days remaining");
+      expect(tooltip).toContain("**Pace:** about 520 credits per hour");
+      expect(tooltip).toContain("**At this pace:** about 22 days left");
     });
 
     it("includes target and depletion lines when provided", () => {
@@ -193,8 +195,8 @@ describe("Tooltip Rate/Projection Formatting", () => {
         targetProgressPercent: 92,
         projectedDepletionDate: new Date("2026-02-20T00:00:00Z"),
       });
-      expect(tooltip).toMatch(/\*\*Target:\*\* .* under target \(92%\)/);
-      expect(tooltip).toContain("**Depletion:** ~");
+      expect(tooltip).toContain("**Cycle target:** 92% used · 16,133 credits under target");
+      expect(tooltip).toContain("**Estimated run-out:**");
     });
 
     it("omits rate/projection when null", () => {
@@ -203,14 +205,14 @@ describe("Tooltip Rate/Projection Formatting", () => {
         usageRatePerHour: null,
         projectedDaysRemaining: null,
       });
-      expect(tooltip).not.toContain("Rate:");
-      expect(tooltip).not.toContain("Projected:");
+      expect(tooltip).not.toContain("Pace:");
+      expect(tooltip).not.toContain("At this pace:");
     });
 
     it("omits rate/projection when not provided", () => {
       const tooltip = buildMarkdownTooltip(baseParams);
-      expect(tooltip).not.toContain("Rate:");
-      expect(tooltip).not.toContain("Projected:");
+      expect(tooltip).not.toContain("Pace:");
+      expect(tooltip).not.toContain("At this pace:");
     });
 
     it("shows hours for less than 1 day remaining", () => {
@@ -219,7 +221,7 @@ describe("Tooltip Rate/Projection Formatting", () => {
         usageRatePerHour: 5000,
         projectedDaysRemaining: 0.5,
       });
-      expect(tooltip).toContain("h remaining");
+      expect(tooltip).toContain("hours left");
     });
 
     it("includes session activity when provided", () => {
@@ -264,8 +266,8 @@ describe("Tooltip Rate/Projection Formatting", () => {
         projectedDaysRemaining: 22,
         sessionActivity: { promptCount: 10, sessionCount: 2 },
       });
-      expect(tooltip).not.toContain("Rate:");
-      expect(tooltip).not.toContain("Projected:");
+      expect(tooltip).not.toContain("Pace:");
+      expect(tooltip).not.toContain("At this pace:");
       expect(tooltip).not.toContain("Today:");
     });
   });

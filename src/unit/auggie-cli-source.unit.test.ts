@@ -35,6 +35,9 @@ describe("parseAuggieAccountStatus", () => {
     if (result.kind !== "ok") return;
     expect(result.data.usageLimit).toBe(74722);
     expect(result.data.totalUsage).toBe(0);
+    expect(result.data.remainingCredits).toBe(74722);
+    expect(result.data.monthlyAllowance).toBe(40000);
+    expect(result.data.usageKnown).toBe(false);
     expect(result.data.subscriptionType).toBe("Indie Plan");
     expect(result.data.renewalDate).toBe("2026-06-24T00:00:00.000Z");
   });
@@ -48,6 +51,9 @@ describe("parseAuggieAccountStatus", () => {
     // remaining = limit - used = 40,000 - 28,000 = 12,000
     expect(result.data.usageLimit).toBe(40000);
     expect(result.data.totalUsage).toBe(28000);
+    expect(result.data.remainingCredits).toBe(12000);
+    expect(result.data.monthlyAllowance).toBe(40000);
+    expect(result.data.usageKnown).toBe(false);
   });
 
   it("parses the legacy used/total format directly", () => {
@@ -56,6 +62,8 @@ describe("parseAuggieAccountStatus", () => {
     if (result.kind !== "ok") return;
     expect(result.data.totalUsage).toBe(953170);
     expect(result.data.usageLimit).toBe(964827);
+    expect(result.data.remainingCredits).toBe(11657);
+    expect(result.data.usageKnown).toBe(true);
     expect(result.data.subscriptionType).toBe("Max Plan");
     expect(result.data.renewalDate).toBe("2026-01-08T00:00:00.000Z");
   });

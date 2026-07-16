@@ -29,9 +29,15 @@ describe("ClaudeProviderAdapter", () => {
     const stale = new Date(now.getTime() - 9 * 24 * 60 * 60 * 1000).toISOString();
 
     writeJsonl(path.join(root, "session.jsonl"), [
-      { type: "user", timestamp: recent },
-      { type: "user", timestamp: weekly },
-      { type: "user", timestamp: stale },
+      { type: "user", timestamp: recent, message: { content: "Recent prompt" } },
+      { type: "user", timestamp: weekly, message: { content: "Weekly prompt" } },
+      { type: "user", timestamp: stale, message: { content: "Stale prompt" } },
+      {
+        type: "user",
+        timestamp: recent,
+        message: { content: [{ type: "tool_result", tool_use_id: "tool-1" }] },
+      },
+      { type: "user", timestamp: recent, isMeta: true, message: { content: "Meta command" } },
       { type: "assistant", timestamp: recent },
     ]);
 
@@ -89,7 +95,7 @@ describe("ClaudeProviderAdapter", () => {
     // flushTrailingFragment receives the fragment, JSON.parse fails, it is kept but not counted.
     fs.writeFileSync(
       filePath,
-      `${JSON.stringify({ type: "user", timestamp: valid })}\n{"type":"user","timestamp":`,
+      `${JSON.stringify({ type: "user", timestamp: valid, message: { content: "Prompt" } })}\n{"type":"user","timestamp":`,
       "utf8"
     );
 
@@ -115,7 +121,7 @@ describe("ClaudeProviderAdapter", () => {
 
     fs.writeFileSync(
       filePath,
-      `${JSON.stringify({ type: "user", timestamp: first })}\nnot-json-line\n`,
+      `${JSON.stringify({ type: "user", timestamp: first, message: { content: "First" } })}\nnot-json-line\n`,
       "utf8"
     );
 
@@ -128,7 +134,11 @@ describe("ClaudeProviderAdapter", () => {
     });
     expect(initial.snapshots.find(snapshot => snapshot.windowType === "weekly_7d")?.used).toBe(1);
 
-    fs.appendFileSync(filePath, `${JSON.stringify({ type: "user", timestamp: second })}\n`, "utf8");
+    fs.appendFileSync(
+      filePath,
+      `${JSON.stringify({ type: "user", timestamp: second, message: { content: "Second" } })}\n`,
+      "utf8"
+    );
 
     const followUp = await adapter.collectUsage({
       now: new Date("2026-02-16T12:05:00.000Z"),

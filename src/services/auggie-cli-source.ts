@@ -94,7 +94,16 @@ export function parseAuggieAccountStatus(raw: string): AuggieParseResult {
     const used = parseCount(usedMatch[1]);
     const total = parseCount(usedMatch[2]);
     if (used !== null && total !== null) {
-      return { kind: "ok", data: { ...base, totalUsage: used, usageLimit: total } };
+      return {
+        kind: "ok",
+        data: {
+          ...base,
+          totalUsage: used,
+          usageLimit: total,
+          remainingCredits: Math.max(total - used, 0),
+          usageKnown: true,
+        },
+      };
     }
   }
 
@@ -112,7 +121,17 @@ export function parseAuggieAccountStatus(raw: string): AuggieParseResult {
   const usageLimit = monthly !== null ? Math.max(monthly, remaining) : remaining;
   const totalUsage = Math.max(usageLimit - remaining, 0);
 
-  return { kind: "ok", data: { ...base, totalUsage, usageLimit } };
+  return {
+    kind: "ok",
+    data: {
+      ...base,
+      totalUsage,
+      usageLimit,
+      remainingCredits: remaining,
+      ...(monthly !== null ? { monthlyAllowance: monthly } : {}),
+      usageKnown: false,
+    },
+  };
 }
 
 function expandHome(p: string): string {

@@ -69,12 +69,7 @@ suite("ConfigManager Test Suite", () => {
       true,
       "Provider tracking should default to enabled in trusted workspace"
     );
-    assert.deepStrictEqual(configManager.getEnabledProviderIds(), [
-      "augment",
-      "claude",
-      "codex",
-      "copilot",
-    ]);
+    assert.deepStrictEqual(configManager.getEnabledProviderIds(), ["claude", "codex", "copilot"]);
     assert.deepStrictEqual(
       configManager.getProviderMonthlyTargets(),
       {},

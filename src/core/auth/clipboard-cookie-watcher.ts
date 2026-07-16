@@ -22,12 +22,13 @@ export async function watchClipboardForCookie(
   return await vscode.window.withProgress<ClipboardWatchResult>(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Augmeter — Waiting for sign-in",
+      title: "Augmeter: Waiting for session cookie",
       cancellable: true,
     },
     async (progress, token) => {
       progress.report({
-        message: "Copy your session cookie from Augment — we'll detect it automatically",
+        message:
+          "Copy the _session value. Augmeter watches the clipboard only during this sign-in step.",
       });
 
       while (Date.now() - started < timeoutMs) {

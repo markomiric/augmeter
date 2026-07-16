@@ -5,9 +5,12 @@ import type { ProviderHealthSnapshot, ProviderUsageSnapshot } from "../core/type
 export interface UsageSummaryTextInput {
   usage: number;
   limit: number;
+  usageKnown?: boolean | undefined;
+  remainingCredits?: number | undefined;
+  monthlyAllowance?: number | null | undefined;
   subscriptionType?: string | undefined;
   renewalDate?: string | undefined;
-  monthlyTarget: number;
+  cycleTarget: number;
   targetDelta: number | null;
   projectedDays: number | null;
   projectedDate: Date | null;
@@ -20,6 +23,8 @@ export interface UsageBundleInput {
   currentUsage: number;
   currentLimit: number;
   remainingCredits: number;
+  usageKnown?: boolean | undefined;
+  monthlyAllowance?: number | null | undefined;
   renewalDate?: string | undefined;
   subscriptionType?: string | undefined;
   usageSnapshots: UsageSnapshot[];
@@ -30,7 +35,7 @@ export interface UsageBundleInput {
   retentionDays: number;
   alertThresholds: { warning: number; high: number; critical: number };
   runOutDays: number;
-  monthlyTarget: number;
+  cycleTarget: number;
   enabledProviders: readonly string[];
   copilotApiConfig: CopilotApiConfig;
   copilotTokenPresent: boolean;
@@ -68,7 +73,7 @@ export interface DiagnosticsInput {
     colorThresholds: { critical: number; highWarning: number; warning: number; caution: number };
     alertThresholds: { warning: number; high: number; critical: number };
     runOutDays: number;
-    monthlyTarget: number;
+    cycleTarget: number;
     retentionDays: number;
     sessionTrackingEnabled: boolean;
     sessionTrackingPath: string;
@@ -88,35 +93,55 @@ export interface DiagnosticsInput {
 }
 
 export function buildUsageSummaryText(input: UsageSummaryTextInput): string {
-  const { usage, limit, subscriptionType, renewalDate, monthlyTarget, targetDelta, projectedDays } =
-    input;
+  const {
+    usage,
+    limit,
+    usageKnown = true,
+    monthlyAllowance,
+    subscriptionType,
+    renewalDate,
+    cycleTarget,
+    targetDelta,
+    projectedDays,
+  } = input;
   const percentage = limit > 0 ? Math.round((usage / limit) * 100) : 0;
-  const remaining = limit > 0 ? Math.max(limit - usage, 0) : 0;
-  const lines: string[] = ["Augment Usage Summary"];
+  const remaining = input.remainingCredits ?? (limit > 0 ? Math.max(limit - usage, 0) : 0);
+  const lines: string[] = ["Augment credit summary"];
 
   if (subscriptionType) {
     lines.push(`Plan: ${subscriptionType}`);
   }
 
-  lines.push(`Used: ${usage.toLocaleString()} / ${limit.toLocaleString()} (${percentage}%)`);
-  lines.push(`Remaining: ${remaining.toLocaleString()}`);
-
-  if (monthlyTarget > 0 && targetDelta !== null) {
+  if (usageKnown) {
     lines.push(
-      `Target: ${monthlyTarget.toLocaleString()} (${targetDelta >= 0 ? `${Math.abs(targetDelta).toLocaleString()} under` : `${Math.abs(targetDelta).toLocaleString()} over`})`
+      `Used: ${usage.toLocaleString()} of ${limit.toLocaleString()} credits (${percentage}%)`
+    );
+    lines.push(`Remaining: ${remaining.toLocaleString()} credits`);
+  } else {
+    lines.push(`Remaining: ${remaining.toLocaleString()} credits`);
+    if (monthlyAllowance !== null && monthlyAllowance !== undefined) {
+      lines.push(`Monthly allowance: ${monthlyAllowance.toLocaleString()} credits`);
+    }
+    lines.push("Cycle usage: unavailable from Auggie CLI balance data");
+  }
+
+  if (usageKnown && cycleTarget > 0 && targetDelta !== null) {
+    lines.push(
+      `Cycle target: ${cycleTarget.toLocaleString()} credits (${targetDelta >= 0 ? `${Math.abs(targetDelta).toLocaleString()} under` : `${Math.abs(targetDelta).toLocaleString()} over`})`
     );
   }
 
-  if (projectedDays !== null) {
+  if (usageKnown && projectedDays !== null) {
     if (projectedDays <= 0) {
-      lines.push("Projected depletion: exhausted");
+      lines.push("At this pace: credits exhausted");
     } else {
-      lines.push(`Projected depletion: ~${Math.max(1, Math.round(projectedDays))} day(s)`);
+      const days = Math.max(1, Math.round(projectedDays));
+      lines.push(`At this pace: about ${days} ${days === 1 ? "day" : "days"} left`);
     }
   }
 
-  if (input.projectedDate) {
-    lines.push(`Projected date: ${input.projectedDate.toLocaleDateString()}`);
+  if (usageKnown && input.projectedDate) {
+    lines.push(`Estimated run-out date: ${input.projectedDate.toLocaleDateString()}`);
   }
 
   if (renewalDate) {
@@ -156,6 +181,8 @@ export function buildUsageBundle(input: UsageBundleInput): {
       used: number;
       limit: number;
       remaining: number;
+      usageKnown: boolean;
+      monthlyAllowance?: number | null | undefined;
       renewalDate?: string | undefined;
       subscriptionType?: string | undefined;
     };
@@ -171,7 +198,7 @@ export function buildUsageBundle(input: UsageBundleInput): {
     retentionDays: number;
     alertThresholds: { warning: number; high: number; critical: number };
     runOutDays: number;
-    monthlyTarget: number;
+    cycleTarget: number;
     enabledProviders: readonly string[];
     copilotApi: {
       enabled: boolean;
@@ -191,6 +218,8 @@ export function buildUsageBundle(input: UsageBundleInput): {
         used: input.currentUsage,
         limit: input.currentLimit,
         remaining: input.remainingCredits,
+        usageKnown: input.usageKnown ?? true,
+        monthlyAllowance: input.monthlyAllowance,
         renewalDate: input.renewalDate,
         subscriptionType: input.subscriptionType,
       },
@@ -206,7 +235,7 @@ export function buildUsageBundle(input: UsageBundleInput): {
       retentionDays: input.retentionDays,
       alertThresholds: input.alertThresholds,
       runOutDays: input.runOutDays,
-      monthlyTarget: input.monthlyTarget,
+      cycleTarget: input.cycleTarget,
       enabledProviders: input.enabledProviders,
       copilotApi: {
         enabled: input.copilotApiConfig.enabled,
