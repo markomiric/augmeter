@@ -143,6 +143,7 @@ export class JsonlSessionScanner {
         start: Math.max(0, startByte),
       });
       let buffer = initialFragment;
+      let ended = false;
 
       stream.on("data", chunk => {
         buffer += chunk;
@@ -157,6 +158,13 @@ export class JsonlSessionScanner {
 
       stream.on("error", reject);
       stream.on("end", () => {
+        ended = true;
+      });
+      stream.on("close", () => {
+        // Windows keeps the file locked until this event, after `end`.
+        if (!ended) {
+          return;
+        }
         const trailingFragment = this.flushTrailingFragment(buffer, timestamps);
         resolve({ timestamps, trailingFragment });
       });
