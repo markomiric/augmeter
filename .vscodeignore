@@ -53,12 +53,6 @@ docs/**
 # Development-only packages (the extension has no runtime dependencies)
 node_modules/**
 
-# README screenshots (vsce rewrites relative links to the repository URL;
-# only images/icon.png must ship)
-images/session-cookie.png
-images/dashboard.png
-images/tooltip.png
-
 # Environment & secrets
 .env*
 *.pem

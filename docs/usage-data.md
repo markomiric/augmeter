@@ -2,10 +2,6 @@
 
 Augmeter combines local coding-assistant activity with connected provider data. The cards deliberately use different labels because the underlying sources measure different things.
 
-![Assistant usage dashboard](../images/dashboard.png)
-
-The screenshot is a live verification snapshot from July 16, 2026. Its values will change as local logs and provider balances change.
-
 ## What each number means
 
 | Card           | Value                                                        | Source                                                         | Important limitations                                                                                                                                                       |
@@ -30,8 +26,6 @@ Augmeter does not infer `0 used` from a balance-only response. It also shows the
 Each card's **Updated** timestamp is when Augmeter last collected that source. It is not the time the dashboard webview happened to open, and it does not imply that a provider event occurred at that exact moment.
 
 ## Status tooltip
-
-![Assistant usage status tooltip](../images/tooltip.png)
 
 The tooltip uses the same definitions as the dashboard: Claude Code and Codex are local user turns, Copilot is a cumulative counter without a known time window, and balance-only Augment data never produces an invented percentage or pace.
 

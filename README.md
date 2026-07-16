@@ -5,7 +5,9 @@
 [![Privacy](https://img.shields.io/badge/privacy-local%20activity-blue)](#data-sources-and-privacy)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Track local Claude Code, Codex, and GitHub Copilot activity alongside connected Augment credits without leaving VS Code.
+See coding-assistant activity and connected provider usage in one VS Code view.
+
+Augmeter reads local Claude Code, Codex, and GitHub Copilot activity, with optional Augment credit data.
 
 | Assistant          | What Augmeter shows                                                | Source                              |
 | ------------------ | ------------------------------------------------------------------ | ----------------------------------- |
@@ -20,11 +22,7 @@ Claude Code and Codex counts exclude tool results, metadata, and agent/subagent 
 
 > Augmeter is independent and open source. It is not affiliated with or endorsed by Augment, Anthropic, OpenAI, GitHub, or Microsoft. Product names are trademarks of their respective owners.
 
-![Augmeter assistant usage dashboard showing local user turns, cumulative Copilot requests, and Augment balance-only data](images/dashboard.png)
-
-The values in the screenshot are a live local snapshot and will change as assistant logs and provider data change. See [Understanding assistant usage data](docs/usage-data.md) for the exact source and limitations of every number.
-
-![Augmeter status-bar tooltip](images/tooltip.png)
+See [Understanding assistant usage data](docs/usage-data.md) for the exact source and limitations of every number.
 
 ## Install
 
@@ -65,9 +63,9 @@ When Auggie CLI is unavailable, Augmeter can use your Augment `_session` cookie:
 4. Copy the value of `_session`.
 5. Paste it into Augmeter if clipboard detection has not already completed the connection.
 
-![Copy the _session cookie value from your browser](images/session-cookie.png)
-
 The cookie is stored in VS Code SecretStorage and used only for Augment requests. Augmeter watches the clipboard only during the connection step. Choose `auto`, `auggie-cli`, or `cookie` with `augmeter.dataSource`.
+
+Treat `_session` as a credential: never paste it into an issue, log, screenshot, or exported diagnostic. If it is exposed, sign out of Augment to invalidate the session before connecting again.
 
 ## Usage
 
@@ -128,7 +126,7 @@ Augmeter ships with zero runtime package dependencies. It can invoke the existin
 
 - VS Code `>= 1.104.0`
 - `sqlite3` on `PATH` for local GitHub Copilot counts
-- Node.js `>= 20.0.0` for development only
+- Node.js `>= 20.18.0` for development only
 
 ## Troubleshooting
 

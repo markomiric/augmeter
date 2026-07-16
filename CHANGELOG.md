@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Changed
+
+- Generalized the public description around coding-assistant activity and connected provider usage.
+- Removed screenshots containing real local usage, account, and session data, along with internal planning notes.
+- Updated the SBOM generator and development lockfile to patched releases; production dependencies remain audit-clean.
+
 ## [1.1.0] - 2026-07-16
 
 ### Added
@@ -23,7 +29,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Simplified the status bar to one consistent credit summary and reduced settings to supported, actionable controls.
 - Reworked commands, dashboard copy, tooltips, empty states, exports, and diagnostics around explicit data sources and user actions.
 - Shared incremental JSONL scanning between Claude Code and Codex for lower repeated-read overhead.
-- Updated README and usage-data documentation with current UI screenshots and source-by-source metric definitions.
+- Updated README and usage-data documentation with source-by-source metric definitions.
 
 ### Fixed
 

@@ -1,13 +1,10 @@
 {
   "name": "augmeter",
   "displayName": "Augmeter: Assistant Usage",
-  "description": "Track local Claude Code, Codex, and GitHub Copilot activity alongside connected Augment credits in VS Code.",
+  "description": "See coding-assistant activity and connected provider usage in one VS Code view.",
   "version": "1.1.0",
   "publisher": "kamacode",
-  "author": {
-    "name": "Marko",
-    "email": "marko@kamacode.dev"
-  },
+  "author": "Marko",
   "repository": {
     "type": "git",
     "url": "https://github.com/markomiric/augmeter"
@@ -19,7 +16,7 @@
   "license": "MIT",
   "engines": {
     "vscode": "^1.104.0",
-    "node": ">=20.0.0"
+    "node": ">=20.18.0"
   },
   "extensionKind": [
     "ui"
@@ -67,7 +64,6 @@
         "augmeter.providers.codex.path",
         "augmeter.providers.copilot.stateDbPath",
         "augmeter.providers.copilot.api.enabled",
-        "augmeter.providers.copilot.api.username",
         "augmeter.providers.copilot.api.username"
       ]
     }
@@ -382,7 +378,7 @@
     "analyze:knip": "knip --reporter json --no-progress"
   },
   "devDependencies": {
-    "@cyclonedx/cyclonedx-npm": "^4.0.3",
+    "@cyclonedx/cyclonedx-npm": "^6.0.0",
     "@types/node": "^20.19.13",
     "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.42.0",

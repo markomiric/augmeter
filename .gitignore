@@ -23,6 +23,14 @@ sbom.xml
 # Generated API documentation
 docs/api/
 
+# Local planning artifacts
+plans/
+
+# Agent-local configuration and session state
+.agents/
+.claude/
+.codex/
+
 # Environment & secrets
 .env
 .env.*
