@@ -29,22 +29,9 @@ export interface UsageDashboardData {
   monthlyTarget?: number | null | undefined;
   targetDelta?: number | null | undefined;
   targetProgressPercent?: number | null | undefined;
-  sessionActivity?: { promptCount: number; sessionCount: number } | null | undefined;
   snapshots: UsageSnapshot[];
   providerSnapshots?: ProviderUsageSnapshot[] | undefined;
   providerHealth?: ProviderHealthSnapshot[] | undefined;
-  providerTargets?: Record<string, number> | undefined;
-  providerAlertThresholds?:
-    | Record<
-        string,
-        {
-          warning: number;
-          high: number;
-          critical: number;
-          runOutDays: number;
-        }
-      >
-    | undefined;
 }
 
 function escapeHtml(value: string): string {
@@ -125,8 +112,6 @@ interface ProviderSummary {
   monthlyMessages: number | null;
   cumulativeMessages: number | null;
   riskPercent: number | null;
-  usesConfiguredTarget: boolean;
-  targetIsProjection: boolean;
   monthlySourceKind: ProviderUsageSnapshot["sourceKind"] | null;
   cumulativeSourceKind: ProviderUsageSnapshot["sourceKind"] | null;
   freshnessAt: string | null;
@@ -134,8 +119,7 @@ interface ProviderSummary {
 
 function summarizeProviders(
   snapshots: ProviderUsageSnapshot[],
-  health: ProviderHealthSnapshot[],
-  providerTargets: Record<string, number>
+  health: ProviderHealthSnapshot[]
 ): ProviderSummary[] {
   const providerIds = new Set<string>();
   for (const snapshot of snapshots) {
@@ -191,23 +175,10 @@ function summarizeProviders(
         .filter(value => toValidDate(value) !== null)
         .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
 
-    const target = providerTargets[providerId];
-    const usesConfiguredTarget =
-      typeof target === "number" && Number.isFinite(target) && target > 0;
-
-    let riskPercent: number | null = null;
-    let targetIsProjection = false;
-    if (usesConfiguredTarget) {
-      if (typeof weekly?.used === "number" && Number.isFinite(weekly.used)) {
-        const projectedMonthly = (weekly.used / 7) * 30;
-        riskPercent = Math.round((projectedMonthly / target) * 100);
-        targetIsProjection = true;
-      } else if (typeof monthly?.used === "number" && Number.isFinite(monthly.used)) {
-        riskPercent = Math.round((monthly.used / target) * 100);
-      }
-    } else if (typeof monthly?.percentUsed === "number" && Number.isFinite(monthly.percentUsed)) {
-      riskPercent = Math.round(monthly.percentUsed);
-    }
+    const riskPercent =
+      typeof monthly?.percentUsed === "number" && Number.isFinite(monthly.percentUsed)
+        ? Math.round(monthly.percentUsed)
+        : null;
 
     return {
       providerId,
@@ -225,8 +196,6 @@ function summarizeProviders(
       monthlyMessages: monthly?.used ?? null,
       cumulativeMessages: cumulative?.used ?? null,
       riskPercent,
-      usesConfiguredTarget,
-      targetIsProjection,
       monthlySourceKind: monthly?.sourceKind ?? null,
       cumulativeSourceKind: cumulative?.sourceKind ?? null,
       freshnessAt,
@@ -269,8 +238,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
   const ratioWidth = Math.max(0, Math.min(100, data.percentage));
   const providerSummaries = summarizeProviders(
     data.providerSnapshots ?? [],
-    data.providerHealth ?? [],
-    data.providerTargets ?? {}
+    data.providerHealth ?? []
   );
   const providerMarkup =
     providerSummaries.length > 0
@@ -330,11 +298,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
             const targetLine =
               summary.riskPercent === null
                 ? ""
-                : summary.usesConfiguredTarget
-                  ? summary.targetIsProjection
-                    ? `At this pace: ${summary.riskPercent}% of your monthly ${metricNoun} target`
-                    : `${summary.riskPercent}% of your monthly ${metricNoun} target used`
-                  : `${summary.riskPercent}% of the tracked limit used`;
+                : `${summary.riskPercent}% of the tracked limit used`;
             const details = lines
               .map(line => `<p class="metric-subtle">${escapeHtml(line)}</p>`)
               .join("");
@@ -461,14 +425,6 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
         }
       </div>`
       : "";
-  const sessionMarkup = data.sessionActivity
-    ? `<div class="section"><h2>Today's Augment activity</h2><p class="metric-subtle">${
-        data.sessionActivity.promptCount > 0
-          ? `${data.sessionActivity.promptCount} ${pluralize(data.sessionActivity.promptCount, "prompt")} across ${data.sessionActivity.sessionCount} ${pluralize(data.sessionActivity.sessionCount, "session")}`
-          : "No Augment prompts recorded today."
-      }</p></div>`
-    : "";
-
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -592,7 +548,6 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
     ${unavailableDataNotice}
     ${augmentMarkup}
     ${trendsMarkup}
-    ${sessionMarkup}
   </body>
 </html>`;
 }

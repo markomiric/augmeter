@@ -26,11 +26,6 @@ describe("Smart Sign In (unit)", () => {
       },
     } as any;
 
-    const augmentDetector = {
-      getApiClient: () => apiClient,
-      clearAuthCache: () => {},
-    } as any;
-
     const usageTracker = {
       refreshNow: async () => {
         calls.refreshNow++;
@@ -63,7 +58,7 @@ describe("Smart Sign In (unit)", () => {
     } as any;
 
     const auth = new AuthCommands(
-      augmentDetector,
+      apiClient,
       usageTracker,
       statusBarManager,
       configManager,
@@ -72,7 +67,7 @@ describe("Smart Sign In (unit)", () => {
     );
     const disposables = auth.registerCommands();
 
-    return { apiClient, augmentDetector, usageTracker, statusBarManager, calls, disposables };
+    return { apiClient, usageTracker, statusBarManager, calls, disposables };
   }
 
   it("Uses clipboard cookie to sign in and fetch without opening website", async () => {

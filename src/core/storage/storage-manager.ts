@@ -9,13 +9,10 @@ import {
   type ProviderUsageSnapshot,
 } from "../types/provider-usage";
 import {
-  getDefaultProviderAlertState,
   normalizeProviderHealthSnapshot,
   normalizeProviderId,
   normalizeProviderUsageSnapshot,
-  parseProviderAlertStateMap,
   parseProviderHealthMap,
-  type ProviderAlertState,
 } from "./provider-storage-state";
 
 /**
@@ -59,7 +56,6 @@ export class StorageManager {
   private readonly STORAGE_KEY = "augmentUsageData";
   private readonly THRESHOLD_KEY = "augmentLastNotifiedThreshold";
   private readonly ALERT_STATE_KEY = "augmentAlertState";
-  private readonly PROVIDER_ALERT_STATE_KEY = "providerAlertStateV1";
   private readonly SNAPSHOTS_KEY = "augmentUsageSnapshots";
   private readonly PROVIDER_SNAPSHOTS_KEY = "providerUsageSnapshotsV1";
   private readonly PROVIDER_HEALTH_KEY = "providerHealthSnapshotsV1";
@@ -189,71 +185,6 @@ export class StorageManager {
       lastThreshold: 0,
       runOutAlerted: false,
     });
-  }
-
-  async getProviderNotifiedThresholdForCycle(
-    providerId: ProviderId,
-    cycleId: string
-  ): Promise<number> {
-    const state = await this.getProviderAlertState(providerId);
-    return state.cycleId === cycleId ? state.lastThreshold : 0;
-  }
-
-  async setProviderNotifiedThresholdForCycle(
-    providerId: ProviderId,
-    cycleId: string,
-    threshold: number
-  ): Promise<void> {
-    const key = this.normalizeProviderId(providerId);
-    if (!key) {
-      return;
-    }
-    const map = await this.getProviderAlertStateMap();
-    const state = map[key] || getDefaultProviderAlertState();
-    map[key] = {
-      cycleId,
-      lastThreshold: threshold,
-      runOutAlerted: state.cycleId === cycleId ? state.runOutAlerted : false,
-    };
-    await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, map);
-  }
-
-  async isProviderRunOutAlertedForCycle(providerId: ProviderId, cycleId: string): Promise<boolean> {
-    const state = await this.getProviderAlertState(providerId);
-    return state.cycleId === cycleId ? state.runOutAlerted : false;
-  }
-
-  async setProviderRunOutAlertedForCycle(
-    providerId: ProviderId,
-    cycleId: string,
-    alerted: boolean
-  ): Promise<void> {
-    const key = this.normalizeProviderId(providerId);
-    if (!key) {
-      return;
-    }
-    const map = await this.getProviderAlertStateMap();
-    const state = map[key] || getDefaultProviderAlertState();
-    map[key] = {
-      cycleId,
-      lastThreshold: state.cycleId === cycleId ? state.lastThreshold : 0,
-      runOutAlerted: alerted,
-    };
-    await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, map);
-  }
-
-  async resetProviderAlertState(providerId?: ProviderId): Promise<void> {
-    if (!providerId) {
-      await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, {});
-      return;
-    }
-    const key = this.normalizeProviderId(providerId);
-    if (!key) {
-      return;
-    }
-    const map = await this.getProviderAlertStateMap();
-    delete map[key];
-    await this.context.globalState.update(this.PROVIDER_ALERT_STATE_KEY, map);
   }
 
   async cleanOldData(): Promise<void> {
@@ -440,21 +371,6 @@ export class StorageManager {
 
   private async getProviderHealthMap(): Promise<Record<string, ProviderHealthSnapshot>> {
     return parseProviderHealthMap(this.context.globalState.get<unknown>(this.PROVIDER_HEALTH_KEY));
-  }
-
-  private async getProviderAlertStateMap(): Promise<Record<string, ProviderAlertState>> {
-    return parseProviderAlertStateMap(
-      this.context.globalState.get<unknown>(this.PROVIDER_ALERT_STATE_KEY)
-    );
-  }
-
-  private async getProviderAlertState(providerId: ProviderId): Promise<ProviderAlertState> {
-    const key = this.normalizeProviderId(providerId);
-    if (!key) {
-      return getDefaultProviderAlertState();
-    }
-    const map = await this.getProviderAlertStateMap();
-    return map[key] || getDefaultProviderAlertState();
   }
 
   private normalizeProviderId(providerId: ProviderId): string {

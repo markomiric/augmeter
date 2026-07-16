@@ -1,5 +1,3 @@
-import { SessionReader, type SessionActivity } from "../../services/session-reader";
-
 export interface UsageThresholdConfig {
   warning: number;
   high: number;
@@ -55,19 +53,4 @@ export function shouldNotifyProjectedRunOut(
     projectedDays <= runOutDays &&
     !alreadyAlerted
   );
-}
-
-export function readTrackedSessionActivity(
-  sessionTrackingEnabled: boolean,
-  sessionTrackingPath?: string
-): SessionActivity | null {
-  if (!sessionTrackingEnabled) {
-    return null;
-  }
-
-  try {
-    return new SessionReader(sessionTrackingPath || undefined).getTodayActivity();
-  } catch {
-    return null;
-  }
 }

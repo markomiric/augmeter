@@ -3,8 +3,6 @@
  * handling authentication, request retries, response parsing, caching, and secure cookie storage.
  */
 import type * as vscode from "vscode";
-import { HttpClient, type HttpResponse } from "../core/http/http-client";
-import { RetryHandler } from "../core/http/retry-handler";
 import type { AugmentApiResponse, AugmentUsageData } from "../core/types/augment";
 import { SecureSecretsManager } from "../core/auth/secure-secrets-manager";
 import { SecureCookieUtils } from "../core/auth/cookie";
@@ -39,12 +37,16 @@ export class AugmentApiClient {
   private secretsManager: SecureSecretsManager | null = null;
   private secretsInit: Promise<void> | null = null;
   private inFlightRequests: Map<string, Promise<AugmentApiResponse>> = new Map();
-  private http: HttpClient = new HttpClient();
-  private retry: RetryHandler = new RetryHandler();
   private readonly resolveApiBaseUrl: () => string;
+  private readonly fetchImpl: typeof fetch;
 
-  constructor(context?: vscode.ExtensionContext, resolveApiBaseUrl?: () => string) {
+  constructor(
+    context?: vscode.ExtensionContext,
+    resolveApiBaseUrl?: () => string,
+    fetchImpl: typeof fetch = fetch
+  ) {
     this.resolveApiBaseUrl = resolveApiBaseUrl ?? (() => this.DEFAULT_API_BASE_URL);
+    this.fetchImpl = fetchImpl;
     if (context) {
       this.secretsManager = new SecureSecretsManager(context);
       void this.initializeFromSecrets();
@@ -140,22 +142,11 @@ export class AugmentApiClient {
       headers["Cookie"] = this.sessionCookie;
     }
 
-    const op = async (): Promise<HttpResponse> => {
-      const requestOptions: RequestInit & { baseUrl: string } = {
-        baseUrl,
-        method,
-        headers,
-      };
-      if (options.body !== undefined) {
-        requestOptions.body = options.body;
-      }
-      return this.http.makeRequest(endpoint, requestOptions);
-    };
-
-    const response = await this.retry.executeHttpWithRetry(
-      op,
-      `API ${method} ${baseUrl}${endpoint}`
-    );
+    const requestOptions: RequestInit = { method, headers };
+    if (options.body !== undefined) {
+      requestOptions.body = options.body;
+    }
+    const response = await this.requestWithRetry(`${baseUrl}${endpoint}`, requestOptions);
 
     // Handle 401: clear cookie and return UNAUTHENTICATED
     if (response.status === 401) {
@@ -182,6 +173,79 @@ export class AugmentApiClient {
     }
 
     return { success: true, data: response.data, status: response.status };
+  }
+
+  private async requestWithRetry(
+    url: string,
+    options: RequestInit
+  ): Promise<{ success: boolean; status?: number; data?: unknown; error?: string }> {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await this.fetchImpl(url, {
+          ...options,
+          signal: AbortSignal.timeout(30000),
+        });
+        const data = await this.parseResponseBody(response);
+        const error = response.ok ? undefined : this.responseError(data, response);
+        const result = {
+          success: response.ok,
+          status: response.status,
+          data,
+          ...(error ? { error } : {}),
+        };
+
+        const retriable = response.status === 429 || response.status >= 500;
+        if (!response.ok && retriable && attempt < maxAttempts) {
+          await this.waitBeforeRetry(attempt);
+          continue;
+        }
+        return result;
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.name === "TimeoutError" || error.name === "AbortError")
+        ) {
+          throw AugmeterError.timeout(
+            `Request timeout after 30000ms: ${url}`,
+            "Augment took too long to respond. Check your connection and try again."
+          );
+        }
+        if (attempt < maxAttempts) {
+          await this.waitBeforeRetry(attempt);
+          continue;
+        }
+        throw AugmeterError.network(
+          `HTTP request failed: ${error}`,
+          "Couldn't reach Augment. Check your connection and try again."
+        );
+      }
+    }
+    return { success: false, error: "Request failed" };
+  }
+
+  private async parseResponseBody(response: Response): Promise<unknown> {
+    const contentType = response.headers.get("content-type") ?? "";
+    try {
+      return contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
+    } catch {
+      return undefined;
+    }
+  }
+
+  private responseError(data: unknown, response: Response): string {
+    if (typeof data === "object" && data !== null) {
+      const record = data as Record<string, unknown>;
+      if (typeof record.error === "string") return record.error;
+      if (typeof record.message === "string") return record.message;
+    }
+    return `HTTP ${response.status}: ${response.statusText}`;
+  }
+
+  private async waitBeforeRetry(attempt: number): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 500 * 2 ** (attempt - 1)));
   }
 
   private getRequestKey(baseUrl: string, endpoint: string, method: string = "GET"): string {
@@ -259,8 +323,8 @@ export class AugmentApiClient {
 
     // Only fall back to the shared app base when the tenant base looks like a
     // routing miss (it does not serve /credits) rather than an upstream outage.
-    // A 5xx means the same backend is down, so a second full RetryHandler cycle
-    // (3 attempts x 30s timeout + backoff) would just double the worst-case
+    // A 5xx means the same backend is down, so a second retry cycle would
+    // just double the worst-case
     // stall without a better chance of success. Likewise skip the fallback when
     // the tenant base already IS the shared base (no different base to try).
     const status = tenantResp.status;

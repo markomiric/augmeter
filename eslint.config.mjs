@@ -1,6 +1,5 @@
 import tsParser from "@typescript-eslint/parser";
 import tsEslintPlugin from "@typescript-eslint/eslint-plugin";
-import prettierPlugin from "eslint-plugin-prettier";
 import globals from "globals";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -27,7 +26,6 @@ export default [
       },
     },
     plugins: {
-      prettier: prettierPlugin,
       "@typescript-eslint": tsEslintPlugin,
     },
     rules: {
@@ -66,9 +64,6 @@ export default [
           fixStyle: "inline-type-imports",
         },
       ],
-
-      // Prettier
-      "prettier/prettier": "error",
     },
   },
   {

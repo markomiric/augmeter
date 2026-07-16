@@ -1,63 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
 import { AugmentApiClient } from "../services/augment-api-client";
-import type { HttpResponse } from "../core/http/http-client";
 
-describe("AugmentApiClient (unit)", () => {
+describe("AugmentApiClient", () => {
   it("resolves the API base URL at request time", async () => {
     let currentBaseUrl = "https://tenant-one.example/api";
-    const client = new AugmentApiClient(undefined, () => currentBaseUrl);
-    const capturedBaseUrls: string[] = [];
-
-    (client as any).http = {
-      makeRequest: vi.fn(async (_url: string, options?: { baseUrl?: string }) => {
-        capturedBaseUrls.push(options?.baseUrl ?? "");
-        return {
-          success: true,
-          status: 200,
-          data: { ok: true },
-        } satisfies HttpResponse;
-      }),
-    };
-    (client as any).retry = {
-      executeHttpWithRetry: vi.fn(
-        async (operation: () => Promise<HttpResponse>) => await operation()
-      ),
-    };
+    const urls: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const client = new AugmentApiClient(undefined, () => currentBaseUrl, fetcher);
 
     await client.getCreditsInfo();
     currentBaseUrl = "https://tenant-two.example/api";
     await client.getCreditsInfo();
 
-    expect(capturedBaseUrls).toEqual([
-      "https://tenant-one.example/api",
-      "https://tenant-two.example/api",
+    expect(urls).toEqual([
+      "https://tenant-one.example/api/credits",
+      "https://tenant-two.example/api/credits",
     ]);
   });
 
   it("falls back to the default base URL when the resolver throws", async () => {
-    const client = new AugmentApiClient(undefined, () => {
-      throw new Error("boom");
-    });
-    const capturedBaseUrls: string[] = [];
-
-    (client as any).http = {
-      makeRequest: vi.fn(async (_url: string, options?: { baseUrl?: string }) => {
-        capturedBaseUrls.push(options?.baseUrl ?? "");
-        return {
-          success: true,
-          status: 200,
-          data: { ok: true },
-        } satisfies HttpResponse;
-      }),
-    };
-    (client as any).retry = {
-      executeHttpWithRetry: vi.fn(
-        async (operation: () => Promise<HttpResponse>) => await operation()
-      ),
-    };
+    const urls: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const client = new AugmentApiClient(
+      undefined,
+      () => {
+        throw new Error("boom");
+      },
+      fetcher
+    );
 
     await client.getCreditsInfo();
 
-    expect(capturedBaseUrls).toEqual(["https://app.augmentcode.com/api"]);
+    expect(urls).toEqual(["https://app.augmentcode.com/api/credits"]);
   });
 });

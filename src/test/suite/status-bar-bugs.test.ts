@@ -2,7 +2,6 @@ import * as assert from "assert";
 import type * as vscode from "vscode";
 import { ConfigManager } from "../../core/config/config-manager";
 import { StatusBarManager } from "../../ui/status-bar";
-import { AugmentDetector } from "../../services/augment-detector";
 
 // Mock classes for testing
 class MockUsageTracker {
@@ -88,27 +87,19 @@ class MockUsageTracker {
   }
 }
 
-class MockAugmentDetector {
-  private hasApiCookieValue = false;
+class MockApiClient {
+  private hasCookieValue = false;
 
-  hasApiCookie() {
-    return this.hasApiCookieValue;
+  hasCookie() {
+    return this.hasCookieValue;
   }
 
-  setHasApiCookie(value: boolean) {
-    this.hasApiCookieValue = value;
+  setHasCookie(value: boolean) {
+    this.hasCookieValue = value;
   }
 
-  clearAuthCache() {
-    // Mock implementation - could clear internal cache
-  }
-
-  getApiClient() {
-    return {
-      clearSessionCookie: async () => {
-        this.hasApiCookieValue = false;
-      },
-    };
+  async clearSessionCookie() {
+    this.hasCookieValue = false;
   }
 }
 
@@ -116,12 +107,12 @@ suite("Status Bar Bugs Test Suite", () => {
   let config: ConfigManager;
   let manager: StatusBarManager;
   let mockUsageTracker: MockUsageTracker;
-  let mockDetector: MockAugmentDetector;
+  let mockApiClient: MockApiClient;
 
   setup(() => {
     config = new ConfigManager();
     mockUsageTracker = new MockUsageTracker();
-    mockDetector = new MockAugmentDetector();
+    mockApiClient = new MockApiClient();
   });
 
   teardown(async () => {
@@ -129,22 +120,18 @@ suite("Status Bar Bugs Test Suite", () => {
       manager?.dispose();
     } catch {}
     try {
-      await config.updateConfig("statusBarDensity", "auto");
-      await config.updateConfig("statusBarIcon", "dashboard");
       await config.updateConfig("showInStatusBar", true);
     } catch {}
   });
 
   test("Sign out state always shows icon and Augmeter branding", async () => {
     // Set density to detailed
-    await config.updateConfig("statusBarDensity", "detailed");
-    await config.updateConfig("statusBarIcon", "dashboard");
     await config.updateConfig("showInStatusBar", true);
 
-    manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
+    manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // Simulate signed out state (no auth, no real data)
-    mockDetector.setHasApiCookie(false);
+    mockApiClient.setHasCookie(false);
     mockUsageTracker.setHasRealData(false);
 
     // Update display should show sign out state with branding
@@ -159,16 +146,14 @@ suite("Status Bar Bugs Test Suite", () => {
     assert.ok(text.includes("Augmeter"), `Expected "Augmeter" text, got: ${text}`);
   });
 
-  test("Sign out state shows icon even in compact density", async () => {
+  test("Sign out state always shows the dashboard icon", async () => {
     // Set density to compact — icon still shown in non-data states
-    await config.updateConfig("statusBarDensity", "compact");
-    await config.updateConfig("statusBarIcon", "dashboard");
     await config.updateConfig("showInStatusBar", true);
 
-    manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
+    manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // Simulate signed out state
-    mockDetector.setHasApiCookie(false);
+    mockApiClient.setHasCookie(false);
     mockUsageTracker.setHasRealData(false);
 
     await manager.updateDisplay();
@@ -182,12 +167,11 @@ suite("Status Bar Bugs Test Suite", () => {
   });
 
   test("Connected state transitions to sign out state after sign out", async () => {
-    await config.updateConfig("statusBarIcon", "dashboard");
     await config.updateConfig("showInStatusBar", true);
-    manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
+    manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // Start in connected state (authenticated but no real data)
-    mockDetector.setHasApiCookie(true);
+    mockApiClient.setHasCookie(true);
     mockUsageTracker.setHasRealData(false);
 
     await manager.updateDisplay();
@@ -200,9 +184,8 @@ suite("Status Bar Bugs Test Suite", () => {
     assert.ok(statusBarItem.text.includes("Augmeter"), "Should show Augmeter branding");
 
     // Simulate sign out process
-    mockDetector.setHasApiCookie(false);
+    mockApiClient.setHasCookie(false);
     await mockUsageTracker.resetUsage();
-    mockDetector.clearAuthCache();
 
     // Update display after sign out
     await manager.updateDisplay();
@@ -222,10 +205,10 @@ suite("Status Bar Bugs Test Suite", () => {
 
   test("Click command is set correctly for each state", async () => {
     await config.updateConfig("showInStatusBar", true);
-    manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
+    manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // The disconnected state remains useful for local assistant activity.
-    mockDetector.setHasApiCookie(false);
+    mockApiClient.setHasCookie(false);
     mockUsageTracker.setHasRealData(false);
     await manager.updateDisplay();
 
@@ -242,7 +225,7 @@ suite("Status Bar Bugs Test Suite", () => {
     );
 
     // Test connected state click command
-    mockDetector.setHasApiCookie(true);
+    mockApiClient.setHasCookie(true);
     mockUsageTracker.setHasRealData(false);
     await manager.updateDisplay();
 
@@ -261,17 +244,17 @@ suite("Status Bar Bugs Test Suite", () => {
 
   test("A slow disconnected render cannot overwrite a newer connected state", async () => {
     await config.updateConfig("showInStatusBar", true);
-    manager = new StatusBarManager(mockUsageTracker as any, config, mockDetector as any);
+    manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
     await manager.updateDisplay();
     await new Promise<void>(resolve => setImmediate(resolve));
 
-    mockDetector.setHasApiCookie(false);
+    mockApiClient.setHasCookie(false);
     mockUsageTracker.setHasRealData(false);
     const blockedRead = mockUsageTracker.blockNextProviderRead();
     const disconnectedRender = manager.updateDisplay();
     await blockedRead.started;
 
-    mockDetector.setHasApiCookie(true);
+    mockApiClient.setHasCookie(true);
     const connectedRender = manager.updateDisplay();
     await connectedRender;
 

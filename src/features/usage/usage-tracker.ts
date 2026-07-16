@@ -7,7 +7,6 @@ import { type StorageManager, type UsageSnapshot } from "../../core/storage/stor
 import { type ConfigManager } from "../../core/config/config-manager";
 import { SecureLogger } from "../../core/logging/secure-logger";
 import { UserNotificationService } from "../../core/notifications/user-notification-service";
-import { type SessionActivity } from "../../services/session-reader";
 import {
   type ProviderHealthSnapshot,
   type ProviderId,
@@ -16,7 +15,6 @@ import {
 import {
   buildAlertCycleId,
   calculateProjectedDays,
-  readTrackedSessionActivity,
   selectTriggeredThreshold,
   shouldNotifyProjectedRunOut,
 } from "./usage-tracker-helpers";
@@ -300,17 +298,6 @@ export class UsageTracker implements vscode.Disposable {
    */
   static computeProjectedDays(remaining: number, ratePerHour: number | null): number | null {
     return calculateProjectedDays(remaining, ratePerHour);
-  }
-
-  /**
-   * Get today's session activity (prompts/sessions) from local Augment session files.
-   * Returns null if session tracking is disabled or on error.
-   */
-  getSessionActivity(): SessionActivity | null {
-    return readTrackedSessionActivity(
-      this.configManager.isSessionTrackingEnabled(),
-      this.configManager.getSessionTrackingPath() || undefined
-    );
   }
 
   async updateWithRealData(realData: RealUsageData): Promise<void> {

@@ -9,7 +9,7 @@ import { UserNotificationService } from "../core/notifications/user-notification
 import { ErrorHandler } from "../core/errors/augmeter-error";
 import { type ConfigManager } from "../core/config/config-manager";
 import { type AuggieCliSource } from "../services/auggie-cli-source";
-import { type AugmentDetector } from "../services/augment-detector";
+import { type AugmentApiClient } from "../services/augment-api-client";
 import {
   buildDiagnosticsText,
   buildUsageBundle,
@@ -24,7 +24,7 @@ export class UsageCommands {
     private usageTracker: UsageTracker,
     private statusBarManager: StatusBarManager,
     private configManager: ConfigManager,
-    private augmentDetector: AugmentDetector,
+    private apiClient: AugmentApiClient,
     private auggieCliSource?: AuggieCliSource
   ) {}
 
@@ -184,7 +184,6 @@ export class UsageCommands {
     const usageRate = await this.usageTracker.getUsageRate();
     const projectedDays = await this.usageTracker.getProjectedDaysRemaining();
     const projectedDate = await this.usageTracker.getProjectedDepletionDate();
-    const sessionActivity = this.usageTracker.getSessionActivity();
 
     panel.webview.html = renderUsageDashboard({
       generatedAt: new Date(),
@@ -204,12 +203,9 @@ export class UsageCommands {
       monthlyTarget: this.usageTracker.getMonthlyTarget(),
       targetDelta: this.usageTracker.getTargetDelta(),
       targetProgressPercent: this.usageTracker.getTargetProgressPercent(),
-      sessionActivity,
       snapshots,
       providerSnapshots,
       providerHealth,
-      providerTargets: this.configManager.getProviderMonthlyTargets(),
-      providerAlertThresholds: this.configManager.getAllProviderAlertThresholds(),
     });
   }
 
@@ -303,15 +299,13 @@ export class UsageCommands {
             usageSnapshots,
             providerSnapshots,
             providerHealth,
-            providerTargets: this.configManager.getProviderMonthlyTargets(),
-            providerAlertThresholds: this.configManager.getAllProviderAlertThresholds(),
             retentionDays: this.configManager.getHistoryRetentionDays(),
             alertThresholds: this.configManager.getAlertThresholds(),
             runOutDays: this.configManager.getRunOutAlertDays(),
             cycleTarget: this.configManager.getMonthlyTarget(),
             enabledProviders: this.configManager.getEnabledProviderIds(),
             copilotApiConfig,
-            copilotTokenPresent: Boolean(process.env[copilotApiConfig.tokenEnvVar]),
+            copilotTokenPresent: Boolean(process.env.GITHUB_TOKEN),
           }),
           null,
           2
@@ -336,7 +330,6 @@ export class UsageCommands {
   private async handleRunDiagnostics(): Promise<void> {
     try {
       const extension = vscode.extensions.getExtension("kamacode.augmeter");
-      const apiClient = this.augmentDetector.getApiClient();
       const providerSnapshots = await this.usageTracker.getProviderUsageSnapshots();
       const providerHealth = await this.usageTracker.getProviderHealthSnapshots();
 
@@ -350,7 +343,7 @@ export class UsageCommands {
           nodeVersion: process.version,
           platform: process.platform,
           workspaceTrusted: vscode.workspace.isTrusted,
-          hasCookie: apiClient?.hasCookie() ?? false,
+          hasCookie: this.apiClient.hasCookie(),
           hasRealData: this.usageTracker.hasRealUsageData(),
           dataSource: this.usageTracker.getDataSource(),
           dataSourceMode: this.configManager.getDataSource(),
@@ -367,27 +360,19 @@ export class UsageCommands {
           config: {
             refreshInterval: this.configManager.getRefreshInterval(),
             clickAction: this.configManager.getClickAction(),
-            displayMode: this.configManager.getDisplayMode(),
-            density: this.configManager.getStatusBarDensity(),
             showInStatusBar: this.configManager.shouldShowInStatusBar(),
-            colorScheme: this.configManager.getColorScheme(),
-            colorThresholds: this.configManager.getColorThresholds(),
             alertThresholds: this.configManager.getAlertThresholds(),
             runOutDays: this.configManager.getRunOutAlertDays(),
             cycleTarget: this.configManager.getMonthlyTarget(),
             retentionDays: this.configManager.getHistoryRetentionDays(),
-            sessionTrackingEnabled: this.configManager.isSessionTrackingEnabled(),
-            sessionTrackingPath: this.configManager.getSessionTrackingPath() || "(default)",
             providerTrackingEnabled: this.configManager.isProviderTrackingEnabled(),
             enabledProviders: this.configManager.getEnabledProviderIds(),
-            providerTargets: this.configManager.getProviderMonthlyTargets(),
-            providerAlertThresholds: this.configManager.getAllProviderAlertThresholds(),
             claudeProjectsPath: this.configManager.getClaudeProjectsPath() || "(default)",
             codexSessionsPath: this.configManager.getCodexSessionsPath() || "(default)",
             copilotStateDbPath: this.configManager.getCopilotStateDbPath() || "(default)",
             copilotApi: {
               ...copilotApiSettings,
-              tokenPresent: Boolean(process.env[copilotApiSettings.tokenEnvVar]),
+              tokenPresent: Boolean(process.env.GITHUB_TOKEN),
             },
             logLevel: this.configManager.getLogLevel(),
           },

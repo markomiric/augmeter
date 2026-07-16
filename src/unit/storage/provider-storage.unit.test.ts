@@ -109,27 +109,4 @@ describe("StorageManager provider storage", () => {
     await storage.clearProviderHealth();
     expect(await storage.getAllProviderHealth()).toHaveLength(0);
   });
-
-  it("tracks provider alert dedupe state per cycle", async () => {
-    const storage = new StorageManager(createMockContext());
-    const providerId = "claude";
-    const cycleA = "month-2026-02";
-    const cycleB = "month-2026-03";
-
-    expect(await storage.getProviderNotifiedThresholdForCycle(providerId, cycleA)).toBe(0);
-    expect(await storage.isProviderRunOutAlertedForCycle(providerId, cycleA)).toBe(false);
-
-    await storage.setProviderNotifiedThresholdForCycle(providerId, cycleA, 85);
-    await storage.setProviderRunOutAlertedForCycle(providerId, cycleA, true);
-
-    expect(await storage.getProviderNotifiedThresholdForCycle(providerId, cycleA)).toBe(85);
-    expect(await storage.isProviderRunOutAlertedForCycle(providerId, cycleA)).toBe(true);
-
-    expect(await storage.getProviderNotifiedThresholdForCycle(providerId, cycleB)).toBe(0);
-    expect(await storage.isProviderRunOutAlertedForCycle(providerId, cycleB)).toBe(false);
-
-    await storage.resetProviderAlertState(providerId);
-    expect(await storage.getProviderNotifiedThresholdForCycle(providerId, cycleA)).toBe(0);
-    expect(await storage.isProviderRunOutAlertedForCycle(providerId, cycleA)).toBe(false);
-  });
 });

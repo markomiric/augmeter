@@ -224,51 +224,15 @@ describe("Tooltip Rate/Projection Formatting", () => {
       expect(tooltip).toContain("hours left");
     });
 
-    it("includes session activity when provided", () => {
-      const tooltip = buildMarkdownTooltip({
-        ...baseParams,
-        sessionActivity: { promptCount: 15, sessionCount: 4 },
-      });
-      expect(tooltip).toContain("**Today:** 15 prompts across 4 sessions");
-    });
-
-    it("uses singular for 1 prompt 1 session", () => {
-      const tooltip = buildMarkdownTooltip({
-        ...baseParams,
-        sessionActivity: { promptCount: 1, sessionCount: 1 },
-      });
-      expect(tooltip).toContain("1 prompt across 1 session");
-      expect(tooltip).not.toContain("prompts");
-      expect(tooltip).not.toContain("sessions");
-    });
-
-    it("omits session activity when zero prompts", () => {
-      const tooltip = buildMarkdownTooltip({
-        ...baseParams,
-        sessionActivity: { promptCount: 0, sessionCount: 0 },
-      });
-      expect(tooltip).not.toContain("Today:");
-    });
-
-    it("omits session activity when null", () => {
-      const tooltip = buildMarkdownTooltip({
-        ...baseParams,
-        sessionActivity: null,
-      });
-      expect(tooltip).not.toContain("Today:");
-    });
-
-    it("does not show rate/projection/session when not signed in", () => {
+    it("does not show rate or projection when not signed in", () => {
       const tooltip = buildMarkdownTooltip({
         ...baseParams,
         hasRealData: false,
         usageRatePerHour: 520,
         projectedDaysRemaining: 22,
-        sessionActivity: { promptCount: 10, sessionCount: 2 },
       });
       expect(tooltip).not.toContain("Pace:");
       expect(tooltip).not.toContain("At this pace:");
-      expect(tooltip).not.toContain("Today:");
     });
   });
 });

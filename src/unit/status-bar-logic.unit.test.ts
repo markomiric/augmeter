@@ -2,13 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   buildProviderUsageLines,
   computePercentage,
-  computeValueText,
-  computeDisplayText,
+  formatStatusValue,
+  formatStatusText,
   buildMarkdownTooltip,
-  computeStatusColorsEnhanced,
+  computeStatusColors,
   computeAccessibilityLabel,
   formatCompact,
-  type ColorThresholds,
 } from "../ui/status-bar-logic";
 
 describe("StatusBar Logic (unit) Test Suite", () => {
@@ -19,37 +18,15 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     expect(computePercentage(1, 3)).toBe(33);
   });
 
-  it("computeValueText respects displayMode and uses formatter", () => {
-    const fmt = (n: number) => `#${n}`; // deterministic
-    expect(computeValueText("used", 1200, 2000, 800, fmt)).toBe("#1200/#2000");
-    expect(computeValueText("remaining", 1200, 2000, 800, fmt)).toBe("#800/#2000");
-    expect(computeValueText("both", 1200, 2000, 800, fmt)).toBe("#1200/#2000 · #800 left");
-    expect(computeValueText("used", 1200, 2000, 800, fmt, true)).toBe("#1200/#2000 (60%)");
+  it("formats the fixed status value", () => {
+    const fmt = (n: number) => `#${n}`;
+    expect(formatStatusValue(1200, 2000, 800, fmt)).toBe("#1200/#2000 · #800 left");
+    expect(formatStatusValue(1200, 0, 0, fmt)).toBe("#1200");
   });
 
-  it("computeDisplayText applies density rules", () => {
-    expect(computeDisplayText("detailed", "1/2", "dashboard")).toBe("$(dashboard) 1/2");
-    expect(computeDisplayText("auto", "1/2", "dashboard")).toBe("$(dashboard) 1/2");
-    expect(computeDisplayText("compact", "1/2", "dashboard")).toBe("1/2");
-  });
-
-  it("computeDisplayText uses icons when detailed", () => {
-    expect(computeDisplayText("compact", "7/56", "graph-line")).toBe("7/56");
-    expect(computeDisplayText("detailed", "7/56", "graph-line")).toBe("$(graph-line) 7/56");
-    expect(computeDisplayText("auto", "7/56", "graph-line")).toBe("$(graph-line) 7/56");
-    expect(computeDisplayText("auto", "1,200/2,000 · 800 left", "graph-line")).toBe(
-      "1,200/2,000 · 800 left"
-    );
-  });
-
-  it("computeDisplayText identifies Augment without changing compact mode", () => {
-    expect(computeDisplayText("detailed", "45 left", "dashboard", "Augment")).toBe(
-      "$(dashboard) Augment · 45 left"
-    );
-    expect(computeDisplayText("auto", "1,200/2,000 · 800 left", "dashboard", "Augment")).toBe(
-      "Augment · 1,200/2,000 · 800 left"
-    );
-    expect(computeDisplayText("compact", "45 left", "dashboard", "Augment")).toBe("45 left");
+  it("adds the fixed icon only when the value is short", () => {
+    expect(formatStatusText("45 left")).toBe("$(dashboard) Augment · 45 left");
+    expect(formatStatusText("1,200/2,000 · 800 left")).toBe("Augment · 1,200/2,000 · 800 left");
   });
 
   it("buildMarkdownTooltip includes provider usage lines", () => {
@@ -248,138 +225,12 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     expect(result).toContain("45");
   });
 
-  describe("computeStatusColorsEnhanced", () => {
-    const standardThresholds: ColorThresholds = {
-      critical: 95,
-      highWarning: 85,
-      warning: 75,
-      caution: 50,
-    };
-
-    it("returns foreground and background for enhanced readability mode", () => {
-      const colors = computeStatusColorsEnhanced(96, true, "standard", standardThresholds, true);
-      expect(colors.foreground).toBe("statusBarItem.errorForeground");
-      expect(colors.background).toBe("statusBarItem.errorBackground");
-    });
-
-    it("returns only foreground for standard mode", () => {
-      const colors = computeStatusColorsEnhanced(96, true, "standard", standardThresholds, false);
-      expect(colors.foreground).toBe("statusBarItem.errorForeground");
-      expect(colors.background).toBeUndefined();
-    });
-
-    it("handles warning level with enhanced readability", () => {
-      const colors = computeStatusColorsEnhanced(80, true, "standard", standardThresholds, true);
-      expect(colors.foreground).toBe("statusBarItem.warningForeground");
-      expect(colors.background).toBe("statusBarItem.warningBackground");
-    });
-
-    it("handles caution level with enhanced readability", () => {
-      const colors = computeStatusColorsEnhanced(60, true, "standard", standardThresholds, true);
-      expect(colors.foreground).toBe("statusBarItem.prominentForeground");
-      expect(colors.background).toBe("statusBarItem.prominentBackground");
-    });
-
-    it("handles normal usage with enhanced readability", () => {
-      const colors = computeStatusColorsEnhanced(30, true, "standard", standardThresholds, true);
-      expect(colors.foreground).toBe("statusBarItem.prominentForeground");
-      expect(colors.background).toBeUndefined();
-    });
-
-    it("returns empty object when no real data", () => {
-      const colors = computeStatusColorsEnhanced(30, false, "standard", standardThresholds, true);
-      expect(colors).toEqual({});
-    });
-
-    it("maps standard-scheme thresholds in foreground-only mode", () => {
-      const fg = (percentage: number, hasRealData: boolean) =>
-        computeStatusColorsEnhanced(percentage, hasRealData, "standard", standardThresholds)
-          .foreground;
-
-      expect(fg(96, true)).toBe("statusBarItem.errorForeground");
-      expect(fg(90, true)).toBe("statusBarItem.errorForeground");
-      expect(fg(80, true)).toBe("statusBarItem.warningForeground");
-      expect(fg(60, true)).toBe("statusBarItem.prominentForeground");
-      expect(fg(40, true)).toBe("statusBarItem.prominentForeground");
-
-      // No real data => default theme color below warning
-      expect(fg(40, false)).toBeUndefined();
-      expect(fg(60, false)).toBeUndefined();
-
-      // Critical and warning levels show even without real data
-      expect(fg(96, false)).toBe("statusBarItem.errorForeground");
-      expect(fg(80, false)).toBe("statusBarItem.warningForeground");
-    });
-
-    it("applies conservative scheme threshold adjustments", () => {
-      const fg = (percentage: number) =>
-        computeStatusColorsEnhanced(percentage, true, "conservative", standardThresholds)
-          .foreground;
-
-      // critical 95+3=98, highWarning 85+5=90, warning 75+5=80
-      expect(fg(99)).toBe("statusBarItem.errorForeground");
-      expect(fg(96)).toBe("statusBarItem.errorForeground");
-      expect(fg(90)).toBe("statusBarItem.errorForeground");
-      expect(fg(80)).toBe("statusBarItem.warningForeground");
-      expect(fg(79)).toBe("statusBarItem.prominentForeground");
-    });
-
-    it("applies aggressive scheme threshold adjustments", () => {
-      const fg = (percentage: number) =>
-        computeStatusColorsEnhanced(percentage, true, "aggressive", standardThresholds).foreground;
-
-      // critical 95-3=92, highWarning 85-5=80, warning 75-5=70
-      expect(fg(92)).toBe("statusBarItem.errorForeground");
-      expect(fg(80)).toBe("statusBarItem.errorForeground");
-      expect(fg(70)).toBe("statusBarItem.warningForeground");
-      expect(fg(40)).toBe("statusBarItem.prominentForeground");
-    });
-
-    it("honors custom thresholds", () => {
-      const customThresholds: ColorThresholds = {
-        critical: 90,
-        highWarning: 80,
-        warning: 70,
-        caution: 40,
-      };
-      const fg = (percentage: number) =>
-        computeStatusColorsEnhanced(percentage, true, "standard", customThresholds).foreground;
-
-      expect(fg(91)).toBe("statusBarItem.errorForeground");
-      expect(fg(85)).toBe("statusBarItem.errorForeground");
-      expect(fg(75)).toBe("statusBarItem.warningForeground");
-      expect(fg(45)).toBe("statusBarItem.prominentForeground");
-      expect(fg(35)).toBe("statusBarItem.prominentForeground");
-    });
-
-    it("uses distinct colors in high contrast mode", () => {
-      const fg = (percentage: number, hasRealData: boolean) =>
-        computeStatusColorsEnhanced(
-          percentage,
-          hasRealData,
-          "standard",
-          standardThresholds,
-          false,
-          true
-        ).foreground;
-
-      expect(fg(96, true)).toBe("statusBarItem.errorForeground");
-      expect(fg(80, true)).toBe("statusBarItem.warningForeground");
-      expect(fg(30, true)).toBe("statusBarItem.prominentForeground");
-      expect(fg(30, false)).toBeUndefined();
-    });
-
-    it("pairs high contrast foregrounds with backgrounds in enhanced readability mode", () => {
-      const colors = computeStatusColorsEnhanced(
-        96,
-        true,
-        "standard",
-        standardThresholds,
-        true,
-        true
-      );
-      expect(colors.foreground).toBe("statusBarItem.errorForeground");
-      expect(colors.background).toBe("statusBarItem.errorBackground");
+  describe("computeStatusColors", () => {
+    it("uses fixed native theme thresholds", () => {
+      expect(computeStatusColors(96, true).foreground).toBe("statusBarItem.errorForeground");
+      expect(computeStatusColors(80, true).foreground).toBe("statusBarItem.warningForeground");
+      expect(computeStatusColors(60, true).foreground).toBe("statusBarItem.prominentForeground");
+      expect(computeStatusColors(60, false).foreground).toBeUndefined();
     });
   });
 

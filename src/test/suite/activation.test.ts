@@ -114,7 +114,7 @@ suite("Extension Activation Test Suite", () => {
     assert.ok(configProps["augmeter.enabled"], "Should have enabled configuration");
     assert.ok(configProps["augmeter.refreshInterval"], "Should have refreshInterval configuration");
     assert.ok(configProps["augmeter.clickAction"], "Should have clickAction configuration");
-    assert.ok(configProps["augmeter.displayMode"], "Should have displayMode configuration");
+    assert.ok(configProps["augmeter.showInStatusBar"], "Should have status bar configuration");
     assert.ok(configProps["augmeter.apiBaseUrl"], "Should have apiBaseUrl configuration");
     assert.ok(
       configProps["augmeter.providers.enabled"],

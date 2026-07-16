@@ -178,72 +178,21 @@ suite("StatusBar tooltip Test Suite", () => {
   });
 });
 
-suite("StatusBar RemainingOnly Mode", () => {
-  let config: ConfigManager;
-  let manager: StatusBarManager;
+suite("StatusBar fixed presentation", () => {
+  test("shows the default Augment credit summary", async () => {
+    const config = new ConfigManager();
+    await config.updateConfig("enabled", true);
+    await config.updateConfig("showInStatusBar", true);
+    const manager = new StatusBarManager(new FakeUsageTracker() as any, config);
 
-  teardown(async () => {
     try {
-      manager?.dispose();
-    } catch {}
-    if (config) {
-      await config.updateConfig("displayMode", "both");
-      await config.updateConfig("statusBarDensity", "auto");
-      await config.updateConfig("statusBarIcon", "dashboard");
-      await config.updateConfig("showPercentInStatusBar", false);
+      await manager.updateDisplay();
+      const item = (manager as any).statusBarItem;
+      assert.strictEqual(item.text, "Augment · 50/100 · 50 left");
+      const tooltip = typeof item.tooltip === "string" ? item.tooltip : (item.tooltip?.value ?? "");
+      assert.ok(tooltip.includes("**Remaining:** 50"));
+    } finally {
+      manager.dispose();
     }
-  });
-
-  test("compact density shows only remaining number", async () => {
-    config = new ConfigManager();
-    await config.updateConfig("enabled", true);
-    await config.updateConfig("showInStatusBar", true);
-    await config.updateConfig("displayMode", "remainingOnly");
-    await config.updateConfig("statusBarDensity", "compact");
-
-    manager = new StatusBarManager(new FakeUsageTracker() as any, config);
-    await manager.updateDisplay();
-
-    const text = (manager as any).statusBarItem.text as string;
-    // used=50, limit=100 -> remaining=50
-    assert.strictEqual(text, "50", `Expected remaining-only value '50', got: ${text}`);
-  });
-
-  test("detailed density shows icon and remaining number", async () => {
-    config = new ConfigManager();
-    await config.updateConfig("enabled", true);
-    await config.updateConfig("showInStatusBar", true);
-    await config.updateConfig("displayMode", "remainingOnly");
-    await config.updateConfig("statusBarDensity", "detailed");
-    await config.updateConfig("statusBarIcon", "dashboard");
-
-    manager = new StatusBarManager(new FakeUsageTracker() as any, config);
-    await manager.updateDisplay();
-
-    const text = (manager as any).statusBarItem.text as string;
-    assert.ok(text.startsWith("$("), `Expected icon prefix in detailed mode, got: ${text}`);
-    assert.ok(text.endsWith(" 50"), `Expected remaining-only value '50' after icon, got: ${text}`);
-
-    const rawTooltip = (manager as any).statusBarItem.tooltip;
-    const tooltip = typeof rawTooltip === "string" ? rawTooltip : (rawTooltip?.value ?? "");
-    assert.ok(
-      tooltip.includes("**Remaining:** 50"),
-      `Tooltip should clearly state remaining credits, got: ${tooltip}`
-    );
-  });
-
-  test("show percent adds context to non-percentage modes", async () => {
-    config = new ConfigManager();
-    await config.updateConfig("enabled", true);
-    await config.updateConfig("showInStatusBar", true);
-    await config.updateConfig("displayMode", "used");
-    await config.updateConfig("statusBarDensity", "compact");
-    await config.updateConfig("showPercentInStatusBar", true);
-
-    manager = new StatusBarManager(new FakeUsageTracker() as any, config);
-    await manager.updateDisplay();
-
-    const text = (manager as any).statusBarItem.text as string;
-    assert.strictEqual(text, "50/100 (50%)");
   });
 });

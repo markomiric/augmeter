@@ -6,7 +6,7 @@ import { type StorageManager } from "../core/storage/storage-manager";
 import { type UsageTracker } from "../features/usage/usage-tracker";
 import { type ProviderUsageService } from "../providers/provider-usage-service";
 import { type AuggieCliSource } from "../services/auggie-cli-source";
-import { type AugmentDetector } from "../services/augment-detector";
+import { type AugmentApiClient } from "../services/augment-api-client";
 import { type StatusBarManager } from "../ui/status-bar";
 
 export class RuntimeCoordinator implements vscode.Disposable {
@@ -18,7 +18,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly storageManager: StorageManager,
     private readonly configManager: ConfigManager,
-    private readonly augmentDetector: AugmentDetector,
+    private readonly apiClient: AugmentApiClient,
     private readonly usageTracker: UsageTracker,
     private readonly statusBarManager: StatusBarManager,
     private readonly providerUsageService: ProviderUsageService,
@@ -36,10 +36,9 @@ export class RuntimeCoordinator implements vscode.Disposable {
 
   private async initializeAuthState(): Promise<void> {
     try {
-      const apiClient = this.augmentDetector.getApiClient();
-      await apiClient.initializeFromSecrets();
+      await this.apiClient.initializeFromSecrets();
 
-      const isSignedIn = apiClient.hasCookie();
+      const isSignedIn = this.apiClient.hasCookie();
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", isSignedIn);
 
       if (!isSignedIn) {
@@ -147,9 +146,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
           return;
         }
 
-        const apiClient = this.augmentDetector.getApiClient();
-
-        if (!apiClient.hasCookie()) {
+        if (!this.apiClient.hasCookie()) {
           this.usageTracker.clearRealDataFlag();
           await this.storageManager.setProviderHealth({
             providerId: "augment",
@@ -166,7 +163,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
         }
 
         SecureLogger.info(`Fetching Augment credit data (source=${source})`);
-        const response = await apiClient.getUsageData();
+        const response = await this.apiClient.getUsageData();
         if (response.success) {
           const responseData =
             typeof response.data === "object" && response.data !== null ? response.data : null;
@@ -174,7 +171,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
             hasData: responseData !== null,
             dataKeys: responseData ? Object.keys(responseData) : [],
           });
-          const parsed = await apiClient.parseUsageResponse(response);
+          const parsed = await this.apiClient.parseUsageResponse(response);
           if (parsed) {
             SecureLogger.info(`Parsed usage data (source=${source})`, {
               totalUsage: parsed.totalUsage,
@@ -333,9 +330,8 @@ export class RuntimeCoordinator implements vscode.Disposable {
       }
 
       try {
-        const apiClient = this.augmentDetector.getApiClient();
-        await apiClient.refreshSessionFromSecrets();
-        const hasCookie = apiClient.hasCookie();
+        await this.apiClient.refreshSessionFromSecrets();
+        const hasCookie = this.apiClient.hasCookie();
         const isSignedIn = hasCookie || this.auggieCliSource.isAuthenticatedCached();
         void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", isSignedIn);
         this.usageTracker.triggerRefreshSoon(0, "auth-change");

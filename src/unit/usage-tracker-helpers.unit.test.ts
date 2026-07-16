@@ -1,11 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import { describe, expect, it } from "vitest";
 import {
   buildAlertCycleId,
   calculateProjectedDays,
-  readTrackedSessionActivity,
   selectTriggeredThreshold,
   shouldNotifyProjectedRunOut,
 } from "../features/usage/usage-tracker-helpers";
@@ -57,32 +53,5 @@ describe("usage-tracker-helpers", () => {
     it("returns false when the alert was already shown", () => {
       expect(shouldNotifyProjectedRunOut(2.4, 3, true)).toBe(false);
     });
-  });
-});
-
-describe("readTrackedSessionActivity", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "augmeter-usage-helper-"));
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("returns null when session tracking is disabled", () => {
-    expect(readTrackedSessionActivity(false, tmpDir)).toBe(null);
-  });
-
-  it("reads session activity from the configured path", () => {
-    const today = new Date().toISOString().split("T")[0]!;
-    fs.writeFileSync(
-      path.join(tmpDir, "session.json"),
-      JSON.stringify([{ finishedAt: `${today}T10:00:00.000Z` }]),
-      "utf-8"
-    );
-
-    expect(readTrackedSessionActivity(true, tmpDir)).toEqual({ promptCount: 1, sessionCount: 1 });
   });
 });

@@ -22,9 +22,6 @@ export type CopilotApiFetcher = (
 export interface CopilotApiSettings {
   enabled: boolean;
   username: string;
-  tokenEnvVar: string;
-  baseUrl: string;
-  timeoutMs: number;
 }
 
 async function defaultQueryExecutor(databasePath: string, sql: string): Promise<string> {
@@ -48,9 +45,6 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     private readonly resolveApiSettings: () => CopilotApiSettings = () => ({
       enabled: false,
       username: "",
-      tokenEnvVar: "GITHUB_TOKEN",
-      baseUrl: DEFAULT_GITHUB_API_BASE_URL,
-      timeoutMs: 6000,
     }),
     private readonly fetcher: CopilotApiFetcher = (...args) => fetch(...args)
   ) {}
@@ -207,14 +201,7 @@ export class CopilotProviderAdapter implements ProviderAdapter {
       };
     }
 
-    const tokenEnvVar = settings.tokenEnvVar.trim();
-    if (!tokenEnvVar) {
-      return {
-        result: null,
-        errorMessage: "GitHub Copilot API tracking needs a token environment variable name.",
-      };
-    }
-
+    const tokenEnvVar = "GITHUB_TOKEN";
     const token = process.env[tokenEnvVar];
     if (!token || token.trim().length === 0) {
       return {
@@ -223,13 +210,11 @@ export class CopilotProviderAdapter implements ProviderAdapter {
       };
     }
 
-    const timeoutMs = Math.max(1000, Math.min(30000, settings.timeoutMs || 6000));
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), 6000);
 
     try {
-      const baseUrl = this.normalizeApiBaseUrl(settings.baseUrl);
-      const endpoint = `${baseUrl}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage`;
+      const endpoint = `${DEFAULT_GITHUB_API_BASE_URL}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage`;
       const response = await this.fetcher(endpoint, {
         method: "GET",
         signal: controller.signal,
@@ -349,21 +334,6 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     }
 
     return path.join(os.homedir(), ".config", "Code", "User", "globalStorage", "state.vscdb");
-  }
-
-  private normalizeApiBaseUrl(baseUrl: string): string {
-    const fallback = DEFAULT_GITHUB_API_BASE_URL;
-    const value = baseUrl.trim();
-    if (!value) {
-      return fallback;
-    }
-    try {
-      const parsed = new URL(value);
-      const pathname = parsed.pathname.replace(/\/+$/, "");
-      return pathname && pathname !== "/" ? `${parsed.origin}${pathname}` : parsed.origin;
-    } catch {
-      return fallback;
-    }
   }
 
   private resolveApiWindowType(

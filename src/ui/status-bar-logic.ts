@@ -6,8 +6,6 @@ import {
   providerMetricNoun,
 } from "../core/copy/provider-copy";
 
-export type DisplayMode = "used" | "remaining" | "remainingOnly" | "both" | "percentage";
-export type Density = "auto" | "compact" | "detailed";
 export type ClickAction = "refresh" | "openWebsite" | "openSettings";
 
 export function formatCompact(n: number): string {
@@ -20,62 +18,21 @@ export function computePercentage(used: number, limit: number): number {
   return Math.round((used / limit) * 100);
 }
 
-export function computeValueText(
-  displayMode: DisplayMode,
+export function formatStatusValue(
   used: number,
   limit: number,
   remaining: number,
-  fmt: (n: number) => string = formatCompact,
-  showPercent: boolean = false
+  fmt: (n: number) => string = formatCompact
 ): string {
   const u = fmt(used);
   const l = fmt(limit);
   const r = fmt(remaining);
-
-  // Gracefully handle unknown/zero limit: show used-only value in the bar
-  if (limit <= 0) {
-    return displayMode === "percentage" ? u : u;
-  }
-
-  let valueText: string;
-  switch (displayMode) {
-    case "used":
-      valueText = `${u}/${l}`;
-      break;
-    case "remaining":
-      valueText = `${r}/${l}`;
-      break;
-    case "remainingOnly":
-      valueText = r;
-      break;
-    case "percentage":
-      return `${computePercentage(used, limit)}%`;
-    case "both":
-      valueText = `${u}/${l} · ${r} left`;
-      break;
-    default:
-      valueText = `${u}/${l}`;
-      break;
-  }
-
-  return showPercent ? `${valueText} (${computePercentage(used, limit)}%)` : valueText;
+  return limit > 0 ? `${u}/${l} · ${r} left` : u;
 }
 
-export function computeDisplayText(
-  density: Density,
-  valueText: string,
-  iconName: string = "dashboard",
-  label: string = ""
-): string {
-  if (density === "compact") {
-    return valueText;
-  }
+export function formatStatusText(valueText: string, label: string = "Augment"): string {
   const labeledValue = label ? `${label} · ${valueText}` : valueText;
-  const shouldShowIcon = density === "detailed" || (density === "auto" && valueText.length <= 12);
-  if (shouldShowIcon) {
-    return `$(${iconName}) ${labeledValue}`;
-  }
-  return labeledValue;
+  return valueText.length <= 12 ? `$(dashboard) ${labeledValue}` : labeledValue;
 }
 
 function buildUsageBar(percentage: number, width: number = 10): string {
@@ -237,7 +194,6 @@ export function buildMarkdownTooltip(params: {
   renewalDate?: string | undefined;
   usageRatePerHour?: number | null | undefined;
   projectedDaysRemaining?: number | null | undefined;
-  sessionActivity?: { promptCount: number; sessionCount: number } | null | undefined;
   monthlyTarget?: number | null | undefined;
   targetDelta?: number | null | undefined;
   targetProgressPercent?: number | null | undefined;
@@ -258,7 +214,6 @@ export function buildMarkdownTooltip(params: {
     renewalDate,
     usageRatePerHour,
     projectedDaysRemaining,
-    sessionActivity,
     monthlyTarget,
     targetDelta,
     targetProgressPercent,
@@ -332,13 +287,6 @@ export function buildMarkdownTooltip(params: {
     }
   }
 
-  // Augment session activity is experimental and requires connected credit data.
-  if (hasRealData && sessionActivity && sessionActivity.promptCount > 0) {
-    lines.push(
-      `**Today:** ${sessionActivity.promptCount} prompt${sessionActivity.promptCount !== 1 ? "s" : ""} across ${sessionActivity.sessionCount} session${sessionActivity.sessionCount !== 1 ? "s" : ""}`
-    );
-  }
-
   // Renewal date
   if (hasRealData && renewalDate) {
     try {
@@ -371,193 +319,18 @@ export function buildMarkdownTooltip(params: {
   return lines.join("\n\n");
 }
 
-// Color scheme configuration type
-export type ColorScheme = "standard" | "conservative" | "aggressive";
-
-export interface ColorThresholds {
-  critical: number;
-  highWarning: number;
-  warning: number;
-  caution: number;
-}
-
 export interface StatusBarColors {
   foreground?: string;
-  background?: string;
 }
 
-// Comprehensive color computation that returns both foreground and background colors
-export function computeStatusColorsEnhanced(
-  percentage: number,
-  hasRealData: boolean,
-  colorScheme: ColorScheme,
-  thresholds: ColorThresholds,
-  enhancedReadability: boolean = false,
-  highContrastMode: boolean = false
-): StatusBarColors {
-  // Apply color scheme adjustments to thresholds
-  const adjustedThresholds = applyColorSchemeAdjustments(thresholds, colorScheme);
-
-  // In high contrast mode, use more distinct colors
-  if (highContrastMode) {
-    return computeHighContrastColors(
-      percentage,
-      hasRealData,
-      adjustedThresholds,
-      enhancedReadability
-    );
-  }
-
-  // Enhanced readability mode uses background colors for better visibility
-  if (enhancedReadability) {
-    return computeEnhancedReadabilityColors(percentage, hasRealData, adjustedThresholds);
-  }
-
-  // Standard color computation
-  return computeStandardColors(percentage, hasRealData, adjustedThresholds);
-}
-
-// Standard color computation (foreground only)
-function computeStandardColors(
-  percentage: number,
-  hasRealData: boolean,
-  thresholds: ColorThresholds
-): StatusBarColors {
-  // Critical usage - always show error regardless of data source
-  if (percentage >= thresholds.critical) {
+export function computeStatusColors(percentage: number, hasRealData: boolean): StatusBarColors {
+  if (percentage >= 95) {
     return { foreground: "statusBarItem.errorForeground" };
   }
-
-  // High warning - use distinct color that's readable
-  if (percentage >= thresholds.highWarning) {
-    return { foreground: "statusBarItem.errorForeground" };
-  }
-
-  // Warning - traditional warning color
-  if (percentage >= thresholds.warning) {
+  if (percentage >= 75) {
     return { foreground: "statusBarItem.warningForeground" };
   }
-
-  // Below warning threshold:
-  // - If we have Augment credit data, keep the item visually present.
-  // - If not, keep default theme color (undefined) to minimize noise
-  if (hasRealData) {
-    return { foreground: "statusBarItem.prominentForeground" };
-  }
-  return {};
-}
-
-// Enhanced readability colors (with background highlighting)
-function computeEnhancedReadabilityColors(
-  percentage: number,
-  hasRealData: boolean,
-  thresholds: ColorThresholds
-): StatusBarColors {
-  // Critical usage - high contrast red with background
-  if (percentage >= thresholds.critical) {
-    return {
-      foreground: "statusBarItem.errorForeground",
-      background: "statusBarItem.errorBackground",
-    };
-  }
-
-  // High warning - error colors for visibility
-  if (percentage >= thresholds.highWarning) {
-    return {
-      foreground: "statusBarItem.errorForeground",
-      background: "statusBarItem.errorBackground",
-    };
-  }
-
-  // Warning - warning colors with background
-  if (percentage >= thresholds.warning) {
-    return {
-      foreground: "statusBarItem.warningForeground",
-      background: "statusBarItem.warningBackground",
-    };
-  }
-
-  // Caution - prominent colors for visibility
-  if (percentage >= thresholds.caution && hasRealData) {
-    return {
-      foreground: "statusBarItem.prominentForeground",
-      background: "statusBarItem.prominentBackground",
-    };
-  }
-
-  // Normal usage - prominent colors
-  if (hasRealData) {
-    return { foreground: "statusBarItem.prominentForeground" };
-  }
-
-  // No Augment credit data.
-  return {};
-}
-
-// High contrast color computation for accessibility
-function computeHighContrastColors(
-  percentage: number,
-  hasRealData: boolean,
-  thresholds: ColorThresholds,
-  useBackground: boolean = false
-): StatusBarColors {
-  // In high contrast mode, use only the most distinct colors
-  if (percentage >= thresholds.critical) {
-    return useBackground
-      ? { foreground: "statusBarItem.errorForeground", background: "statusBarItem.errorBackground" }
-      : { foreground: "statusBarItem.errorForeground" };
-  }
-
-  if (percentage >= thresholds.warning) {
-    return useBackground
-      ? {
-          foreground: "statusBarItem.warningForeground",
-          background: "statusBarItem.warningBackground",
-        }
-      : { foreground: "statusBarItem.warningForeground" };
-  }
-
-  if (hasRealData) {
-    return useBackground
-      ? {
-          foreground: "statusBarItem.prominentForeground",
-          background: "statusBarItem.prominentBackground",
-        }
-      : { foreground: "statusBarItem.prominentForeground" };
-  }
-
-  return {};
-}
-
-// Apply color scheme adjustments to thresholds
-function applyColorSchemeAdjustments(
-  thresholds: ColorThresholds,
-  colorScheme: ColorScheme
-): ColorThresholds {
-  switch (colorScheme) {
-    case "conservative":
-      // Conservative: higher thresholds, less sensitive
-      return {
-        critical: Math.min(100, thresholds.critical + 3),
-        highWarning: Math.min(thresholds.critical - 1, thresholds.highWarning + 5),
-        warning: Math.min(thresholds.highWarning - 1, thresholds.warning + 5),
-        caution: Math.min(thresholds.warning - 1, thresholds.caution + 10),
-      };
-
-    case "aggressive":
-      // Aggressive: lower thresholds, more sensitive
-      return {
-        critical: Math.max(80, thresholds.critical - 3),
-        highWarning: Math.max(70, thresholds.highWarning - 5),
-        warning: Math.max(50, thresholds.warning - 5),
-        caution: Math.max(25, thresholds.caution - 10),
-      };
-
-    case "standard":
-    default:
-      // Standard: use thresholds as-is
-      return thresholds;
-  }
+  return hasRealData ? { foreground: "statusBarItem.prominentForeground" } : {};
 }
 
 export function computeAccessibilityLabel(

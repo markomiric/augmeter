@@ -5,18 +5,17 @@
 import * as vscode from "vscode";
 import { type UsageTracker } from "../features/usage/usage-tracker";
 import { type ConfigManager } from "../core/config/config-manager";
-import { type AugmentDetector } from "../services/augment-detector";
+import { type AugmentApiClient } from "../services/augment-api-client";
 import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { SecureLogger } from "../core/logging/secure-logger";
 import {
   buildProviderUsageLines,
   formatCompact as sbFormatCompact,
-  computeValueText,
-  computeDisplayText,
+  formatStatusValue,
+  formatStatusText,
   buildMarkdownTooltip,
-  computeStatusColorsEnhanced,
+  computeStatusColors,
   computeAccessibilityLabel,
-  type DisplayMode,
   type ClickAction,
 } from "./status-bar-logic";
 
@@ -27,12 +26,12 @@ import {
  * - Status bar text and color updates based on usage and authentication state
  * - User interactions (clicks) with configurable actions
  * - Periodic refresh of usage data
- * - Theme-aware color schemes (standard, conservative, aggressive, custom)
+ * - Native VS Code theme colors for warning states
  * - Accessibility support with ARIA labels
  *
  * @example
  * ```typescript
- * const statusBar = new StatusBarManager(usageTracker, configManager, augmentDetector);
+ * const statusBar = new StatusBarManager(usageTracker, configManager, apiClient);
  * await statusBar.updateDisplay();
  * statusBar.show();
  * ```
@@ -41,7 +40,7 @@ export class StatusBarManager implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private usageTracker: UsageTracker;
   private configManager: ConfigManager;
-  private augmentDetector: AugmentDetector | null = null;
+  private apiClient: AugmentApiClient | null = null;
   private auggieCliSource: AuggieCliSource | null = null;
   private trackerSubscription?: vscode.Disposable;
   private displayRevision = 0;
@@ -49,12 +48,12 @@ export class StatusBarManager implements vscode.Disposable {
   constructor(
     usageTracker: UsageTracker,
     configManager: ConfigManager,
-    augmentDetector?: AugmentDetector,
+    apiClient?: AugmentApiClient,
     auggieCliSource?: AuggieCliSource
   ) {
     this.usageTracker = usageTracker;
     this.configManager = configManager;
-    this.augmentDetector = augmentDetector || null;
+    this.apiClient = apiClient || null;
     this.auggieCliSource = auggieCliSource || null;
 
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -99,22 +98,13 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   private setDisplayTextAndA11y(
-    displayMode: DisplayMode,
     used: number,
     limit: number,
     remaining: number,
     percentage: number
   ): void {
-    const { density, iconName, showPercent } = this.configManager.getStatusBarConfig();
-    const valueText = computeValueText(
-      displayMode,
-      used,
-      limit,
-      remaining,
-      sbFormatCompact,
-      showPercent
-    );
-    this.statusBarItem.text = computeDisplayText(density, valueText, iconName, "Augment");
+    const valueText = formatStatusValue(used, limit, remaining, sbFormatCompact);
+    this.statusBarItem.text = formatStatusText(valueText);
     this.statusBarItem.accessibilityInformation = {
       label: computeAccessibilityLabel(used, limit, remaining, percentage),
       role: "status",
@@ -136,7 +126,6 @@ export class StatusBarManager implements vscode.Disposable {
     let usageRatePerHour: number | null = null;
     let projectedDaysRemaining: number | null = null;
     let projectedDepletionDate: Date | null = null;
-    let sessionActivity: { promptCount: number; sessionCount: number } | null = null;
     let targetDelta: number | null = null;
     let targetProgressPercent: number | null = null;
     let monthlyTarget: number | null = null;
@@ -148,11 +137,6 @@ export class StatusBarManager implements vscode.Disposable {
         projectedDepletionDate = await this.usageTracker.getProjectedDepletionDate();
       } catch {
         // Silently degrade because rate data is optional.
-      }
-      try {
-        sessionActivity = this.usageTracker.getSessionActivity();
-      } catch {
-        // Silently degrade because session tracking is optional and experimental.
       }
       try {
         monthlyTarget = this.usageTracker.getMonthlyTarget();
@@ -178,7 +162,6 @@ export class StatusBarManager implements vscode.Disposable {
       renewalDate: this.usageTracker.getRenewalDate(),
       usageRatePerHour,
       projectedDaysRemaining,
-      sessionActivity,
       monthlyTarget,
       targetDelta,
       targetProgressPercent,
@@ -207,21 +190,11 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   private applyColors(percentage: number, hasRealData: boolean): void {
-    const statusBarConfig = this.configManager.getStatusBarConfig();
-    const colors = computeStatusColorsEnhanced(
-      percentage,
-      hasRealData,
-      statusBarConfig.colorScheme,
-      statusBarConfig.colorThresholds,
-      statusBarConfig.enhancedReadability,
-      statusBarConfig.autoDetectHighContrast ? this.isHighContrastTheme() : false
-    );
+    const colors = computeStatusColors(percentage, hasRealData);
     this.statusBarItem.color = colors.foreground
       ? new vscode.ThemeColor(colors.foreground)
       : undefined;
-    this.statusBarItem.backgroundColor = colors.background
-      ? new vscode.ThemeColor(colors.background)
-      : undefined;
+    this.statusBarItem.backgroundColor = undefined;
   }
 
   private createTooltipMarkdown(lines: string[]): vscode.MarkdownString {
@@ -272,22 +245,13 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    // Display according to configuration (compact, readable status bar text)
-    const displayMode = this.configManager.getDisplayMode() as DisplayMode;
-
     const used = usage;
     const remaining = this.usageTracker.getRemainingCredits();
 
     if (usageKnown) {
-      this.setDisplayTextAndA11y(displayMode, used, limit, remaining, percentage);
+      this.setDisplayTextAndA11y(used, limit, remaining, percentage);
     } else {
-      const { density, iconName } = this.configManager.getStatusBarConfig();
-      this.statusBarItem.text = computeDisplayText(
-        density,
-        `${sbFormatCompact(remaining)} left`,
-        iconName,
-        "Augment"
-      );
+      this.statusBarItem.text = formatStatusText(`${sbFormatCompact(remaining)} left`);
       this.statusBarItem.accessibilityInformation = {
         label: `Augment credits: ${remaining.toLocaleString()} remaining; cycle usage unavailable`,
         role: "status",
@@ -336,28 +300,14 @@ export class StatusBarManager implements vscode.Disposable {
     this.statusBarItem.hide();
   }
 
-  private isHighContrastTheme(): boolean {
-    try {
-      // Check if VS Code is in high contrast mode
-      const colorTheme = vscode.window.activeColorTheme;
-      return (
-        colorTheme.kind === vscode.ColorThemeKind.HighContrast ||
-        colorTheme.kind === vscode.ColorThemeKind.HighContrastLight
-      );
-    } catch {
-      // If we can't detect high contrast mode, default to false
-      return false;
-    }
-  }
-
   private async checkAuthenticationStatus(): Promise<boolean> {
     // Signed in when the Auggie CLI source is active or a session cookie exists
     try {
       if (this.auggieCliSource?.isAuthenticatedCached()) {
         return true;
       }
-      if (this.augmentDetector) {
-        return this.augmentDetector.hasApiCookie();
+      if (this.apiClient) {
+        return this.apiClient.hasCookie();
       }
       // Fallback: assume authentication is available if we have usage data
       return this.usageTracker.hasRealUsageData();
@@ -405,12 +355,11 @@ export class StatusBarManager implements vscode.Disposable {
     }
 
     // Always show icon + "Augmeter" in non-data states for clear branding
-    const config = this.configManager.getStatusBarConfig();
     const providerUsageLines = await this.getProviderUsageLines();
     if (revision !== this.displayRevision) {
       return;
     }
-    this.statusBarItem.text = `$(${config.iconName}) Augmeter`;
+    this.statusBarItem.text = "$(dashboard) Augmeter";
     const tooltip = buildMarkdownTooltip({
       used: 0,
       limit: 0,

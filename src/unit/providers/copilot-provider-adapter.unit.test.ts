@@ -136,9 +136,6 @@ describe("CopilotProviderAdapter", () => {
       () => ({
         enabled: true,
         username: "octocat",
-        tokenEnvVar: "GITHUB_TOKEN",
-        baseUrl: "https://api.github.com",
-        timeoutMs: 6000,
       }),
       fetchMock
     );
@@ -156,51 +153,5 @@ describe("CopilotProviderAdapter", () => {
     expect(result.snapshots[0]?.used).toBe(42);
     expect(result.snapshots[0]?.remaining).toBe(58);
     expect(result.snapshots[0]?.windowType).toBe("monthly");
-  });
-
-  it("preserves API path prefixes for GitHub Enterprise base URLs", async () => {
-    process.env.GITHUB_TOKEN = "ghp_example_token";
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "augmeter-copilot-ghe-"));
-    tempDirs.push(root);
-    const dbPath = path.join(root, "state.vscdb");
-    fs.writeFileSync(dbPath, "", "utf8");
-
-    const fetchMock = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({
-          total_usage: 5,
-          total_available: 15,
-          start_date: "2026-02-01",
-          end_date: "2026-03-01",
-        }),
-        { status: 200 }
-      );
-    });
-
-    const adapter = new CopilotProviderAdapter(
-      () => dbPath,
-      async () => {
-        throw new Error("should not use sqlite fallback when API succeeds");
-      },
-      () => ({
-        enabled: true,
-        username: "octocat",
-        tokenEnvVar: "GITHUB_TOKEN",
-        baseUrl: "https://ghe.example.com/api/v3/",
-        timeoutMs: 6000,
-      }),
-      fetchMock
-    );
-
-    await adapter.collectUsage({
-      now: new Date("2026-02-16T12:00:00.000Z"),
-      workspaceTrusted: true,
-      forceRefresh: true,
-    });
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      "https://ghe.example.com/api/v3/users/octocat/settings/billing/premium_request/usage"
-    );
   });
 });

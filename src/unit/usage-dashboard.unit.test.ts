@@ -31,9 +31,6 @@ describe("Usage dashboard renderer", () => {
           message: "Scanned 74 Codex session file(s) for local prompt counts.",
         },
       ],
-      providerTargets: {
-        codex: 250,
-      },
     });
 
     expect(html).toContain("Assistant usage");
@@ -44,7 +41,7 @@ describe("Usage dashboard renderer", () => {
     expect(html).toContain("Local user turns");
     expect(html).toContain("Codex");
     expect(html).toContain("Last 7 days: 291 turns");
-    expect(html).toContain("At this pace: 499% of your monthly turn target");
+    expect(html).not.toContain("monthly turn target");
     expect(html).toContain("How these counts are calculated");
     expect(html).toContain(
       "Tool results, metadata, and Claude Code/Codex agent/subagent sessions are excluded"
@@ -119,7 +116,6 @@ describe("Usage dashboard renderer", () => {
           used: 291,
         },
       ],
-      providerTargets: { copilot: 250 },
     });
 
     expect(html).toContain("291 cumulative requests");
@@ -207,12 +203,12 @@ describe("Usage dashboard renderer", () => {
           metricType: "messages",
           sourceKind: "api",
           used: 42,
+          percentUsed: 42,
         },
       ],
-      providerTargets: { copilot: 100 },
     });
 
-    expect(html).toContain("42% of your monthly request target used");
+    expect(html).toContain("42% of the tracked limit used");
     expect(html).not.toContain("At this pace: 42%");
   });
 });

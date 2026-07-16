@@ -8,20 +8,6 @@ import {
   type UsageWindowType,
 } from "../types/provider-usage";
 
-export interface ProviderAlertState {
-  cycleId: string;
-  lastThreshold: number;
-  runOutAlerted: boolean;
-}
-
-export function getDefaultProviderAlertState(): ProviderAlertState {
-  return {
-    cycleId: "",
-    lastThreshold: 0,
-    runOutAlerted: false,
-  };
-}
-
 export function normalizeProviderId(providerId: ProviderId): string {
   if (typeof providerId !== "string") {
     return "";
@@ -43,33 +29,6 @@ export function parseProviderHealthMap(stored: unknown): Record<string, Provider
       map[providerId] = normalized;
     }
   }
-  return map;
-}
-
-export function parseProviderAlertStateMap(stored: unknown): Record<string, ProviderAlertState> {
-  if (!isRecord(stored)) {
-    return {};
-  }
-
-  const map: Record<string, ProviderAlertState> = {};
-  for (const [providerId, value] of Object.entries(stored)) {
-    if (!isRecord(value)) {
-      continue;
-    }
-
-    const cycleId = typeof value.cycleId === "string" ? value.cycleId : "";
-    const lastThreshold =
-      typeof value.lastThreshold === "number" && Number.isFinite(value.lastThreshold)
-        ? value.lastThreshold
-        : 0;
-
-    map[providerId] = {
-      cycleId,
-      lastThreshold,
-      runOutAlerted: value.runOutAlerted === true,
-    };
-  }
-
   return map;
 }
 

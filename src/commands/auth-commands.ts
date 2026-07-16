@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { type AugmentDetector } from "../services/augment-detector";
 import { type UsageTracker } from "../features/usage/usage-tracker";
 import { type StatusBarManager } from "../ui/status-bar";
 import { SecureLogger } from "../core/logging/secure-logger";
@@ -18,7 +17,7 @@ export class AuthCommands {
   private signInInProgress = false;
 
   constructor(
-    private augmentDetector: AugmentDetector,
+    private apiClient: AugmentApiClient,
     private usageTracker: UsageTracker,
     private statusBarManager: StatusBarManager,
     private configManager: ConfigManager,
@@ -40,7 +39,7 @@ export class AuthCommands {
   }
 
   private async runSignInWithCookie(cookie: string): Promise<void> {
-    const apiClient = this.augmentDetector.getApiClient();
+    const apiClient = this.apiClient;
 
     try {
       const normalized = SecureCookieUtils.normalizeCookieInput(cookie);
@@ -57,7 +56,6 @@ export class AuthCommands {
       const result = await apiClient.testConnection();
       if (!result.success) {
         await apiClient.clearSessionCookie();
-        this.augmentDetector.clearAuthCache();
         void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
         throw AugmeterError.authentication(
           result.error || "Authentication failed",
@@ -194,7 +192,6 @@ export class AuthCommands {
         return true;
       }
       await apiClient.clearSessionCookie();
-      this.augmentDetector.clearAuthCache();
       return false;
     });
   }
@@ -238,7 +235,6 @@ export class AuthCommands {
   private async runConsistentSignInFlow(apiClient: AugmentApiClient): Promise<string | null> {
     // Clear any existing authentication state before signing in
     await apiClient.clearSessionCookie();
-    this.augmentDetector.clearAuthCache();
 
     // Step 1: Open the website immediately
     try {
@@ -330,7 +326,7 @@ export class AuthCommands {
       vscode.commands.registerCommand("augmeter.signIn", async () => {
         await ErrorHandler.withErrorHandling(async () => {
           await this.withSignInLock(async () => {
-            const apiClient = this.augmentDetector.getApiClient();
+            const apiClient = this.apiClient;
 
             // 0) Prefer the Auggie CLI (no cookie required)
             if (await this.trySignInViaCli()) {
@@ -358,7 +354,7 @@ export class AuthCommands {
       vscode.commands.registerCommand("augmeter.openWebsiteAndSignIn", async () => {
         try {
           await this.withSignInLock(async () => {
-            const apiClient = this.augmentDetector.getApiClient();
+            const apiClient = this.apiClient;
 
             // 1) Try existing cookie first
             if (apiClient.hasCookie()) {
@@ -382,7 +378,7 @@ export class AuthCommands {
       vscode.commands.registerCommand("augmeter.smartSignIn", async () => {
         await ErrorHandler.withErrorHandling(async () => {
           await this.withSignInLock(async () => {
-            const apiClient = this.augmentDetector.getApiClient();
+            const apiClient = this.apiClient;
 
             // Step 0: Prefer the Auggie CLI (no cookie required)
             if (await this.trySignInViaCli()) {
@@ -434,11 +430,10 @@ export class AuthCommands {
         void UserNotificationService.showInfo("Augment disconnected. Auggie remains signed in.");
       }
 
-      const apiClient = this.augmentDetector.getApiClient();
+      const apiClient = this.apiClient;
       await apiClient.clearSessionCookie();
 
       // Clear any cached authentication status
-      this.augmentDetector.clearAuthCache();
 
       // Properly await async operations to avoid race conditions
       await this.usageTracker.resetUsage();

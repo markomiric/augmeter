@@ -4,7 +4,7 @@
  */
 import * as vscode from "vscode";
 import { AuggieCliSource } from "../services/auggie-cli-source";
-import { AugmentDetector } from "../services/augment-detector";
+import { AugmentApiClient } from "../services/augment-api-client";
 import { UsageTracker } from "../features/usage/usage-tracker";
 import { StatusBarManager } from "../ui/status-bar";
 import { StorageManager } from "../core/storage/storage-manager";
@@ -12,7 +12,6 @@ import { ConfigManager } from "../core/config/config-manager";
 import { SecureLogger } from "../core/logging/secure-logger";
 import { AuthCommands } from "../commands/auth-commands";
 import { UsageCommands } from "../commands/usage-commands";
-import { ProviderRegistry } from "../providers/provider-registry";
 import { ProviderUsageService } from "../providers/provider-usage-service";
 import { ClaudeProviderAdapter } from "../providers/adapters/claude-provider-adapter";
 import { CodexProviderAdapter } from "../providers/adapters/codex-provider-adapter";
@@ -42,13 +41,12 @@ import { RuntimeCoordinator } from "./runtime-coordinator";
 export class ExtensionBootstrap {
   private storageManager!: StorageManager;
   private configManager!: ConfigManager;
-  private augmentDetector!: AugmentDetector;
+  private apiClient!: AugmentApiClient;
   private auggieCliSource!: AuggieCliSource;
   private usageTracker!: UsageTracker;
   private statusBarManager!: StatusBarManager;
   private authCommands!: AuthCommands;
   private usageCommands!: UsageCommands;
-  private providerRegistry!: ProviderRegistry;
   private providerUsageService!: ProviderUsageService;
   private runtimeCoordinator!: RuntimeCoordinator;
 
@@ -87,19 +85,19 @@ export class ExtensionBootstrap {
   private initializeManagers(context: vscode.ExtensionContext): void {
     this.storageManager = new StorageManager(context);
     this.configManager = new ConfigManager();
-    this.augmentDetector = new AugmentDetector(context, () => this.configManager.getApiBaseUrl());
+    this.apiClient = new AugmentApiClient(context, () => this.configManager.getApiBaseUrl());
     this.auggieCliSource = new AuggieCliSource(() => this.configManager.getAuggieCliPath());
     this.usageTracker = new UsageTracker(this.storageManager, this.configManager);
     this.statusBarManager = new StatusBarManager(
       this.usageTracker,
       this.configManager,
-      this.augmentDetector,
+      this.apiClient,
       this.auggieCliSource
     );
 
     // Initialize command handlers
     this.authCommands = new AuthCommands(
-      this.augmentDetector,
+      this.apiClient,
       this.usageTracker,
       this.statusBarManager,
       this.configManager,
@@ -112,11 +110,11 @@ export class ExtensionBootstrap {
       this.usageTracker,
       this.statusBarManager,
       this.configManager,
-      this.augmentDetector,
+      this.apiClient,
       this.auggieCliSource
     );
 
-    this.providerRegistry = new ProviderRegistry([
+    const providerAdapters = [
       new ClaudeProviderAdapter(() => this.configManager.getClaudeProjectsPath()),
       new CodexProviderAdapter(() => this.configManager.getCodexSessionsPath()),
       new CopilotProviderAdapter(
@@ -124,11 +122,11 @@ export class ExtensionBootstrap {
         undefined,
         () => this.configManager.getCopilotApiConfig()
       ),
-    ]);
+    ];
     this.providerUsageService = new ProviderUsageService(
       this.storageManager,
       this.configManager,
-      this.providerRegistry
+      providerAdapters
     );
   }
 
@@ -147,7 +145,7 @@ export class ExtensionBootstrap {
       context,
       this.storageManager,
       this.configManager,
-      this.augmentDetector,
+      this.apiClient,
       this.usageTracker,
       this.statusBarManager,
       this.providerUsageService,

@@ -63,18 +63,12 @@
       "restrictedConfigurations": [
         "augmeter.providers.enabled",
         "augmeter.providers.enabledIds",
-        "augmeter.providers.targets",
-        "augmeter.providers.alerts",
         "augmeter.providers.claude.path",
         "augmeter.providers.codex.path",
         "augmeter.providers.copilot.stateDbPath",
         "augmeter.providers.copilot.api.enabled",
         "augmeter.providers.copilot.api.username",
-        "augmeter.providers.copilot.api.tokenEnvVar",
-        "augmeter.providers.copilot.api.baseUrl",
-        "augmeter.providers.copilot.api.timeoutMs",
-        "augmeter.sessionTracking.enabled",
-        "augmeter.sessionTracking.path"
+        "augmeter.providers.copilot.api.username"
       ]
     }
   },
@@ -181,16 +175,6 @@
             ],
             "description": "Choose which coding assistants Augmeter tracks locally. Augment credit collection is configured separately."
           },
-          "augmeter.providers.targets": {
-            "type": "object",
-            "default": {},
-            "description": "Set optional monthly activity targets by assistant. Claude Code and Codex values are local user turns; Copilot values are requests. Example: { \"claude\": 1200, \"codex\": 900, \"copilot\": 1500 }."
-          },
-          "augmeter.providers.alerts": {
-            "type": "object",
-            "default": {},
-            "description": "Advanced: override activity-target alerts by assistant. Example: { \"claude\": { \"warningPercent\": 70, \"highPercent\": 85, \"criticalPercent\": 95, \"runOutDays\": 2 } }."
-          },
           "augmeter.providers.claude.path": {
             "type": "string",
             "default": "",
@@ -209,29 +193,12 @@
           "augmeter.providers.copilot.api.enabled": {
             "type": "boolean",
             "default": false,
-            "description": "Read official Copilot premium-request usage from GitHub. Uses the token environment variable below and falls back to local VS Code counts if unavailable."
+            "description": "Read official Copilot premium-request usage from GitHub. Uses GITHUB_TOKEN and falls back to local VS Code counts if unavailable."
           },
           "augmeter.providers.copilot.api.username": {
             "type": "string",
             "default": "",
             "description": "GitHub username whose Copilot premium-request usage Augmeter should read."
-          },
-          "augmeter.providers.copilot.api.tokenEnvVar": {
-            "type": "string",
-            "default": "GITHUB_TOKEN",
-            "description": "Name of the environment variable containing the GitHub token. Augmeter reads the token at runtime and does not store it."
-          },
-          "augmeter.providers.copilot.api.baseUrl": {
-            "type": "string",
-            "default": "https://api.github.com",
-            "description": "GitHub API base URL. Keep the default for github.com."
-          },
-          "augmeter.providers.copilot.api.timeoutMs": {
-            "type": "number",
-            "default": 6000,
-            "minimum": 1000,
-            "maximum": 30000,
-            "description": "Advanced: stop a GitHub usage request after this many milliseconds."
           }
         }
       },
@@ -313,16 +280,6 @@
             "deprecationMessage": "Use augmeter.budget.cycleTarget. Existing values continue to work until you set the new option.",
             "description": "Deprecated: personal Augment credit target."
           },
-          "augmeter.sessionTracking.enabled": {
-            "type": "boolean",
-            "default": false,
-            "description": "Experimental: show today's Augment prompts and sessions from local Augment logs."
-          },
-          "augmeter.sessionTracking.path": {
-            "type": "string",
-            "default": "",
-            "description": "Experimental: override the local Augment sessions path. Leave blank to use ~/.augment/sessions."
-          },
           "augmeter.smartSignIn.quickWatchMs": {
             "type": "number",
             "default": 2000,
@@ -358,98 +315,6 @@
             ],
             "default": "refresh",
             "description": "Choose what happens when you click connected Augment credit data in the status bar. When Augment is disconnected, clicking opens Assistant usage."
-          },
-          "augmeter.displayMode": {
-            "type": "string",
-            "enum": [
-              "used",
-              "remaining",
-              "remainingOnly",
-              "both",
-              "percentage"
-            ],
-            "enumDescriptions": [
-              "Show credits used and the cycle limit (for example, 55/100).",
-              "Show credits left and the cycle limit (for example, 45/100).",
-              "Show only credits left (for example, 45).",
-              "Show used, limit, and credits left (for example, 55/100 · 45 left).",
-              "Show percent of cycle credits used (for example, 55%)."
-            ],
-            "default": "both",
-            "description": "Choose which Augment credit values appear in the status bar."
-          },
-          "augmeter.statusBarDensity": {
-            "type": "string",
-            "enum": [
-              "auto",
-              "compact",
-              "detailed"
-            ],
-            "default": "auto",
-            "enumDescriptions": [
-              "Show an icon when the value is short; use text only for longer values.",
-              "Show text only.",
-              "Always show an icon with the value."
-            ],
-            "description": "Choose whether the status-bar meter includes an icon. Compact mode also hides the Augment label."
-          },
-          "augmeter.statusBarIcon": {
-            "type": "string",
-            "enum": [
-              "graph-line",
-              "graph",
-              "dashboard",
-              "pie-chart",
-              "pulse",
-              "percentage"
-            ],
-            "default": "dashboard",
-            "description": "Choose the icon shown in Detailed or eligible Auto mode."
-          },
-          "augmeter.showPercentInStatusBar": {
-            "type": "boolean",
-            "default": false,
-            "description": "Add percent used to non-percentage status-bar modes."
-          },
-          "augmeter.colorScheme": {
-            "type": "string",
-            "enum": [
-              "standard",
-              "conservative",
-              "aggressive"
-            ],
-            "enumItemLabels": [
-              "Balanced",
-              "Later warnings",
-              "Earlier warnings"
-            ],
-            "enumDescriptions": [
-              "Use balanced color thresholds.",
-              "Change warning colors later.",
-              "Change warning colors earlier."
-            ],
-            "default": "standard",
-            "description": "Choose how early the status-bar color changes as Augment credits are used."
-          },
-          "augmeter.colorThresholds": {
-            "type": "object",
-            "default": {
-              "critical": 95,
-              "highWarning": 85,
-              "warning": 75,
-              "caution": 50
-            },
-            "description": "Set custom status-bar color thresholds by percent of Augment credits used."
-          },
-          "augmeter.enhancedReadability": {
-            "type": "boolean",
-            "default": false,
-            "description": "Use colored backgrounds as well as text so status changes are easier to spot."
-          },
-          "augmeter.autoDetectHighContrast": {
-            "type": "boolean",
-            "default": true,
-            "description": "Match status colors to VS Code high-contrast themes."
           },
           "augmeter.showInStatusBar": {
             "type": "boolean",
@@ -506,18 +371,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "test:ui": "vitest --ui",
     "test:unit": "vitest run src/unit",
     "test:integration": "npm run compile-tests && vscode-test",
     "test:all": "npm run test:cov && npm run test:integration",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
-    "docs": "typedoc --out docs/api src",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "prepare": "husky",
-    "analyze:knip": "knip --reporter json --no-progress",
-    "analyze:jscpd": "jscpd --silent --reporters json --min-lines 12 --threshold 0 src || true"
+    "analyze:knip": "knip --reporter json --no-progress"
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "^4.0.3",
@@ -526,24 +388,19 @@
     "@typescript-eslint/eslint-plugin": "^8.42.0",
     "@typescript-eslint/parser": "^8.42.0",
     "@vitest/coverage-v8": "^3.2.4",
-    "@vitest/ui": "^3.2.4",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.4",
     "globals": "^16.4.0",
     "husky": "^9.1.7",
-    "jscpd": "^4.0.5",
     "knip": "^5.64.0",
     "lint-staged": "^16.1.6",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
-    "typedoc": "^0.28.13",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
-  "dependencies": {},
   "lint-staged": {
     "src/**/*.ts": [
       "eslint --fix",

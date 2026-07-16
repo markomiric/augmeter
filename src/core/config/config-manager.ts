@@ -3,25 +3,19 @@
  * providing type-safe access to all Augmeter settings with defaults.
  */
 import * as vscode from "vscode";
-import { type KnownProviderId, type ProviderId } from "../types/provider-usage";
-import { AlertConfigSection, type AlertThresholdConfig } from "./alert-config";
+import { type KnownProviderId } from "../types/provider-usage";
 import { toRoundedNumber } from "./config-value-utils";
-import {
-  ProviderConfigSection,
-  type CopilotApiConfig,
-  type ProviderAlertThresholdConfig,
-} from "./provider-config";
-import { SmartSignInConfigSection } from "./smart-sign-in-config";
-import {
-  StatusBarConfigSection,
-  type StatusBarColorScheme,
-  type StatusBarColorThresholds,
-  type StatusBarConfig,
-  type StatusBarDensity,
-  type StatusBarDisplayMode,
-} from "./status-bar-config";
 
-export type { CopilotApiConfig, ProviderAlertThresholdConfig, StatusBarConfig };
+export interface AlertThresholdConfig {
+  warning: number;
+  high: number;
+  critical: number;
+}
+
+export interface CopilotApiConfig {
+  enabled: boolean;
+  username: string;
+}
 
 /**
  * Manages extension configuration settings.
@@ -89,42 +83,6 @@ export class ConfigManager {
     }
   }
 
-  getDisplayMode(): StatusBarDisplayMode {
-    return this.getStatusBarSection().getDisplayMode();
-  }
-
-  getStatusBarDensity(): StatusBarDensity {
-    return this.getStatusBarSection().getDensity();
-  }
-
-  shouldShowPercentInStatusBar(): boolean {
-    return this.getStatusBarSection().shouldShowPercent();
-  }
-
-  getColorScheme(): StatusBarColorScheme {
-    return this.getStatusBarSection().getColorScheme();
-  }
-
-  getColorThresholds(): StatusBarColorThresholds {
-    return this.getStatusBarSection().getColorThresholds();
-  }
-
-  isEnhancedReadabilityEnabled(): boolean {
-    return this.getStatusBarSection().isEnhancedReadabilityEnabled();
-  }
-
-  shouldAutoDetectHighContrast(): boolean {
-    return this.getStatusBarSection().shouldAutoDetectHighContrast();
-  }
-
-  getStatusBarIconName(): string {
-    return this.getStatusBarSection().getIconName();
-  }
-
-  getStatusBarConfig(): StatusBarConfig {
-    return this.getStatusBarSection().getConfig();
-  }
-
   getLogLevel(): "error" | "warn" | "info" {
     const v = this.config.get<string>("logLevel", "info") ?? "info";
     if (v === "error" || v === "warn" || v === "info") return v;
@@ -132,77 +90,100 @@ export class ConfigManager {
   }
 
   getHistoryRetentionDays(): number {
-    return this.getAlertSection().getHistoryRetentionDays();
+    const value = toRoundedNumber(this.config.get<number>("history.retentionDays", 35), 35);
+    return Math.max(7, Math.min(90, value));
   }
 
   getAlertThresholds(): AlertThresholdConfig {
-    return this.getAlertSection().getAlertThresholds();
+    const warning = Math.max(
+      50,
+      Math.min(99, toRoundedNumber(this.config.get<number>("alerts.warningPercent", 75), 75))
+    );
+    const high = Math.max(
+      warning + 1,
+      Math.min(99, toRoundedNumber(this.config.get<number>("alerts.highPercent", 90), 90))
+    );
+    const critical = Math.max(
+      high + 1,
+      Math.min(100, toRoundedNumber(this.config.get<number>("alerts.criticalPercent", 95), 95))
+    );
+    return { warning, high, critical };
   }
 
   getRunOutAlertDays(): number {
-    return this.getAlertSection().getRunOutAlertDays();
+    const value = toRoundedNumber(this.config.get<number>("alerts.runOutDays", 3), 3);
+    return Math.max(0, Math.min(30, value));
   }
 
   getMonthlyTarget(): number {
-    return this.getAlertSection().getMonthlyTarget();
-  }
-
-  getProviderMonthlyTargets(): Record<string, number> {
-    return this.getProviderSection().getMonthlyTargets();
-  }
-
-  getProviderMonthlyTarget(providerId: ProviderId): number {
-    return this.getProviderSection().getMonthlyTarget(providerId);
-  }
-
-  getProviderAlertThresholds(providerId: ProviderId): ProviderAlertThresholdConfig {
-    return this.getProviderSection().getAlertThresholds(providerId);
-  }
-
-  getAllProviderAlertThresholds(): Record<string, ProviderAlertThresholdConfig> {
-    return this.getProviderSection().getAllAlertThresholds();
+    const inspected = this.config.inspect?.<number>("budget.cycleTarget");
+    const configured = Boolean(
+      inspected &&
+        [
+          inspected.globalValue,
+          inspected.workspaceValue,
+          inspected.workspaceFolderValue,
+          inspected.globalLanguageValue,
+          inspected.workspaceLanguageValue,
+          inspected.workspaceFolderLanguageValue,
+        ].some(value => value !== undefined)
+    );
+    const raw = configured
+      ? this.config.get<number>("budget.cycleTarget", 0)
+      : this.config.get<number>("budget.monthlyTarget", 0);
+    return Math.max(0, toRoundedNumber(raw, 0));
   }
 
   isProviderTrackingEnabled(): boolean {
-    return this.getProviderSection().isTrackingEnabled();
+    return this.config.get<boolean>("providers.enabled", true);
   }
 
   getEnabledProviderIds(): KnownProviderId[] {
-    return this.getProviderSection().getEnabledProviderIds();
+    const defaults: KnownProviderId[] = ["claude", "codex", "copilot"];
+    const raw = this.config.get<string[]>("providers.enabledIds", defaults) ?? defaults;
+    if (!Array.isArray(raw)) return defaults;
+    const values = Array.from(
+      new Set(
+        raw
+          .filter((value): value is string => typeof value === "string")
+          .map(value => value.trim().toLowerCase())
+      )
+    ).filter((value): value is KnownProviderId =>
+      ["augment", "claude", "codex", "copilot"].includes(value)
+    );
+    return values.length > 0 ? values : defaults;
   }
 
   getClaudeProjectsPath(): string {
-    return this.getProviderSection().getClaudeProjectsPath();
+    return (this.config.get<string>("providers.claude.path", "") ?? "").trim();
   }
 
   getCodexSessionsPath(): string {
-    return this.getProviderSection().getCodexSessionsPath();
+    return (this.config.get<string>("providers.codex.path", "") ?? "").trim();
   }
 
   getCopilotStateDbPath(): string {
-    return this.getProviderSection().getCopilotStateDbPath();
+    return (this.config.get<string>("providers.copilot.stateDbPath", "") ?? "").trim();
   }
 
   getCopilotApiConfig(): CopilotApiConfig {
-    return this.getProviderSection().getCopilotApiConfig();
+    return {
+      enabled: this.config.get<boolean>("providers.copilot.api.enabled", false) === true,
+      username: (this.config.get<string>("providers.copilot.api.username", "") ?? "").trim(),
+    };
   }
 
   getSmartSignInQuickWatchMs(): number {
-    return this.getSmartSignInSection().getQuickWatchMs();
+    const value = toRoundedNumber(this.config.get<number>("smartSignIn.quickWatchMs", 2000), 2000);
+    return Math.max(0, Math.min(5000, value));
   }
 
   getSmartSignInWebsiteWatchMs(): number {
-    return this.getSmartSignInSection().getWebsiteWatchMs();
-  }
-
-  isSessionTrackingEnabled(): boolean {
-    if (!vscode.workspace.isTrusted) return false;
-    return this.config.get<boolean>("sessionTracking.enabled", false);
-  }
-
-  getSessionTrackingPath(): string {
-    const v = this.config.get<string>("sessionTracking.path", "") ?? "";
-    return v.trim();
+    const value = toRoundedNumber(
+      this.config.get<number>("smartSignIn.websiteWatchMs", 300000),
+      300000
+    );
+    return Math.max(1000, Math.min(300000, value));
   }
 
   getDataSource(): "auto" | "auggie-cli" | "cookie" {
@@ -237,27 +218,5 @@ export class ConfigManager {
   async updateConfig(key: string, value: unknown): Promise<void> {
     await this.config.update(key, value, vscode.ConfigurationTarget.Global);
     this.reloadConfig();
-  }
-
-  private getAlertSection(): AlertConfigSection {
-    return new AlertConfigSection(this.config);
-  }
-
-  private getStatusBarSection(): StatusBarConfigSection {
-    return new StatusBarConfigSection(this.config);
-  }
-
-  private getProviderSection(): ProviderConfigSection {
-    const alerts = this.getAlertSection();
-    return new ProviderConfigSection(
-      this.config,
-      alerts.getAlertThresholds(),
-      alerts.getRunOutAlertDays(),
-      alerts.getMonthlyTarget()
-    );
-  }
-
-  private getSmartSignInSection(): SmartSignInConfigSection {
-    return new SmartSignInConfigSection(this.config);
   }
 }

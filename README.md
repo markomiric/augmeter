@@ -37,7 +37,6 @@ The values in the screenshot are a live local snapshot and will change as assist
 Local Claude Code, Codex, and GitHub Copilot tracking starts automatically when the workspace is trusted. No separate account sign-in is required.
 
 - Use `augmeter.providers.enabledIds` to choose assistants.
-- Use `augmeter.providers.targets` to set optional monthly activity targets.
 - Local Copilot counting requires `sqlite3` on your `PATH`. You can instead enable official GitHub API data in `augmeter.providers.copilot.api.enabled`.
 - Local file and VS Code database reading is off in untrusted workspaces.
 
@@ -96,29 +95,19 @@ The status bar labels Augment credit values when connected. Its tooltip and the 
 
 All settings live under `augmeter.*` in VS Code Settings. These are the most common controls:
 
-| Setting                  | Default                      | What it controls                                      |
-| ------------------------ | ---------------------------- | ----------------------------------------------------- |
-| `enabled`                | `true`                       | All Augmeter collection and display                   |
-| `refreshInterval`        | `60` seconds                 | Refresh interval while VS Code is focused             |
-| `clickAction`            | `refresh`                    | Status-bar click behavior                             |
-| `providers.enabled`      | `true`                       | Local assistant activity tracking                     |
-| `providers.enabledIds`   | `claude`, `codex`, `copilot` | Assistants included in local tracking                 |
-| `providers.targets`      | `{}`                         | Optional monthly assistant activity targets           |
-| `displayMode`            | `both`                       | Which Augment credit values appear                    |
-| `statusBarDensity`       | `auto`                       | When the status-bar icon appears                      |
-| `showPercentInStatusBar` | `false`                      | Percent context in non-percentage modes               |
-| `budget.cycleTarget`     | `0`                          | Personal target for the current Augment billing cycle |
-| `history.retentionDays`  | `35`                         | Local credit history kept for trends and CSV export   |
+| Setting                          | Default                      | What it controls                                      |
+| -------------------------------- | ---------------------------- | ----------------------------------------------------- |
+| `enabled`                        | `true`                       | All Augmeter collection and display                   |
+| `refreshInterval`                | `60` seconds                 | Refresh interval while VS Code is focused             |
+| `clickAction`                    | `refresh`                    | Status-bar click behavior                             |
+| `providers.enabled`              | `true`                       | Local assistant activity tracking                     |
+| `providers.enabledIds`           | `claude`, `codex`, `copilot` | Assistants included in local tracking                 |
+| `providers.copilot.api.enabled`  | `false`                      | Official Copilot premium-request usage                |
+| `providers.copilot.api.username` | empty                        | GitHub account used for official Copilot data         |
+| `budget.cycleTarget`             | `0`                          | Personal target for the current Augment billing cycle |
+| `history.retentionDays`          | `35`                         | Local credit history kept for trends and CSV export   |
 
-### Status-bar display modes
-
-- `used`: `55/100`
-- `remaining`: `45/100`
-- `remainingOnly`: `45`
-- `both`: `55/100 · 45 left`
-- `percentage`: `55%`
-
-Set `showPercentInStatusBar` to add percent used to any non-percentage mode. Density can be `compact` for text only, `detailed` for icon and text, or `auto` to show an icon only when the value is short.
+The status bar uses one consistent presentation: current Augment cycle usage, credits left, and native VS Code warning colors. The tooltip and Assistant Usage view provide the detailed breakdown.
 
 ## Data sources and privacy
 
@@ -126,7 +115,7 @@ Set `showPercentInStatusBar` to add percent used to any non-percentage mode. Den
 - Session cookies are stored in VS Code SecretStorage and redacted from logs.
 - Claude Code and Codex user-turn counts come from local session logs; tool results, metadata, and Claude Code/Codex agent/subagent sessions are excluded.
 - Local Copilot activity is a cumulative counter from VS Code's database through a fixed, read-only `sqlite3` query. VS Code does not expose a reliable time window for this counter.
-- Optional official Copilot data uses the GitHub API token environment variable you configure. The token is not persisted by Augmeter.
+- Optional official Copilot data reads `GITHUB_TOKEN` from the extension host environment. The token is not persisted by Augmeter.
 - Credit history, assistant activity, and diagnostics remain local unless you export or paste them.
 - Augmeter does not send extension analytics or telemetry events.
 - Local file and database reading is disabled in untrusted workspaces.

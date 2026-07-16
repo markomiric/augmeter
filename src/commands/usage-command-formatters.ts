@@ -1,4 +1,4 @@
-import type { CopilotApiConfig, ProviderAlertThresholdConfig } from "../core/config/config-manager";
+import type { CopilotApiConfig } from "../core/config/config-manager";
 import type { UsageSnapshot } from "../core/storage/storage-manager";
 import type { ProviderHealthSnapshot, ProviderUsageSnapshot } from "../core/types/provider-usage";
 
@@ -30,8 +30,6 @@ export interface UsageBundleInput {
   usageSnapshots: UsageSnapshot[];
   providerSnapshots: ProviderUsageSnapshot[];
   providerHealth: ProviderHealthSnapshot[];
-  providerTargets: Record<string, number>;
-  providerAlertThresholds: Record<string, ProviderAlertThresholdConfig>;
   retentionDays: number;
   alertThresholds: { warning: number; high: number; critical: number };
   runOutDays: number;
@@ -66,21 +64,13 @@ export interface DiagnosticsInput {
   config: {
     refreshInterval: number;
     clickAction: string;
-    displayMode: string;
-    density: string;
     showInStatusBar: boolean;
-    colorScheme: string;
-    colorThresholds: { critical: number; highWarning: number; warning: number; caution: number };
     alertThresholds: { warning: number; high: number; critical: number };
     runOutDays: number;
     cycleTarget: number;
     retentionDays: number;
-    sessionTrackingEnabled: boolean;
-    sessionTrackingPath: string;
     providerTrackingEnabled: boolean;
     enabledProviders: readonly string[];
-    providerTargets: Record<string, number>;
-    providerAlertThresholds: Record<string, ProviderAlertThresholdConfig>;
     claudeProjectsPath: string;
     codexSessionsPath: string;
     copilotStateDbPath: string;
@@ -191,8 +181,6 @@ export function buildUsageBundle(input: UsageBundleInput): {
   providers: {
     snapshots: ProviderUsageSnapshot[];
     health: ProviderHealthSnapshot[];
-    targets: Record<string, number>;
-    alerts: Record<string, ProviderAlertThresholdConfig>;
   };
   config: {
     retentionDays: number;
@@ -203,10 +191,7 @@ export function buildUsageBundle(input: UsageBundleInput): {
     copilotApi: {
       enabled: boolean;
       username: string;
-      tokenEnvVar: string;
       tokenPresent: boolean;
-      baseUrl: string;
-      timeoutMs: number;
     };
   };
 } {
@@ -228,8 +213,6 @@ export function buildUsageBundle(input: UsageBundleInput): {
     providers: {
       snapshots: input.providerSnapshots,
       health: input.providerHealth,
-      targets: input.providerTargets,
-      alerts: input.providerAlertThresholds,
     },
     config: {
       retentionDays: input.retentionDays,
@@ -240,10 +223,7 @@ export function buildUsageBundle(input: UsageBundleInput): {
       copilotApi: {
         enabled: input.copilotApiConfig.enabled,
         username: input.copilotApiConfig.username,
-        tokenEnvVar: input.copilotApiConfig.tokenEnvVar,
         tokenPresent: input.copilotTokenPresent,
-        baseUrl: input.copilotApiConfig.baseUrl,
-        timeoutMs: input.copilotApiConfig.timeoutMs,
       },
     },
   };

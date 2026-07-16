@@ -76,10 +76,6 @@ describe("usage-command-formatters", () => {
       usageSnapshots: [],
       providerSnapshots: [],
       providerHealth: [],
-      providerTargets: { claude: 1000 },
-      providerAlertThresholds: {
-        claude: { warning: 70, high: 85, critical: 95, runOutDays: 2 },
-      },
       retentionDays: 35,
       alertThresholds: { warning: 75, high: 90, critical: 95 },
       runOutDays: 3,
@@ -88,15 +84,12 @@ describe("usage-command-formatters", () => {
       copilotApiConfig: {
         enabled: true,
         username: "octocat",
-        tokenEnvVar: "GITHUB_TOKEN",
-        baseUrl: "https://api.github.com",
-        timeoutMs: 6000,
       },
       copilotTokenPresent: true,
     });
 
     expect(bundle.extensionVersion).toBe("1.2.3");
-    expect(bundle.providers.targets).toEqual({ claude: 1000 });
+    expect(bundle.providers.snapshots).toEqual([]);
     expect(bundle.config.cycleTarget).toBe(0);
     expect(bundle.config.enabledProviders).toEqual(["claude"]);
     expect(bundle.config.copilotApi.tokenPresent).toBe(true);
@@ -114,8 +107,6 @@ describe("usage-command-formatters", () => {
       usageSnapshots: [],
       providerSnapshots: [],
       providerHealth: [],
-      providerTargets: {},
-      providerAlertThresholds: {},
       retentionDays: 35,
       alertThresholds: { warning: 75, high: 90, critical: 95 },
       runOutDays: 3,
@@ -124,9 +115,6 @@ describe("usage-command-formatters", () => {
       copilotApiConfig: {
         enabled: false,
         username: "",
-        tokenEnvVar: "GITHUB_TOKEN",
-        baseUrl: "https://api.github.com",
-        timeoutMs: 6000,
       },
       copilotTokenPresent: false,
     });
@@ -186,31 +174,20 @@ describe("usage-command-formatters", () => {
       config: {
         refreshInterval: 60,
         clickAction: "refresh",
-        displayMode: "both",
-        density: "auto",
         showInStatusBar: true,
-        colorScheme: "standard",
-        colorThresholds: { critical: 95, highWarning: 85, warning: 75, caution: 50 },
         alertThresholds: { warning: 75, high: 90, critical: 95 },
         runOutDays: 3,
         cycleTarget: 0,
         retentionDays: 35,
-        sessionTrackingEnabled: false,
-        sessionTrackingPath: "(default)",
         providerTrackingEnabled: true,
         enabledProviders: ["claude"],
-        providerTargets: {},
-        providerAlertThresholds: {},
         claudeProjectsPath: "(default)",
         codexSessionsPath: "(default)",
         copilotStateDbPath: "(default)",
         copilotApi: {
           enabled: false,
           username: "",
-          tokenEnvVar: "GITHUB_TOKEN",
           tokenPresent: false,
-          baseUrl: "https://api.github.com",
-          timeoutMs: 6000,
         },
         logLevel: "info",
       },
