@@ -22,6 +22,10 @@ Claude Code and Codex counts exclude tool results, metadata, and agent/subagent 
 
 > Augmeter is independent and open source. It is not affiliated with or endorsed by Augment, Anthropic, OpenAI, GitHub, or Microsoft. Product names are trademarks of their respective owners.
 
+![Augmeter Assistant Usage view with illustrative data](images/tooltip.png)
+
+The screenshot uses illustrative values and contains no user data or credentials.
+
 See [Understanding assistant usage data](docs/usage-data.md) for the exact source and limitations of every number.
 
 ## Install
@@ -62,6 +66,8 @@ When Auggie CLI is unavailable, Augmeter can use your Augment `_session` cookie:
 3. In browser developer tools, open Application or Storage, then Cookies.
 4. Copy the value of `_session`.
 5. Paste it into Augmeter if clipboard detection has not already completed the connection.
+
+![Redacted developer-tools example showing the _session cookie row](images/session-cookie.png)
 
 The cookie is stored in VS Code SecretStorage and used only for Augment requests. Augmeter watches the clipboard only during the connection step. Choose `auto`, `auggie-cli`, or `cookie` with `augmeter.dataSource`.
 
