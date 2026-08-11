@@ -22,10 +22,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
@@ -57,7 +57,7 @@ jobs:
       # Build will fail if coverage below thresholds
 
     - name: Upload unit coverage report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: matrix.os == 'ubuntu-latest'
       with:
         name: unit-coverage-${{ matrix.node-version }}
@@ -74,10 +74,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Node.js 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: 22.x
         cache: 'npm'
@@ -101,11 +101,11 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     # The current Marketplace packager uses Node 22-only transitive tooling.
     - name: Setup Node.js 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: 22.x
         cache: 'npm'
@@ -126,7 +126,7 @@ jobs:
       run: npm run sbom
 
     - name: Upload SBOM artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: runner.os == 'Linux'
       with:
         name: sbom-22.x
@@ -134,7 +134,7 @@ jobs:
         retention-days: 90
 
     - name: Upload package artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: runner.os == 'Linux'
       with:
         name: extension-package
