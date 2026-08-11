@@ -6,11 +6,25 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-11
+
+### Added
+
+- Added packaged-extension checks that install the built VSIX, activate it in an isolated VS Code profile, and exercise the Augment connection lifecycle.
+
 ### Changed
 
-- Generalized the public description around coding-assistant activity and connected provider usage.
-- Removed screenshots containing real local usage, account, and session data, along with internal planning notes.
+- Clarified dashboard, status-bar, command, onboarding, error, and settings copy around local activity and provider-reported usage.
+- Replaced outdated documentation images with the current dashboard rendered from illustrative data and a fully redacted session-cookie guide.
+- Improved dashboard wrapping and single-column behavior in narrow editor groups.
+- Expanded CI coverage for the oldest supported and current VS Code releases, plus packaged VSIX checks on Linux, macOS, and Windows.
 - Updated the SBOM generator and development lockfile to patched releases; production dependencies remain audit-clean.
+
+### Fixed
+
+- Manual refreshes now say when some data could not be updated instead of reporting success with stale data.
+- Open dashboards now refresh after background collection without flashing unchanged content or applying an outdated render.
+- Augment provider storage now keeps one current credit record and migrates older duplicate snapshots.
 
 ## [1.1.0] - 2026-07-16
 

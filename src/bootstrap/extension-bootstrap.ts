@@ -26,9 +26,10 @@ import { RuntimeCoordinator } from "./runtime-coordinator";
  *
  * Initialization sequence:
  * 1. Initialize shared managers and services
- * 2. Register commands
- * 3. Initialize runtime lifecycle coordination
- * 4. Render the initial status bar state
+ * 2. Migrate persisted provider usage state
+ * 3. Register commands
+ * 4. Initialize runtime lifecycle coordination
+ * 5. Render the initial status bar state
  *
  * @example
  * ```typescript
@@ -67,6 +68,7 @@ export class ExtensionBootstrap {
       SecureLogger.info("Extension initialization started");
 
       this.initializeManagers(context);
+      await this.storageManager.migrateProviderUsageSnapshots();
       this.registerCommands();
       this.initializeRuntimeCoordinator(context);
       await this.runtimeCoordinator.initialize();

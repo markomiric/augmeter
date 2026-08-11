@@ -112,7 +112,7 @@ export function buildUsageSummaryText(input: UsageSummaryTextInput): string {
     if (monthlyAllowance !== null && monthlyAllowance !== undefined) {
       lines.push(`Monthly allowance: ${monthlyAllowance.toLocaleString()} credits`);
     }
-    lines.push("Cycle usage: unavailable from Auggie CLI balance data");
+    lines.push("Cycle usage: Auggie reports the balance only");
   }
 
   if (usageKnown && cycleTarget > 0 && targetDelta !== null) {

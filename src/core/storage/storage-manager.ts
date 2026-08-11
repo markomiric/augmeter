@@ -58,6 +58,8 @@ export class StorageManager {
   private readonly ALERT_STATE_KEY = "augmentAlertState";
   private readonly SNAPSHOTS_KEY = "augmentUsageSnapshots";
   private readonly PROVIDER_SNAPSHOTS_KEY = "providerUsageSnapshotsV1";
+  private readonly PROVIDER_SNAPSHOTS_SCHEMA_KEY = "providerUsageSnapshotsSchemaVersion";
+  private readonly PROVIDER_SNAPSHOTS_SCHEMA_VERSION = 2;
   private readonly PROVIDER_HEALTH_KEY = "providerHealthSnapshotsV1";
   private readonly CLI_AUTH_DISABLED_KEY = "augmeterCliAuthDisabled";
 
@@ -255,6 +257,45 @@ export class StorageManager {
       .map(snapshot => normalizeProviderUsageSnapshot(snapshot))
       .filter((snapshot): snapshot is ProviderUsageSnapshot => snapshot !== null);
     await this.context.globalState.update(this.PROVIDER_SNAPSHOTS_KEY, normalized);
+  }
+
+  async migrateProviderUsageSnapshots(): Promise<void> {
+    const currentVersion = this.context.globalState.get<number>(
+      this.PROVIDER_SNAPSHOTS_SCHEMA_KEY,
+      1
+    );
+    if (currentVersion >= this.PROVIDER_SNAPSHOTS_SCHEMA_VERSION) {
+      return;
+    }
+
+    const snapshots = await this.getProviderUsageSnapshots();
+    const retained = snapshots.filter(
+      snapshot => this.normalizeProviderId(snapshot.providerId) !== "augment"
+    );
+    const latestAugment = snapshots
+      .filter(snapshot => this.normalizeProviderId(snapshot.providerId) === "augment")
+      .reduce<ProviderUsageSnapshot | null>((latest, snapshot) => {
+        if (!latest) {
+          return snapshot;
+        }
+        const latestTimestamp = Date.parse(latest.timestamp);
+        const candidateTimestamp = Date.parse(snapshot.timestamp);
+        if (!Number.isFinite(candidateTimestamp)) {
+          return latest;
+        }
+        return !Number.isFinite(latestTimestamp) || candidateTimestamp >= latestTimestamp
+          ? snapshot
+          : latest;
+      }, null);
+
+    await this.context.globalState.update(
+      this.PROVIDER_SNAPSHOTS_KEY,
+      latestAugment ? retained.concat(latestAugment) : retained
+    );
+    await this.context.globalState.update(
+      this.PROVIDER_SNAPSHOTS_SCHEMA_KEY,
+      this.PROVIDER_SNAPSHOTS_SCHEMA_VERSION
+    );
   }
 
   async replaceProviderUsageSnapshotsForProviders(

@@ -46,7 +46,7 @@ describe("usage-command-formatters", () => {
 
     expect(text).toContain("Remaining: 57,306 credits");
     expect(text).toContain("Monthly allowance: 40,000 credits");
-    expect(text).toContain("Cycle usage: unavailable from Auggie CLI balance data");
+    expect(text).toContain("Cycle usage: Auggie reports the balance only");
     expect(text).not.toContain("Used: 0");
   });
 

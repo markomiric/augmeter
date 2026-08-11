@@ -1,5 +1,5 @@
 # Files excluded from the .vsix package. The package ships out/, package.json,
-# README.md, CHANGELOG.md, LICENSE, and images/icon.png.
+# README.md, CHANGELOG.md, LICENSE, and the public images under images/.
 
 # Source (compiled to out/) and source maps
 src/**
@@ -27,6 +27,7 @@ vitest.config.ts
 knip.jsonc
 typedoc.json
 justfile
+scripts/**
 package-lock.json
 .npmignore
 

@@ -22,7 +22,7 @@ export async function watchClipboardForCookie(
   return await vscode.window.withProgress<ClipboardWatchResult>(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Augmeter: Waiting for session cookie",
+      title: "Augmeter: Copy your session cookie",
       cancellable: true,
     },
     async (progress, token) => {

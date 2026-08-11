@@ -19,6 +19,8 @@ import {
 
 export class UsageCommands {
   private dashboardPanel: vscode.WebviewPanel | null = null;
+  private dashboardContentSignature: string | null = null;
+  private dashboardRenderRevision = 0;
 
   constructor(
     private usageTracker: UsageTracker,
@@ -34,7 +36,7 @@ export class UsageCommands {
     // Manual refresh command
     disposables.push(
       vscode.commands.registerCommand("augmeter.manualRefresh", async () => {
-        await this.handleManualRefresh();
+        return await this.handleManualRefresh();
       })
     );
 
@@ -80,28 +82,53 @@ export class UsageCommands {
       })
     );
 
+    disposables.push(
+      this.usageTracker.onChanged(() => {
+        if (!this.dashboardPanel) {
+          return;
+        }
+        void this.renderDashboard(this.dashboardPanel, true).catch(error => {
+          SecureLogger.warn("Refresh open usage dashboard failed", error);
+        });
+      })
+    );
+
     return disposables;
   }
 
-  private async handleManualRefresh(): Promise<void> {
-    await ErrorHandler.withErrorHandling(async () => {
+  private async handleManualRefresh(): Promise<boolean> {
+    const result = await ErrorHandler.withErrorHandling(async () => {
       SecureLogger.info("Manual refresh requested");
 
-      await UserNotificationService.withProgress("Augmeter", async progress => {
-        progress.report({ message: "Refreshing assistant activity and credits..." });
+      const refreshSucceeded = await UserNotificationService.withProgress(
+        "Augmeter",
+        async progress => {
+          progress.report({ message: "Refreshing assistant activity and Augment credits..." });
 
-        // Trigger data refresh and then update status bar
-        await this.usageTracker.refreshNow?.();
-        await this.statusBarManager.updateDisplay();
-      });
+          // Trigger data refresh and then update status bar
+          const succeeded = await this.usageTracker.refreshNow?.();
+          await this.statusBarManager.updateDisplay();
+          return succeeded;
+        }
+      );
 
       if (this.dashboardPanel) {
         await this.renderDashboard(this.dashboardPanel);
       }
 
-      UserNotificationService.showSuccess("Assistant activity and credits refreshed");
+      if (refreshSucceeded === false) {
+        await UserNotificationService.showWarning(
+          "Some data couldn't be refreshed and may be out of date. Check Output > Augmeter for details."
+        );
+        SecureLogger.warn("Manual refresh completed with stale data");
+        return false;
+      }
+
+      UserNotificationService.showSuccess("Assistant activity and Augment credits refreshed");
       SecureLogger.info("Manual refresh completed");
-    }, "refresh assistant activity and credits");
+      return true;
+    }, "refresh assistant activity and Augment credits");
+    return result === true;
   }
 
   private async handleCopyUsageSummary(): Promise<void> {
@@ -162,6 +189,8 @@ export class UsageCommands {
 
       this.dashboardPanel.onDidDispose(() => {
         this.dashboardPanel = null;
+        this.dashboardContentSignature = null;
+        this.dashboardRenderRevision += 1;
       });
 
       await this.renderDashboard(this.dashboardPanel);
@@ -171,7 +200,11 @@ export class UsageCommands {
     }
   }
 
-  private async renderDashboard(panel: vscode.WebviewPanel): Promise<void> {
+  private async renderDashboard(
+    panel: vscode.WebviewPanel,
+    skipIfUnchanged: boolean = false
+  ): Promise<void> {
+    const renderRevision = ++this.dashboardRenderRevision;
     const { renderUsageDashboard } = await import("../ui/usage-dashboard.js");
     const snapshots = await this.usageTracker.getUsageSnapshots();
     const providerSnapshots = await this.usageTracker.getProviderUsageSnapshots();
@@ -184,8 +217,54 @@ export class UsageCommands {
     const usageRate = await this.usageTracker.getUsageRate();
     const projectedDays = await this.usageTracker.getProjectedDaysRemaining();
     const projectedDate = await this.usageTracker.getProjectedDepletionDate();
+    const contentSignature = JSON.stringify({
+      credits: {
+        hasRealData,
+        usage,
+        limit,
+        remaining,
+        percentage,
+        usageKnown: this.usageTracker.isCurrentUsageKnown(),
+        monthlyAllowance: this.usageTracker.getMonthlyAllowance(),
+        renewalDate: this.usageTracker.getRenewalDate(),
+        subscriptionType: this.usageTracker.getSubscriptionType(),
+        usageRate,
+        projectedDays,
+        projectedDate: projectedDate?.toISOString() ?? null,
+        monthlyTarget: this.usageTracker.getMonthlyTarget(),
+        targetDelta: this.usageTracker.getTargetDelta(),
+        targetProgressPercent: this.usageTracker.getTargetProgressPercent(),
+      },
+      providerSnapshots: providerSnapshots
+        .filter(snapshot => snapshot.providerId !== "augment")
+        .map(snapshot => ({
+          providerId: snapshot.providerId,
+          windowType: snapshot.windowType,
+          metricType: snapshot.metricType,
+          sourceKind: snapshot.sourceKind,
+          source: snapshot.source,
+          used: snapshot.used,
+          limit: snapshot.limit,
+          remaining: snapshot.remaining,
+          percentUsed: snapshot.percentUsed,
+          confidence: snapshot.confidence,
+          details: snapshot.details,
+        })),
+      providerHealth: providerHealth.map(health => ({
+        providerId: health.providerId,
+        status: health.status,
+        sourceKind: health.sourceKind,
+        message: health.message,
+        errorCode: health.errorCode,
+        canCollectInCurrentWorkspace: health.canCollectInCurrentWorkspace,
+      })),
+    });
 
-    panel.webview.html = renderUsageDashboard({
+    if (skipIfUnchanged && contentSignature === this.dashboardContentSignature) {
+      return;
+    }
+
+    const html = renderUsageDashboard({
       generatedAt: new Date(),
       hasRealData,
       usage,
@@ -207,6 +286,13 @@ export class UsageCommands {
       providerSnapshots,
       providerHealth,
     });
+
+    if (panel !== this.dashboardPanel || renderRevision !== this.dashboardRenderRevision) {
+      return;
+    }
+
+    panel.webview.html = html;
+    this.dashboardContentSignature = contentSignature;
   }
 
   private async handleExportUsageHistoryCsv(): Promise<void> {
@@ -235,8 +321,9 @@ export class UsageCommands {
       }
 
       await writeFile(destination.fsPath, buildUsageHistoryCsv(snapshots), "utf8");
+      const recordLabel = snapshots.length === 1 ? "record" : "records";
       UserNotificationService.showSuccess(
-        `Exported ${snapshots.length} credit rows to ${path.basename(destination.fsPath)}`
+        `Exported ${snapshots.length} credit ${recordLabel} to ${path.basename(destination.fsPath)}`
       );
       SecureLogger.info("Usage history exported", {
         rows: snapshots.length,

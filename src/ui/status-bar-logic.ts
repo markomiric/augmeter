@@ -143,7 +143,7 @@ export function buildProviderUsageLines(
         const count = Math.round(monthly.used);
         const label =
           providerId === "copilot" && monthly.sourceKind === "api"
-            ? "official premium requests"
+            ? "premium requests reported by GitHub"
             : pluralize(count, metricNoun);
         usageParts.push(`${count.toLocaleString()} ${label} this month`);
       }
@@ -151,12 +151,12 @@ export function buildProviderUsageLines(
         const count = Math.round(cumulative.used);
         if (providerId === "copilot" && cumulative.sourceKind === "api") {
           usageParts.push(
-            `${count.toLocaleString()} official premium requests in the current billing window`
+            `${count.toLocaleString()} premium requests reported by GitHub this billing period`
           );
         } else {
           if (providerId === "copilot" && cumulative.sourceKind === "file") {
             usageParts.push(
-              `${count.toLocaleString()} cumulative requests • time window unavailable`
+              `${count.toLocaleString()} requests recorded by VS Code (no time range)`
             );
           } else {
             const local = cumulative.sourceKind === "file" ? "local " : "";
@@ -238,7 +238,7 @@ export function buildMarkdownTooltip(params: {
     }
   } else {
     lines.push("**Augment credits:** Not connected");
-    lines.push("Run **Augmeter: Connect Augment** to add live credit data.");
+    lines.push("Run **Augmeter: Connect Augment** to include your credit balance and trends.");
   }
 
   lines.push("");
@@ -249,7 +249,7 @@ export function buildMarkdownTooltip(params: {
       if (monthlyAllowance !== null && monthlyAllowance !== undefined) {
         lines.push(`**Monthly allowance:** ${monthlyAllowance.toLocaleString()} credits`);
       }
-      lines.push("Cycle usage unavailable from Auggie CLI balance data.");
+      lines.push("Auggie reports your balance but not what you've used this cycle.");
     } else if (limit > 0) {
       // Usage bar visualization
       lines.push(buildUsageBar(percentage));

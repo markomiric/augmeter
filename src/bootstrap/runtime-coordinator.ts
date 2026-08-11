@@ -12,7 +12,7 @@ import { type StatusBarManager } from "../ui/status-bar";
 export class RuntimeCoordinator implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private lastFocusRefreshTs = 0;
-  private realDataFetcher?: () => Promise<void>;
+  private realDataFetcher?: () => Promise<boolean>;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -50,19 +50,18 @@ export class RuntimeCoordinator implements vscode.Disposable {
   }
 
   /**
-   * Try the Auggie CLI usage source. Returns true when the cycle is fully
-   * handled (data updated, or a terminal CLI-only state); false to fall
-   * through to the cookie-based API path.
+   * Try the Auggie CLI usage source and report both whether it handled the
+   * refresh and whether that handled refresh produced current data.
    */
-  private async tryCliFetch(source: string): Promise<boolean> {
+  private async tryCliFetch(source: string): Promise<{ handled: boolean; succeeded: boolean }> {
     const mode = this.configManager.getDataSource();
     if (mode === "cookie") {
-      return false;
+      return { handled: false, succeeded: true };
     }
 
     if (this.storageManager.isCliAuthDisabled()) {
       if (mode !== "auggie-cli") {
-        return false;
+        return { handled: false, succeeded: true };
       }
       this.usageTracker.clearRealDataFlag();
       await this.storageManager.setProviderHealth({
@@ -75,7 +74,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
         errorCode: "AUGGIE_CLI_SIGNED_OUT",
       });
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
-      return true;
+      return { handled: true, succeeded: false };
     }
 
     const result = await this.auggieCliSource.fetchUsage();
@@ -101,23 +100,23 @@ export class RuntimeCoordinator implements vscode.Disposable {
         sourceKind: "cli",
         message:
           result.data.usageKnown === false
-            ? "Connected via Auggie CLI; cycle usage is unavailable from its balance-only response."
-            : "Connected via Auggie CLI.",
+            ? "Connected through Auggie CLI. Auggie reports your balance but not what you've used this cycle."
+            : "Connected through Auggie CLI.",
       });
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
       SecureLogger.info(`Usage updated from Auggie CLI (source=${source})`);
-      return true;
+      return { handled: true, succeeded: true };
     }
 
     if (mode !== "auggie-cli") {
       // Auto mode: fall back to the cookie path for any non-ok CLI result.
-      return false;
+      return { handled: false, succeeded: true };
     }
 
     if (result.status === "error") {
       // Transient failure in CLI-only mode: keep last known data.
       SecureLogger.warn(`Auggie CLI fetch failed; keeping last data (source=${source})`);
-      return true;
+      return { handled: true, succeeded: false };
     }
 
     this.usageTracker.clearRealDataFlag();
@@ -135,18 +134,19 @@ export class RuntimeCoordinator implements vscode.Disposable {
         result.status === "cli-missing" ? "AUGGIE_CLI_MISSING" : "AUGGIE_CLI_UNAUTHENTICATED",
     });
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
-    return true;
+    return { handled: true, succeeded: false };
   }
 
   private attachRealDataFetcher(): void {
-    const realFetcher = async () => {
+    const realFetcher = async (): Promise<boolean> => {
       const source = this.usageTracker.getFetchSource();
+      let refreshSucceeded = true;
       try {
-        if (await this.tryCliFetch(source)) {
-          return;
-        }
-
-        if (!this.apiClient.hasCookie()) {
+        const cliFetch = await this.tryCliFetch(source);
+        if (cliFetch.handled) {
+          refreshSucceeded = cliFetch.succeeded;
+        } else if (!this.apiClient.hasCookie()) {
+          refreshSucceeded = false;
           this.usageTracker.clearRealDataFlag();
           await this.storageManager.setProviderHealth({
             providerId: "augment",
@@ -159,63 +159,65 @@ export class RuntimeCoordinator implements vscode.Disposable {
           });
           void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
           SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
-          return;
-        }
-
-        SecureLogger.info(`Fetching Augment credit data (source=${source})`);
-        const response = await this.apiClient.getUsageData();
-        if (response.success) {
-          const responseData =
-            typeof response.data === "object" && response.data !== null ? response.data : null;
-          SecureLogger.info(`API response received (source=${source})`, {
-            hasData: responseData !== null,
-            dataKeys: responseData ? Object.keys(responseData) : [],
-          });
-          const parsed = await this.apiClient.parseUsageResponse(response);
-          if (parsed) {
-            SecureLogger.info(`Parsed usage data (source=${source})`, {
-              totalUsage: parsed.totalUsage,
-              usageLimit: parsed.usageLimit,
-              hasTotal: parsed.totalUsage !== undefined,
-              hasLimit: parsed.usageLimit !== undefined,
-            });
-            await this.usageTracker.updateWithRealData({
-              totalUsage: parsed.totalUsage ?? 0,
-              usageLimit: parsed.usageLimit ?? 0,
-              remainingCredits: parsed.remainingCredits,
-              monthlyAllowance: parsed.monthlyAllowance,
-              usageKnown: parsed.usageKnown,
-              sourceKind: "api",
-              dailyUsage: parsed.dailyUsage,
-              lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
-              subscriptionType: parsed.subscriptionType,
-              renewalDate: parsed.renewalDate,
-            });
-
-            SecureLogger.info(`Augment credit data updated successfully (source=${source})`);
-          } else {
-            SecureLogger.warn(`Failed to parse Augment credit response (source=${source})`);
-          }
-        } else if (response.code === "UNAUTHENTICATED") {
-          this.usageTracker.clearRealDataFlag();
-          await this.storageManager.setProviderHealth({
-            providerId: "augment",
-            status: "unavailable",
-            checkedAt: new Date().toISOString(),
-            canCollectInCurrentWorkspace: true,
-            sourceKind: "api",
-            message: "Augment authentication expired or invalid.",
-            errorCode: "AUGMENT_UNAUTHENTICATED",
-          });
-          SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
-          return;
         } else {
-          SecureLogger.warn(
-            `Failed to fetch Augment credit data (source=${source})`,
-            response.error
-          );
+          SecureLogger.info(`Fetching Augment credit data (source=${source})`);
+          const response = await this.apiClient.getUsageData();
+          if (response.success) {
+            const responseData =
+              typeof response.data === "object" && response.data !== null ? response.data : null;
+            SecureLogger.info(`API response received (source=${source})`, {
+              hasData: responseData !== null,
+              dataKeys: responseData ? Object.keys(responseData) : [],
+            });
+            const parsed = await this.apiClient.parseUsageResponse(response);
+            if (parsed) {
+              SecureLogger.info(`Parsed usage data (source=${source})`, {
+                totalUsage: parsed.totalUsage,
+                usageLimit: parsed.usageLimit,
+                hasTotal: parsed.totalUsage !== undefined,
+                hasLimit: parsed.usageLimit !== undefined,
+              });
+              await this.usageTracker.updateWithRealData({
+                totalUsage: parsed.totalUsage ?? 0,
+                usageLimit: parsed.usageLimit ?? 0,
+                remainingCredits: parsed.remainingCredits,
+                monthlyAllowance: parsed.monthlyAllowance,
+                usageKnown: parsed.usageKnown,
+                sourceKind: "api",
+                dailyUsage: parsed.dailyUsage,
+                lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
+                subscriptionType: parsed.subscriptionType,
+                renewalDate: parsed.renewalDate,
+              });
+
+              SecureLogger.info(`Augment credit data updated successfully (source=${source})`);
+            } else {
+              refreshSucceeded = false;
+              SecureLogger.warn(`Failed to parse Augment credit response (source=${source})`);
+            }
+          } else if (response.code === "UNAUTHENTICATED") {
+            refreshSucceeded = false;
+            this.usageTracker.clearRealDataFlag();
+            await this.storageManager.setProviderHealth({
+              providerId: "augment",
+              status: "unavailable",
+              checkedAt: new Date().toISOString(),
+              canCollectInCurrentWorkspace: true,
+              sourceKind: "api",
+              message: "Augment authentication expired or invalid.",
+              errorCode: "AUGMENT_UNAUTHENTICATED",
+            });
+            SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
+          } else {
+            refreshSucceeded = false;
+            SecureLogger.warn(
+              `Failed to fetch Augment credit data (source=${source})`,
+              response.error
+            );
+          }
         }
       } catch (error) {
+        refreshSucceeded = false;
         ErrorHandler.handleSilently(error, `Augment credit fetch (source=${source})`);
       } finally {
         try {
@@ -226,10 +228,13 @@ export class RuntimeCoordinator implements vscode.Disposable {
             forceRefresh: source !== "poller",
           });
         } catch (providerError) {
+          refreshSucceeded = false;
           SecureLogger.warn(`Provider collection failed (source=${source})`, providerError);
         }
         await this.statusBarManager.updateDisplay();
+        this.usageTracker.notifyChanged();
       }
+      return refreshSucceeded;
     };
 
     this.realDataFetcher = realFetcher;

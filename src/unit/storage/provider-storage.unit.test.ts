@@ -90,6 +90,29 @@ describe("StorageManager provider storage", () => {
     expect(all[0]?.timestamp).toBe(recent);
   });
 
+  it("compacts legacy Augment snapshots once without removing other providers", async () => {
+    const storage = new StorageManager(createMockContext());
+    const older = "2026-08-09T08:00:00.000Z";
+    const newer = "2026-08-11T08:00:00.000Z";
+    await storage.saveProviderUsageSnapshots([
+      makeProviderSnapshot("augment", older),
+      makeProviderSnapshot("claude", "2026-08-10T08:00:00.000Z"),
+      makeProviderSnapshot("augment", newer),
+    ]);
+
+    await storage.migrateProviderUsageSnapshots();
+
+    expect(await storage.getProviderUsageSnapshots()).toEqual([
+      makeProviderSnapshot("claude", "2026-08-10T08:00:00.000Z"),
+      makeProviderSnapshot("augment", newer),
+    ]);
+
+    await storage.saveProviderUsageSnapshot(makeProviderSnapshot("augment", older));
+    await storage.migrateProviderUsageSnapshots();
+
+    expect(await storage.getProviderUsageSnapshots("augment")).toHaveLength(2);
+  });
+
   it("stores and clears provider health snapshots", async () => {
     const storage = new StorageManager(createMockContext());
     await storage.setProviderHealth(makeProviderHealth("augment"));

@@ -253,7 +253,7 @@ export class StatusBarManager implements vscode.Disposable {
     } else {
       this.statusBarItem.text = formatStatusText(`${sbFormatCompact(remaining)} left`);
       this.statusBarItem.accessibilityInformation = {
-        label: `Augment credits: ${remaining.toLocaleString()} remaining; cycle usage unavailable`,
+        label: `Augment credits: ${remaining.toLocaleString()} remaining; Auggie did not report cycle usage`,
         role: "status",
       };
     }
@@ -281,7 +281,7 @@ export class StatusBarManager implements vscode.Disposable {
     try {
       this.displayRevision++;
       this.statusBarItem.text = `$(sync~spin) Augmeter`;
-      this.statusBarItem.tooltip = `Augmeter\n\nRefreshing assistant activity and credits...`;
+      this.statusBarItem.tooltip = `Augmeter\n\nRefreshing assistant activity and Augment credits...`;
       this.statusBarItem.backgroundColor = undefined;
       this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
       this.statusBarItem.show();

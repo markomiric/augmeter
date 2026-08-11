@@ -9,6 +9,7 @@ export default defineConfig({
     coverage: {
       // Count the whole src tree, not just files imported by tests.
       all: true,
+      include: ["src/**/*.ts"],
       provider: "v8",
       reporter: ["text", "html", "lcov", "json"],
       reportsDirectory: "./coverage",

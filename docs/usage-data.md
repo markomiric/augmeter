@@ -1,15 +1,26 @@
 # Understanding assistant usage data
 
-Augmeter combines local coding-assistant activity with connected provider data. The cards deliberately use different labels because the underlying sources measure different things.
+Augmeter combines local coding-assistant activity with usage reported by connected providers. The cards use different labels because the sources measure different things.
+
+![Assistant Usage dashboard with illustrative local and provider-reported data](../images/tooltip.png)
+
+_Rendered from the current dashboard with illustrative values. No local history, account data, or credentials are shown._
+
+## Reading the dashboard
+
+- **From local session history** means Augmeter counted local Claude Code or Codex user turns.
+- **From VS Code on this device** means Augmeter read a cumulative local Copilot counter without a reliable time range.
+- **Reported by GitHub** means GitHub supplied Copilot premium-request usage for the current billing period.
+- **Official balance and cycle data from Augment** appears only when the connected source supplies those values.
 
 ## What each number means
 
-| Card           | Value                                                        | Source                                                         | Important limitations                                                                                                                                                       |
-| -------------- | ------------------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Code    | User turns in rolling 5-hour and 7-day windows               | JSONL files under `~/.claude/projects`                         | Excludes tool results, metadata, and `subagents` directories. This is an activity signal, not an Anthropic quota.                                                           |
-| Codex          | User turns in rolling 5-hour and 7-day windows               | JSONL files under `~/.codex/sessions`                          | Counts root `event_msg` / `user_message` records and excludes sessions marked as subagents. This is an activity signal, not an OpenAI quota.                                |
-| GitHub Copilot | Cumulative requests recorded by VS Code                      | `languageModelStats.copilot-*` rows in VS Code's `state.vscdb` | VS Code does not attach a reliable time window, so Augmeter does not label this value as daily, weekly, or monthly.                                                         |
-| Augment        | Remaining credits, monthly allowance, plan, and renewal date | `auggie account status`, or the Augment API when configured    | Current Auggie CLI output does not report exact cycle consumption. Augmeter therefore withholds percent used, pace, target progress, and trends for balance-only responses. |
+| Card           | Value                                                                 | Source                                                      | Important limitations                                                                                                                                                       |
+| -------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code    | User turns in rolling 5-hour and 7-day windows                        | JSONL files under `~/.claude/projects`                      | Excludes tool results, metadata, and `subagents` directories. This is an activity signal, not an Anthropic quota.                                                           |
+| Codex          | User turns in rolling 5-hour and 7-day windows                        | JSONL files under `~/.codex/sessions`                       | Counts root `event_msg` / `user_message` records and excludes sessions marked as subagents. This is an activity signal, not an OpenAI quota.                                |
+| GitHub Copilot | Cumulative local requests, or premium requests for the billing period | VS Code's `state.vscdb`, or the GitHub API when enabled     | The local counter has no reliable time window. GitHub-reported usage is labeled separately and requires `GITHUB_TOKEN`.                                                     |
+| Augment        | Remaining credits, monthly allowance, plan, and renewal date          | `auggie account status`, or the Augment API when configured | Current Auggie CLI output does not report exact cycle consumption. Augmeter therefore withholds percent used, pace, target progress, and trends for balance-only responses. |
 
 ## Why Augment may show more remaining than the monthly allowance
 
@@ -27,7 +38,7 @@ Each card's **Updated** timestamp is when Augmeter last collected that source. I
 
 ## Status tooltip
 
-The tooltip uses the same definitions as the dashboard: Claude Code and Codex are local user turns, Copilot is a cumulative counter without a known time window, and balance-only Augment data never produces an invented percentage or pace.
+The tooltip uses the same definitions as the dashboard: Claude Code and Codex are local user turns, local Copilot counts have no known time window, GitHub-reported Copilot usage is labeled separately, and balance-only Augment data never produces an invented percentage or pace.
 
 ## Verification paths
 

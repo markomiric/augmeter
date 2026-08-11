@@ -113,11 +113,11 @@ export class AuthCommands {
     if (result.status === "unauthenticated") {
       const cliItem = {
         label: "$(terminal) Use Auggie CLI (recommended)",
-        description: "Opens Auggie sign-in. Augmeter does not read CLI credentials.",
+        description: "Opens a terminal for Auggie sign-in. Augmeter does not read CLI credentials.",
       };
       const cookieItem = {
         label: "$(key) Paste a session cookie",
-        description: "Stored in VS Code SecretStorage and used only for Augment requests.",
+        description: "Stored securely by VS Code and used only for Augment requests.",
       };
       const items = mode === "auggie-cli" ? [cliItem] : [cliItem, cookieItem];
       const choice = await vscode.window.showQuickPick(items, {
@@ -138,7 +138,7 @@ export class AuthCommands {
         await this.finalizeAuthenticatedSession("Augment connected through Auggie CLI");
       } else if (mode !== "auggie-cli") {
         void UserNotificationService.showInfo(
-          "Augmeter couldn't detect an Auggie sign-in. Try again or use a session cookie."
+          "Augmeter couldn't confirm that Auggie is signed in. Try again or use a session cookie."
         );
       }
       return true;
@@ -160,7 +160,7 @@ export class AuthCommands {
       return await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: "Augmeter: Waiting for Auggie sign-in",
+          title: "Augmeter: Finish signing in to Auggie",
           cancellable: true,
         },
         async (_progress, token) => {

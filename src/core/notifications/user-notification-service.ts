@@ -84,7 +84,8 @@ export class UserNotificationService {
    * Show authentication-specific error with sign-in action
    */
   static async showAuthError(userMessage?: string): Promise<void> {
-    const message = userMessage || "Your Augment connection expired. Connect again to continue.";
+    const message =
+      userMessage || "Your Augment connection expired. Connect again to refresh credits.";
 
     await this.showError(message, {
       text: "Connect Augment",

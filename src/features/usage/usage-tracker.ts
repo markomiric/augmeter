@@ -64,7 +64,7 @@ export class UsageTracker implements vscode.Disposable {
   private lastResetDate: string = "";
   private hasRealData: boolean = false;
   private realDataSource: string = "simulation";
-  private realDataFetcher: (() => Promise<void>) | null = null;
+  private realDataFetcher: (() => Promise<boolean | void>) | null = null;
   private intervals: NodeJS.Timeout[] = [];
   private pollTimeout: NodeJS.Timeout | null = null;
   private disposed: boolean = false;
@@ -400,14 +400,13 @@ export class UsageTracker implements vscode.Disposable {
         if (this.lastFetchedAt) {
           providerSnapshot.freshnessAt = this.lastFetchedAt.toISOString();
         }
-        if (usageKnown) {
-          await this.storageManager.saveProviderUsageSnapshot(providerSnapshot);
-        } else {
-          await this.storageManager.replaceProviderUsageSnapshotsForProviders(
-            ["augment"],
-            [providerSnapshot]
-          );
-        }
+        // Augment credit history already lives in UsageSnapshot. Keep only the
+        // latest unified provider record so every poll does not duplicate that
+        // history in globalState and exported provider bundles.
+        await this.storageManager.replaceProviderUsageSnapshotsForProviders(
+          ["augment"],
+          [providerSnapshot]
+        );
         await this.storageManager.setProviderHealth({
           providerId: "augment",
           status: "connected",
@@ -471,7 +470,7 @@ export class UsageTracker implements vscode.Disposable {
 
         if (threshold >= critical) {
           void UserNotificationService.showWarning(
-            `Augment has used ${threshold}% of this cycle's credits. ${Math.max(0, remaining).toLocaleString()} credits remain.`,
+            `You've used ${threshold}% of your Augment credits for this cycle. ${Math.max(0, remaining).toLocaleString()} credits remain.`,
             {
               text: "Open assistant usage",
               action: async () => {
@@ -481,7 +480,7 @@ export class UsageTracker implements vscode.Disposable {
           );
         } else {
           void UserNotificationService.showInfo(
-            `Augment has used ${threshold}% of this cycle's credits. ${Math.max(0, remaining).toLocaleString()} credits remain.`
+            `You've used ${threshold}% of your Augment credits for this cycle. ${Math.max(0, remaining).toLocaleString()} credits remain.`
           );
         }
       }
@@ -495,7 +494,7 @@ export class UsageTracker implements vscode.Disposable {
         const dayLabel = days === 1 ? "day" : "days";
         await this.storageManager.setRunOutAlertedForCycle(cycleId, true);
         void UserNotificationService.showWarning(
-          `At the current pace, Augment credits may run out in about ${days} ${dayLabel}.`,
+          `At your current pace, Augment credits may run out in about ${days} ${dayLabel}.`,
           {
             text: "Open assistant usage",
             action: async () => {
@@ -519,7 +518,7 @@ export class UsageTracker implements vscode.Disposable {
     return await this.storageManager.getTodayUsage();
   }
 
-  async refreshNow(): Promise<void> {
+  async refreshNow(): Promise<boolean> {
     try {
       this.nextFetchSource = "manual";
       SecureLogger.info("UsageTracker: refreshNow called", {
@@ -527,12 +526,14 @@ export class UsageTracker implements vscode.Disposable {
         nextFetchSource: this.nextFetchSource,
       });
       if (this.realDataFetcher) {
-        await this.realDataFetcher();
+        return (await this.realDataFetcher()) !== false;
       } else {
         SecureLogger.warn("UsageTracker: No realDataFetcher available for refreshNow");
+        return false;
       }
     } catch (error) {
       SecureLogger.error("UsageTracker: Error during immediate refresh", error);
+      return false;
     }
   }
 
@@ -615,8 +616,12 @@ export class UsageTracker implements vscode.Disposable {
     return this.nextFetchSource || "poller";
   }
 
-  setRealDataFetcher(fetcher: (() => Promise<void>) | null): void {
+  setRealDataFetcher(fetcher: (() => Promise<boolean | void>) | null): void {
     this.realDataFetcher = fetcher;
+  }
+
+  notifyChanged(): void {
+    this.onChangedEmitter.fire();
   }
 
   clearRealDataFlag(): void {

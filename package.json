@@ -1,8 +1,8 @@
 {
   "name": "augmeter",
   "displayName": "Augmeter: Assistant Usage",
-  "description": "See coding-assistant activity and connected provider usage in one VS Code view.",
-  "version": "1.1.0",
+  "description": "See local coding-assistant activity alongside usage reported by connected providers.",
+  "version": "1.1.1",
   "publisher": "kamacode",
   "author": "Marko",
   "repository": {
@@ -72,7 +72,7 @@
     "commands": [
       {
         "command": "augmeter.manualRefresh",
-        "title": "Refresh Assistant Activity and Credits",
+        "title": "Refresh Assistant Activity and Augment Credits",
         "category": "Augmeter"
       },
       {
@@ -211,7 +211,7 @@
             "enumDescriptions": [
               "Prefer the Auggie CLI when installed and signed in; fall back to the session cookie.",
               "Only use the Auggie CLI (auggie account status).",
-              "Only use a session cookie stored in VS Code SecretStorage."
+              "Only use a session cookie stored securely by VS Code."
             ],
             "default": "auto",
             "description": "Choose how Augmeter reads Augment credits.",
@@ -305,7 +305,7 @@
               "openSettings"
             ],
             "enumDescriptions": [
-              "Refresh assistant activity and credits",
+              "Refresh assistant activity and Augment credits",
               "Open the Augment website",
               "Open Augmeter settings"
             ],
@@ -330,7 +330,7 @@
           "augmeter.refreshInterval": {
             "type": "number",
             "default": 60,
-            "description": "Refresh assistant activity and connected usage at this interval while VS Code is focused (1-300 seconds).",
+            "description": "Refresh assistant activity and Augment credits at this interval while VS Code is focused (1-300 seconds).",
             "minimum": 1,
             "maximum": 300
           },
@@ -360,7 +360,8 @@
     "compile": "npm run clean && tsc -p ./",
     "compile-tests": "npm run clean && tsc -p ./tsconfig.test.json",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && npx @vscode/vsce package",
+    "package": "vsce package --no-dependencies",
+    "package:smoke": "npm run package && node scripts/verify-vsix.mjs",
     "clean": "rimraf --glob out \"*.vsix\"",
     "sbom": "cyclonedx-npm --output-file sbom.json",
     "pretest": "npm run compile && npm run lint",
@@ -369,6 +370,7 @@
     "test:cov": "vitest run --coverage",
     "test:unit": "vitest run src/unit",
     "test:integration": "npm run compile-tests && vscode-test",
+    "test:packaged": "npm run package:smoke && tsc -p ./tsconfig.test.json && node scripts/run-packaged-e2e.mjs",
     "test:all": "npm run test:cov && npm run test:integration",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -385,7 +387,8 @@
     "@typescript-eslint/parser": "^8.42.0",
     "@vitest/coverage-v8": "^3.2.4",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.4.0",
@@ -395,7 +398,8 @@
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "yauzl": "^3.4.0"
   },
   "lint-staged": {
     "src/**/*.ts": [

@@ -1,0 +1,13 @@
+{
+  "name": "augmeter-packaged-test-runner",
+  "displayName": "Augmeter Packaged Test Runner",
+  "description": "Development-only host used to exercise the installed Augmeter VSIX.",
+  "version": "0.0.0",
+  "publisher": "augmeter-tests",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "Other"
+  ]
+}

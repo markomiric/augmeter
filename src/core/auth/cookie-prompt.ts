@@ -10,7 +10,7 @@ export class CookiePrompt {
       {
         title: "Paste your Augment session cookie",
         prompt:
-          "In app.augmentcode.com, copy the value of the _session cookie. Augmeter stores it in VS Code SecretStorage.",
+          "In app.augmentcode.com, copy the _session cookie value. Augmeter stores it securely in VS Code.",
         placeHolder: "Paste the _session value",
         password: true,
         ignoreFocusOut: true,

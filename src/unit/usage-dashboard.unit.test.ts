@@ -34,21 +34,22 @@ describe("Usage dashboard renderer", () => {
     });
 
     expect(html).toContain("Assistant usage");
-    expect(html).toContain(
-      "Local activity and connected provider usage across your coding assistants."
-    );
+    expect(html).toContain("Local activity and provider-reported usage, separated by source.");
     expect(html).toContain("Assistant activity");
-    expect(html).toContain("Local user turns");
+    expect(html).toContain("From local session history");
     expect(html).toContain("Codex");
     expect(html).toContain("Last 7 days: 291 turns");
     expect(html).not.toContain("monthly turn target");
     expect(html).toContain("How these counts are calculated");
+    expect(html).toContain("Tool results, metadata, and agent sessions are excluded");
     expect(html).toContain(
-      "Tool results, metadata, and Claude Code/Codex agent/subagent sessions are excluded"
+      "grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr))"
     );
+    expect(html).toContain("@media (max-width: 520px)");
     expect(html).toContain(`Updated ${new Date("2026-03-18T01:56:29.000Z").toLocaleString()}`);
     expect(html).toContain("Augment credits aren&#39;t connected");
     expect(html).toContain("Augmeter: Connect Augment");
+    expect(html).toMatch(/\.notice-card\s*\{[^}]*margin: 16px 0;/s);
     expect(html.indexOf("Assistant activity")).toBeLessThan(
       html.indexOf("Augment credits aren&#39;t connected")
     );
@@ -87,6 +88,10 @@ describe("Usage dashboard renderer", () => {
     expect(html).toContain("Augment credits");
     expect(html).toContain("Current cycle");
     expect(html).toContain("Augment credits");
+    expect(html).toContain(
+      '<p class="metric-subtle section-description">Official balance and cycle data from Augment.</p>'
+    );
+    expect(html).toMatch(/\.section-description\s*\{[^}]*margin-bottom: 12px;/s);
     expect(html).toContain("1,600 credits left");
     expect(html).toContain("2,400 used this cycle · 60% used");
     expect(html).toContain("Augment credit trends");
@@ -118,8 +123,8 @@ describe("Usage dashboard renderer", () => {
       ],
     });
 
-    expect(html).toContain("291 cumulative requests");
-    expect(html).toContain("Time window unavailable · VS Code counter");
+    expect(html).toContain("291 requests recorded");
+    expect(html).toContain("VS Code doesn&#39;t provide a time range for this count");
     expect(html).not.toContain("Projected at");
   });
 
@@ -145,7 +150,7 @@ describe("Usage dashboard renderer", () => {
     expect(html).toContain("Credit balance");
     expect(html).toContain("57,306 credits left");
     expect(html).toContain("Monthly allowance: 40,000 credits");
-    expect(html).toContain("Cycle usage unavailable from Auggie CLI");
+    expect(html).toContain("Auggie reports your balance but not what you&#39;ve used this cycle");
     expect(html).toContain(`Updated ${freshnessAt.toLocaleString()}`);
     expect(html).not.toContain("0 used this cycle");
     expect(html).not.toContain('role="progressbar"');
@@ -181,7 +186,7 @@ describe("Usage dashboard renderer", () => {
     });
 
     expect(html).toContain("120 credits used");
-    expect(html).toContain("Cycle limit unavailable");
+    expect(html).toContain("Augment didn&#39;t provide a cycle limit");
     expect(html).not.toContain("120 of 0 credits");
     expect(html).not.toContain('role="progressbar"');
   });
@@ -208,7 +213,25 @@ describe("Usage dashboard renderer", () => {
       ],
     });
 
-    expect(html).toContain("42% of the tracked limit used");
+    expect(html).toContain("Reported by GitHub");
+    expect(html).toContain("42% of the reported limit used");
     expect(html).not.toContain("At this pace: 42%");
+  });
+
+  it("uses correct singular copy for a one-day projection", () => {
+    const html = renderUsageDashboard({
+      generatedAt: new Date("2026-03-18T01:56:39.000Z"),
+      hasRealData: true,
+      usage: 500,
+      limit: 2000,
+      remaining: 1500,
+      percentage: 25,
+      usageRatePerHour: 10,
+      projectedDaysRemaining: 1.2,
+      snapshots: [],
+    });
+
+    expect(html).toContain("At this pace: ~1 day left");
+    expect(html).not.toContain("~1 days");
   });
 });

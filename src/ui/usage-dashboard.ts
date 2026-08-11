@@ -75,7 +75,8 @@ function formatDaysRemaining(value: number | null | undefined): string {
     const hours = Math.max(1, Math.round(value * 24));
     return `~${hours}h`;
   }
-  return `~${Math.round(value)} days`;
+  const days = Math.max(1, Math.round(value));
+  return `~${days} ${pluralize(days, "day")}`;
 }
 
 function computeWindowUsage(snapshots: UsageSnapshot[], hours: number): number | null {
@@ -250,11 +251,13 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               (summary.monthlyMessages !== null && summary.monthlySourceKind === "api") ||
               (summary.cumulativeMessages !== null && summary.cumulativeSourceKind === "api");
             const sourceLabel = hasOfficialUsage
-              ? "Official usage"
+              ? summary.providerId === "copilot"
+                ? "Reported by GitHub"
+                : "Provider-reported usage"
               : summary.providerId === "claude" || summary.providerId === "codex"
-                ? "Local user turns"
+                ? "From local session history"
                 : summary.providerId === "copilot"
-                  ? "Local VS Code counter"
+                  ? "From VS Code on this device"
                   : "Local activity";
             if (summary.rollingFiveHourMessages !== null) {
               const count = Math.round(summary.rollingFiveHourMessages);
@@ -275,19 +278,19 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               const count = Math.round(summary.monthlyMessages);
               const label =
                 summary.providerId === "copilot" && summary.monthlySourceKind === "api"
-                  ? "official premium requests"
+                  ? "premium requests"
                   : pluralize(count, metricNoun);
               lines.push(`This month: ${formatNumber(count)} ${label}`);
             }
             if (summary.cumulativeMessages !== null) {
               const count = Math.round(summary.cumulativeMessages);
               if (summary.providerId === "copilot" && summary.cumulativeSourceKind === "api") {
-                lines.push(`${formatNumber(count)} official premium requests`);
-                lines.push("Current billing window");
+                lines.push(`${formatNumber(count)} premium requests`);
+                lines.push("Current billing period");
               } else {
                 if (summary.providerId === "copilot") {
-                  lines.push(`${formatNumber(count)} cumulative requests`);
-                  lines.push("Time window unavailable · VS Code counter");
+                  lines.push(`${formatNumber(count)} requests recorded`);
+                  lines.push("VS Code doesn't provide a time range for this count");
                 } else {
                   lines.push(`${formatNumber(count)} ${pluralize(count, metricNoun)}`);
                   lines.push("Recorded locally");
@@ -298,7 +301,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
             const targetLine =
               summary.riskPercent === null
                 ? ""
-                : `${summary.riskPercent}% of the tracked limit used`;
+                : `${summary.riskPercent}% of the reported limit used`;
             const details = lines
               .map(line => `<p class="metric-subtle">${escapeHtml(line)}</p>`)
               .join("");
@@ -316,12 +319,12 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
             `;
           })
           .join("\n")
-      : `<p class="metric-subtle">No assistant activity available yet.</p>`;
+      : `<p class="metric-subtle">No assistant activity recorded yet. Use an enabled assistant, then refresh Augmeter.</p>`;
   const unavailableDataNotice = !data.hasRealData
     ? `
       <div class="notice-card" role="status" aria-live="polite">
         <h2>Augment credits aren&#39;t connected</h2>
-        <p class="metric-subtle">Run <strong>Augmeter: Connect Augment</strong> to add balance, renewal, and credit trends.</p>
+        <p class="metric-subtle">Run <strong>Augmeter: Connect Augment</strong> to include your credit balance, renewal, and trends.</p>
       </div>
     `
     : "";
@@ -370,7 +373,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               ? `<p class="metric-subtle">Monthly allowance: ${formatNumber(data.monthlyAllowance)} credits</p>`
               : ""
           }
-          <p class="metric-subtle">Cycle usage unavailable from Auggie CLI</p>
+          <p class="metric-subtle">Auggie reports your balance but not what you&#39;ve used this cycle</p>
           ${planLine}
           ${creditFreshnessLine}
         </div>`
@@ -386,14 +389,14 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       : `<div class="metric-card">
           <h3>Current cycle</h3>
           <p class="metric-value">${formatNumber(data.usage)} credits used</p>
-          <p class="metric-subtle">Cycle limit unavailable</p>
+          <p class="metric-subtle">Augment didn&#39;t provide a cycle limit</p>
           ${planLine}
           ${creditFreshnessLine}
         </div>`;
   const augmentMarkup = data.hasRealData
     ? `<div class="section">
         <h2>Augment credits</h2>
-        <p class="metric-subtle">Official balance and cycle data from Augment.</p>
+        <p class="metric-subtle section-description">Official balance and cycle data from Augment.</p>
         <div class="grid">
           ${currentCycleCard}
           ${paceCard}
@@ -442,6 +445,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
         padding: 20px;
         background: var(--vscode-editor-background);
         color: var(--vscode-editor-foreground);
+        box-sizing: border-box;
       }
       h1, h2, h3 {
         margin: 0 0 8px 0;
@@ -454,7 +458,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       }
       .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
         gap: 12px;
       }
       .metric-card {
@@ -462,14 +466,18 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
         border-radius: 8px;
         padding: 12px;
         background: var(--vscode-editorWidget-background);
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       .notice-card {
         border: 1px solid var(--vscode-panel-border);
         border-left: 4px solid var(--vscode-progressBar-background);
         border-radius: 8px;
         padding: 12px;
-        margin-bottom: 16px;
+        margin: 16px 0;
         background: var(--vscode-editorWidget-background);
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       .metric-value {
         font-size: 20px;
@@ -481,6 +489,9 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
         margin: 6px 0 0;
         color: var(--vscode-descriptionForeground);
         font-size: 12px;
+      }
+      .section-description {
+        margin-bottom: 12px;
       }
       .metric-source {
         margin: 0;
@@ -531,17 +542,28 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
         background: var(--vscode-progressBar-background);
         width: ${ratioWidth}%;
       }
+      @media (max-width: 520px) {
+        body {
+          padding: 12px;
+        }
+        .grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .metric-value {
+          font-size: 18px;
+        }
+      }
     </style>
   </head>
   <body>
     <h1>Assistant usage</h1>
-    <p class="subtitle">Local activity and connected provider usage across your coding assistants. Source timestamps are shown on each card.</p>
+    <p class="subtitle">Local activity and provider-reported usage, separated by source.</p>
     <div class="section">
       <h2>Assistant activity</h2>
-      <p class="metric-subtle">Counts are local user turns unless a card says otherwise.</p>
+      <p class="metric-subtle">Claude Code and Codex show local user turns. Copilot shows local requests or GitHub-reported usage.</p>
       <details class="methodology">
         <summary>How these counts are calculated</summary>
-        <p>Claude Code and Codex counts come from local session logs. Tool results, metadata, and Claude Code/Codex agent/subagent sessions are excluded. Copilot local counters are cumulative and have no reliable time window. These are activity signals, not provider quotas.</p>
+        <p>Claude Code and Codex counts come from local session history. Tool results, metadata, and agent sessions are excluded. VS Code does not provide a time range for local Copilot requests. These counts show activity, not provider quotas.</p>
       </details>
       <div class="grid">${providerMarkup}</div>
     </div>

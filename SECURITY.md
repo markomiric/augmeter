@@ -11,7 +11,7 @@ The extension can use two binaries already installed on your machine:
 
 Custom binary, database, and log paths (`auggieCli.path`, `providers.copilot.stateDbPath`, `providers.claude.path`, and `providers.codex.path`) are user-controlled. Settings that a repository could otherwise override are disabled in **untrusted workspaces** through VS Code Workspace Trust. `auggieCli.path` is application-scoped, so a workspace cannot point Augmeter at an executable. All local provider and session-file reading is disabled in untrusted workspaces.
 
-An Augment session cookie is stored only in VS Code **SecretStorage**, never in settings or extension data files, and is redacted from logs. Clipboard monitoring runs only during the cookie connection flow. If you enable GitHub Copilot API tracking, the token is read from the environment variable you name and sent only to the configured GitHub API host. Augmeter does not log or persist that token.
+An Augment session cookie is stored only in VS Code **SecretStorage**, never in settings or extension data files, and is redacted from logs. Clipboard monitoring runs only during the cookie connection flow. If you enable GitHub Copilot API tracking, the token is read from the `GITHUB_TOKEN` environment variable and sent only to GitHub's API. Augmeter does not log or persist that token.
 
 ## Reporting a vulnerability
 

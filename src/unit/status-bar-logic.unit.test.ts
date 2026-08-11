@@ -63,7 +63,9 @@ describe("StatusBar Logic (unit) Test Suite", () => {
 
     expect(tooltip).toContain("**Assistant usage**");
     expect(tooltip).toContain("**Augment credits:** Not connected");
-    expect(tooltip).toContain("Run **Augmeter: Connect Augment** to add live credit data.");
+    expect(tooltip).toContain(
+      "Run **Augmeter: Connect Augment** to include your credit balance and trends."
+    );
     expect(tooltip).toContain("**Assistant activity:**");
     expect(tooltip).toContain("Claude Code: 12 messages in 5 hours · 84 in 7 days");
     expect(tooltip).toContain("Click to open assistant usage");
@@ -123,7 +125,7 @@ describe("StatusBar Logic (unit) Test Suite", () => {
       []
     );
 
-    expect(lines).toEqual(["GitHub Copilot: 42 official premium requests this month"]);
+    expect(lines).toEqual(["GitHub Copilot: 42 premium requests reported by GitHub this month"]);
   });
 
   it("treats missing activity history as an empty state", () => {
@@ -178,7 +180,7 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     );
 
     expect(lines).toEqual([
-      "GitHub Copilot: 42 official premium requests in the current billing window",
+      "GitHub Copilot: 42 premium requests reported by GitHub this billing period",
     ]);
   });
 
@@ -197,7 +199,7 @@ describe("StatusBar Logic (unit) Test Suite", () => {
 
     expect(tooltip).toContain("**Remaining:** 57,306 credits left");
     expect(tooltip).toContain("**Monthly allowance:** 40,000 credits");
-    expect(tooltip).toContain("Cycle usage unavailable from Auggie CLI");
+    expect(tooltip).toContain("Auggie reports your balance but not what you've used this cycle.");
     expect(tooltip).not.toContain("**Used:**");
     expect(tooltip).not.toContain("**Pace:**");
     expect(tooltip).not.toContain("`[");

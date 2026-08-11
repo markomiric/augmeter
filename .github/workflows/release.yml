@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -29,7 +29,7 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Run tests (non-gating)
+      - name: Run unit tests
         run: npm run test
 
       - name: Verify tag matches package.json version
@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: Package extension (.vsix)
-        run: npx @vscode/vsce package --no-dependencies
+        run: xvfb-run -a npm run test:packaged
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
@@ -70,7 +70,7 @@ jobs:
         if: env.VSCE_PAT != ''
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx @vscode/vsce publish -p "$VSCE_PAT" --packagePath $(ls *.vsix | head -n 1) --skip-duplicate
+        run: npm exec -- vsce publish -p "$VSCE_PAT" --packagePath ./*.vsix --skip-duplicate
 
       - name: Publish Summary
         if: always()
