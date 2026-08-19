@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-20
+
+### Changed
+
+- Replaced the extension and README logo with the Calibrated Signal mark and aligned the Marketplace banner color.
+
 ## [1.1.1] - 2026-08-11
 
 ### Added

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const publicImages = [
   {
     path: "images/icon.png",
-    readmeReference: false,
+    readmeReference: true,
     square: true,
   },
   {
@@ -48,7 +48,7 @@ describe("public extension images", () => {
     const readme = readFileSync(resolve("README.md"), "utf8");
 
     for (const image of publicImages.filter(image => image.readmeReference)) {
-      expect(readme).toContain(`](${image.path})`);
+      expect(readme).toContain(image.path);
     }
   });
 });

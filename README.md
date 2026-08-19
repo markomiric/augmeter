@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/icon.png" width="128" height="128" alt="Augmeter Calibrated Signal logo">
+</p>
+
 # Augmeter: Assistant Usage for VS Code
 
 [![Marketplace](https://img.shields.io/visual-studio-marketplace/v/kamacode.augmeter?color=007ACC&label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kamacode.augmeter)

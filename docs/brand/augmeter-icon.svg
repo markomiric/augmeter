@@ -1,0 +1,41 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="title description"
+>
+  <title id="title">Augmeter Calibrated Signal icon</title>
+  <desc id="description">
+    Three separate signal segments resolve through a single calibrated pointer.
+  </desc>
+
+  <rect width="512" height="512" fill="#0B1733" />
+
+  <path
+    d="M 63.47 302.54 C 66.23 263.03 81.09 225.32 106.01 194.54 L 151.09 231.04 C 133.65 252.57 123.26 278.95 121.33 306.58 Z"
+    fill="#39E6B2"
+  />
+  <circle cx="92.40" cy="304.56" r="29" fill="#39E6B2" />
+  <circle cx="128.55" cy="212.79" r="29" fill="#39E6B2" />
+  <path
+    d="M 189.99 134.64 C 227.21 121.09 267.69 119.33 305.95 129.58 L 290.94 185.60 C 264.18 178.43 235.86 179.67 209.83 189.14 Z"
+    fill="#39E6B2"
+  />
+  <circle cx="199.91" cy="161.89" r="29" fill="#39E6B2" />
+  <circle cx="298.45" cy="157.59" r="29" fill="#39E6B2" />
+  <path
+    d="M 394.83 181.93 C 422.35 210.42 440.43 246.69 446.62 285.81 L 389.34 294.88 C 385.00 267.52 372.36 242.15 353.11 222.22 Z"
+    fill="#39E6B2"
+  />
+  <circle cx="373.97" cy="202.08" r="29" fill="#39E6B2" />
+  <circle cx="417.98" cy="290.34" r="29" fill="#39E6B2" />
+
+  <path
+    d="M 238 316 L 308 195 Q 316 181 326 190 Q 336 199 325 211 L 271 329 Z"
+    fill="#F7F6EF"
+  />
+  <circle cx="256" cy="316" r="48" fill="#F7F6EF" />
+  <circle cx="256" cy="316" r="14" fill="#0B1733" />
+</svg>

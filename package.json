@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter: Assistant Usage",
   "description": "See local coding-assistant activity alongside usage reported by connected providers.",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "publisher": "kamacode",
   "author": "Marko",
   "repository": {
@@ -46,7 +46,7 @@
   ],
   "icon": "images/icon.png",
   "galleryBanner": {
-    "color": "#007ACC",
+    "color": "#0B1733",
     "theme": "dark"
   },
   "main": "./out/extension.js",
