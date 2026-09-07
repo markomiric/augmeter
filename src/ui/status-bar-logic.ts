@@ -27,12 +27,25 @@ export function formatStatusValue(
   const u = fmt(used);
   const l = fmt(limit);
   const r = fmt(remaining);
-  return limit > 0 ? `${u}/${l} · ${r} left` : u;
+  return limit > 0 ? `${u}/${l} · ${r} left` : `${u} used`;
 }
 
 export function formatStatusText(valueText: string, label: string = "Augment"): string {
   const labeledValue = label ? `${label} · ${valueText}` : valueText;
   return valueText.length <= 12 ? `$(dashboard) ${labeledValue}` : labeledValue;
+}
+
+export function getAugmentHealthMessage(health: ProviderHealthSnapshot | undefined): string | null {
+  if (!health || health.providerId !== "augment") {
+    return null;
+  }
+  if (health.status === "degraded") {
+    return health.message ?? "Couldn't refresh Augment credits. Last recorded values shown.";
+  }
+  if (health.status === "unavailable") {
+    return health.message ?? "Augment credits are unavailable. Try connecting again.";
+  }
+  return null;
 }
 
 function buildUsageBar(percentage: number, width: number = 10): string {
@@ -199,6 +212,7 @@ export function buildMarkdownTooltip(params: {
   targetProgressPercent?: number | null | undefined;
   projectedDepletionDate?: Date | null | undefined;
   providerUsageLines?: string[] | undefined;
+  augmentHealth?: ProviderHealthSnapshot | undefined;
 }): string {
   const {
     used,
@@ -219,9 +233,11 @@ export function buildMarkdownTooltip(params: {
     targetProgressPercent,
     projectedDepletionDate,
     providerUsageLines,
+    augmentHealth,
   } = params;
 
   const lines: string[] = [];
+  const augmentHealthMessage = getAugmentHealthMessage(augmentHealth);
 
   lines.push("**Assistant usage**");
 
@@ -236,9 +252,18 @@ export function buildMarkdownTooltip(params: {
     if (subscriptionType) {
       lines.push(`Plan: ${subscriptionType}`);
     }
+    if (augmentHealthMessage) {
+      lines.push(augmentHealthMessage);
+    }
   } else {
-    lines.push("**Augment credits:** Not connected");
-    lines.push("Run **Augmeter: Connect Augment** to include your credit balance and trends.");
+    if (augmentHealthMessage) {
+      lines.push(`**Augment credits:** ${augmentHealthMessage}`);
+    } else {
+      lines.push("**Augment credits:** Not connected");
+      lines.push(
+        "Run **Augmeter: Connect Augment** to include your credit balance and metrics reported by the connected source."
+      );
+    }
   }
 
   lines.push("");
@@ -312,7 +337,7 @@ export function buildMarkdownTooltip(params: {
     : clickAction === "refresh"
       ? "Click to refresh"
       : clickAction === "openWebsite"
-        ? "Click to open the Augment website"
+        ? "Click to open the Augment account"
         : "Click to open settings";
   lines.push(`${actionHint} · [Open assistant usage](command:augmeter.openUsageDashboard)`);
 
@@ -339,5 +364,8 @@ export function computeAccessibilityLabel(
   remaining: number,
   percentage: number
 ): string {
+  if (limit <= 0) {
+    return `Augment credits: ${used.toLocaleString()} used; cycle limit unavailable.`;
+  }
   return `Augment credits: ${used} of ${limit} used, ${remaining} left, ${percentage} percent.`;
 }

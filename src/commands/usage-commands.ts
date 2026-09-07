@@ -17,6 +17,17 @@ import {
   buildUsageSummaryText,
 } from "./usage-command-formatters";
 
+const DASHBOARD_COMMANDS = new Set([
+  "augmeter.manualRefresh",
+  "augmeter.openSettings",
+  "augmeter.signIn",
+  "augmeter.signOut",
+  "augmeter.copyUsageSummary",
+  "augmeter.exportUsageHistoryCsv",
+  "augmeter.exportUsageBundleJson",
+  "augmeter.runDiagnostics",
+]);
+
 export class UsageCommands {
   private dashboardPanel: vscode.WebviewPanel | null = null;
   private dashboardContentSignature: string | null = null;
@@ -42,8 +53,8 @@ export class UsageCommands {
 
     // Open settings command
     disposables.push(
-      vscode.commands.registerCommand("augmeter.openSettings", () => {
-        this.handleOpenSettings();
+      vscode.commands.registerCommand("augmeter.openSettings", async () => {
+        await this.handleOpenSettings();
       })
     );
 
@@ -93,10 +104,17 @@ export class UsageCommands {
       })
     );
 
+    disposables.push({ dispose: () => this.dashboardPanel?.dispose() });
     return disposables;
   }
 
   private async handleManualRefresh(): Promise<boolean> {
+    if (!this.configManager.isEnabled()) {
+      void UserNotificationService.showInfo(
+        "Augmeter is paused. Enable it in Settings to refresh."
+      );
+      return false;
+    }
     const result = await ErrorHandler.withErrorHandling(async () => {
       SecureLogger.info("Manual refresh requested");
 
@@ -124,7 +142,9 @@ export class UsageCommands {
         return false;
       }
 
-      UserNotificationService.showSuccess("Assistant activity and Augment credits refreshed");
+      UserNotificationService.showSuccess(
+        "Enabled assistant activity and credit sources refreshed"
+      );
       SecureLogger.info("Manual refresh completed");
       return true;
     }, "refresh assistant activity and Augment credits");
@@ -182,11 +202,44 @@ export class UsageCommands {
         "Augmeter: Assistant usage",
         vscode.ViewColumn.Active,
         {
-          enableScripts: false,
+          enableScripts: true,
+          localResourceRoots: [],
           retainContextWhenHidden: true,
         }
       );
 
+      const panel = this.dashboardPanel;
+      panel.onDidChangeViewState(event => {
+        if (event.webviewPanel.visible) {
+          void this.renderDashboard(panel).catch(error => {
+            SecureLogger.warn("Restore usage dashboard failed", error);
+          });
+        }
+      });
+      panel.webview.onDidReceiveMessage(async (message: unknown) => {
+        if (!message || typeof message !== "object" || !("command" in message)) return;
+        const command = message.command;
+        if (command === "ready") {
+          await this.renderDashboard(panel);
+          return;
+        }
+        if (typeof command !== "string" || !DASHBOARD_COMMANDS.has(command)) return;
+        let succeeded = false;
+        try {
+          succeeded = (await vscode.commands.executeCommand(command)) === true;
+        } catch (error) {
+          SecureLogger.warn("Dashboard action failed", error);
+          void vscode.window.showErrorMessage("Couldn't complete the Augmeter action. Try again.");
+        } finally {
+          if (command === "augmeter.manualRefresh" && panel === this.dashboardPanel) {
+            await panel.webview.postMessage({
+              type: "refreshComplete",
+              succeeded,
+              disabled: !this.configManager.isEnabled(),
+            });
+          }
+        }
+      });
       this.dashboardPanel.onDidDispose(() => {
         this.dashboardPanel = null;
         this.dashboardContentSignature = null;
@@ -206,9 +259,11 @@ export class UsageCommands {
   ): Promise<void> {
     const renderRevision = ++this.dashboardRenderRevision;
     const { renderUsageDashboard } = await import("../ui/usage-dashboard.js");
-    const snapshots = await this.usageTracker.getUsageSnapshots();
-    const providerSnapshots = await this.usageTracker.getProviderUsageSnapshots();
-    const providerHealth = await this.usageTracker.getProviderHealthSnapshots();
+    const [snapshots, providerSnapshots, providerHealth] = await Promise.all([
+      this.usageTracker.getUsageSnapshots(),
+      this.usageTracker.getProviderUsageSnapshots(),
+      this.usageTracker.getProviderHealthSnapshots(),
+    ]);
     const hasRealData = this.usageTracker.hasRealUsageData();
     const usage = this.usageTracker.getCurrentUsage();
     const limit = this.usageTracker.getCurrentLimit();
@@ -217,55 +272,11 @@ export class UsageCommands {
     const usageRate = await this.usageTracker.getUsageRate();
     const projectedDays = await this.usageTracker.getProjectedDaysRemaining();
     const projectedDate = await this.usageTracker.getProjectedDepletionDate();
-    const contentSignature = JSON.stringify({
-      credits: {
-        hasRealData,
-        usage,
-        limit,
-        remaining,
-        percentage,
-        usageKnown: this.usageTracker.isCurrentUsageKnown(),
-        monthlyAllowance: this.usageTracker.getMonthlyAllowance(),
-        renewalDate: this.usageTracker.getRenewalDate(),
-        subscriptionType: this.usageTracker.getSubscriptionType(),
-        usageRate,
-        projectedDays,
-        projectedDate: projectedDate?.toISOString() ?? null,
-        monthlyTarget: this.usageTracker.getMonthlyTarget(),
-        targetDelta: this.usageTracker.getTargetDelta(),
-        targetProgressPercent: this.usageTracker.getTargetProgressPercent(),
-      },
-      providerSnapshots: providerSnapshots
-        .filter(snapshot => snapshot.providerId !== "augment")
-        .map(snapshot => ({
-          providerId: snapshot.providerId,
-          windowType: snapshot.windowType,
-          metricType: snapshot.metricType,
-          sourceKind: snapshot.sourceKind,
-          source: snapshot.source,
-          used: snapshot.used,
-          limit: snapshot.limit,
-          remaining: snapshot.remaining,
-          percentUsed: snapshot.percentUsed,
-          confidence: snapshot.confidence,
-          details: snapshot.details,
-        })),
-      providerHealth: providerHealth.map(health => ({
-        providerId: health.providerId,
-        status: health.status,
-        sourceKind: health.sourceKind,
-        message: health.message,
-        errorCode: health.errorCode,
-        canCollectInCurrentWorkspace: health.canCollectInCurrentWorkspace,
-      })),
-    });
-
-    if (skipIfUnchanged && contentSignature === this.dashboardContentSignature) {
-      return;
-    }
-
-    const html = renderUsageDashboard({
+    const data = {
       generatedAt: new Date(),
+      enabled: this.configManager.isEnabled(),
+      augmentConnected:
+        this.apiClient.hasCookie() || (this.auggieCliSource?.isAuthenticatedCached() ?? false),
       hasRealData,
       usage,
       limit,
@@ -285,13 +296,21 @@ export class UsageCommands {
       snapshots,
       providerSnapshots,
       providerHealth,
-    });
+    };
+    const contentSignature = JSON.stringify({ ...data, generatedAt: undefined });
+    if (skipIfUnchanged && contentSignature === this.dashboardContentSignature) return;
+    const html = renderUsageDashboard(data);
 
     if (panel !== this.dashboardPanel || renderRevision !== this.dashboardRenderRevision) {
       return;
     }
 
-    panel.webview.html = html;
+    if (this.dashboardContentSignature === null) {
+      panel.webview.html = html;
+    } else {
+      const delivered = await panel.webview.postMessage({ type: "update", html });
+      if (!delivered) return;
+    }
     this.dashboardContentSignature = contentSignature;
   }
 
@@ -487,10 +506,13 @@ export class UsageCommands {
     }
   }
 
-  private handleOpenSettings(): void {
+  private async handleOpenSettings(): Promise<void> {
     try {
       SecureLogger.info("Opening settings");
-      void vscode.commands.executeCommand("workbench.action.openSettings", "augmeter");
+      await vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        "@ext:kamacode.augmeter"
+      );
     } catch (error) {
       SecureLogger.error("Open settings failed", error);
       vscode.window.showErrorMessage("Couldn't open Augmeter settings. Try again.");

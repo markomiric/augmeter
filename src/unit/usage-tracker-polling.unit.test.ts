@@ -129,4 +129,28 @@ describe("UsageTracker focus-aware polling", () => {
     expect(scheduledDelays.length).toBe(0);
     tracker.dispose();
   });
+  it("shares an in-flight refresh across polling and repeated manual requests", async () => {
+    const tracker = new UsageTracker(storageManager, configManager, () => 0);
+    let finish!: (value: boolean) => void;
+    const fetcher = vi.fn(
+      () =>
+        new Promise<boolean>(resolve => {
+          finish = resolve;
+        })
+    );
+    tracker.setRealDataFetcher(fetcher);
+    const poll = (
+      tracker as unknown as { fetchRealUsageData(): Promise<boolean> }
+    ).fetchRealUsageData();
+    const manual = tracker.refreshNow();
+    const repeated = tracker.refreshNow();
+    await Promise.resolve();
+    expect(fetcher).toHaveBeenCalledOnce();
+    finish(false);
+    expect(await Promise.all([poll, manual, repeated])).toEqual([false, false, false]);
+    fetcher.mockResolvedValue(true);
+    expect(await tracker.refreshNow()).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    tracker.dispose();
+  });
 });

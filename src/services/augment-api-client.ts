@@ -37,6 +37,7 @@ export class AugmentApiClient {
   private secretsManager: SecureSecretsManager | null = null;
   private secretsInit: Promise<void> | null = null;
   private inFlightRequests: Map<string, Promise<AugmentApiResponse>> = new Map();
+  private requestGeneration = 0;
   private readonly resolveApiBaseUrl: () => string;
   private readonly fetchImpl: typeof fetch;
 
@@ -91,7 +92,10 @@ export class AugmentApiClient {
 
     const stored = await this.secretsManager.getSessionCookie();
     if (!stored || !stored.trim()) {
-      this.sessionCookie = null;
+      if (this.sessionCookie !== null) {
+        this.invalidateInFlightRequests();
+        this.sessionCookie = null;
+      }
       return;
     }
 
@@ -99,6 +103,9 @@ export class AugmentApiClient {
     const sessionValue = SecureCookieUtils.extractSessionValue(normalized);
     const validation = SecureCookieUtils.validateCookieValue(sessionValue);
     if (validation.valid) {
+      if (this.sessionCookie !== normalized) {
+        this.invalidateInFlightRequests();
+      }
       this.sessionCookie = normalized;
       return;
     }
@@ -119,6 +126,9 @@ export class AugmentApiClient {
       );
     }
 
+    if (this.sessionCookie !== normalized) {
+      this.invalidateInFlightRequests();
+    }
     this.sessionCookie = normalized;
 
     // Persist securely if available
@@ -136,6 +146,7 @@ export class AugmentApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<AugmentApiResponse> {
+    const requestGeneration = this.requestGeneration;
     const method = typeof options.method === "string" ? options.method : "GET";
     const headers = this.normalizeHeaders(options.headers);
     if (this.sessionCookie) {
@@ -147,6 +158,14 @@ export class AugmentApiClient {
       requestOptions.body = options.body;
     }
     const response = await this.requestWithRetry(`${baseUrl}${endpoint}`, requestOptions);
+
+    if (requestGeneration !== this.requestGeneration) {
+      return {
+        success: false,
+        error: "Request discarded after the Augment connection changed.",
+        code: "STALE",
+      };
+    }
 
     // Handle 401: clear cookie and return UNAUTHENTICATED
     if (response.status === 401) {
@@ -263,7 +282,9 @@ export class AugmentApiClient {
     if (existing) return existing;
 
     const promise = this.makeRequestWithBase(baseUrl, endpoint, options).finally(() => {
-      this.inFlightRequests.delete(key);
+      if (this.inFlightRequests.get(key) === promise) {
+        this.inFlightRequests.delete(key);
+      }
     });
 
     this.inFlightRequests.set(key, promise);
@@ -314,10 +335,17 @@ export class AugmentApiClient {
 
     // Try tenant base first (single-flight)
     const tenantResp = await this.fetchWithSingleFlight("/credits", apiBaseUrl);
+    if (!this.hasCookie() && tenantResp.code !== "UNAUTHENTICATED") {
+      return {
+        success: false,
+        error: "Request discarded after the Augment connection changed.",
+        code: "STALE",
+      };
+    }
     if (tenantResp.success) return tenantResp;
 
     // If unauthenticated, do not attempt fallback
-    if (tenantResp.code === "UNAUTHENTICATED") {
+    if (tenantResp.code === "UNAUTHENTICATED" || tenantResp.code === "STALE") {
       return tenantResp;
     }
 
@@ -335,7 +363,15 @@ export class AugmentApiClient {
 
     // If not available on tenant (routing miss), try shared app base with the
     // same cookie (single-flight).
-    return await this.fetchWithSingleFlight("/credits", this.DEFAULT_API_BASE_URL);
+    const fallbackResp = await this.fetchWithSingleFlight("/credits", this.DEFAULT_API_BASE_URL);
+    if (!this.hasCookie() && fallbackResp.code !== "UNAUTHENTICATED") {
+      return {
+        success: false,
+        error: "Request discarded after the Augment connection changed.",
+        code: "STALE",
+      };
+    }
+    return fallbackResp;
   }
 
   async getCreditsInfo(): Promise<AugmentApiResponse> {
@@ -377,7 +413,22 @@ export class AugmentApiClient {
     return this.hasCookie();
   }
 
+  getRequestGeneration(): number {
+    return this.requestGeneration;
+  }
+
+  isRequestGenerationCurrent(generation: number): boolean {
+    return generation === this.requestGeneration;
+  }
+
+  /** Invalidate requests started before a data-source or auth transition. */
+  invalidateInFlightRequests(): void {
+    this.requestGeneration += 1;
+    this.inFlightRequests.clear();
+  }
+
   async clearSessionCookie(): Promise<void> {
+    this.invalidateInFlightRequests();
     this.sessionCookie = null;
 
     if (this.secretsManager) {
@@ -392,6 +443,7 @@ export class AugmentApiClient {
   async clearAllAuth(): Promise<void> {
     // Allow a subsequent initializeFromSecrets() to re-read after a full reset.
     this.secretsInit = null;
+    this.invalidateInFlightRequests();
     if (this.secretsManager) {
       try {
         await this.secretsManager.clearAll();

@@ -15,6 +15,11 @@ export interface ProviderCollectionOptions {
   forceRefresh?: boolean;
 }
 
+const TRANSIENT_PROVIDER_ERROR_CODES = new Set([
+  "COPILOT_QUERY_FAILED",
+  "PROVIDER_COLLECTION_FAILED",
+]);
+
 export class ProviderUsageService {
   constructor(
     private readonly storageManager: StorageManager,
@@ -27,13 +32,14 @@ export class ProviderUsageService {
     const enabledByConfig = this.configManager.isProviderTrackingEnabled();
     const enabledIds = new Set<ProviderId>(this.configManager.getEnabledProviderIds());
     const adapters = this.adapters;
-    const providerIds = adapters.map(adapter => adapter.id);
+    const providersToReplace = new Set<ProviderId>();
 
     const healthSnapshots: ProviderHealthSnapshot[] = [];
     const usageSnapshots: ProviderUsageSnapshot[] = [];
 
     for (const adapter of adapters) {
       if (!enabledByConfig || !enabledIds.has(adapter.id)) {
+        providersToReplace.add(adapter.id);
         healthSnapshots.push(
           this.createHealth(
             adapter,
@@ -46,6 +52,7 @@ export class ProviderUsageService {
       }
 
       if (!options.workspaceTrusted && adapter.supportsUntrustedWorkspaces !== true) {
+        providersToReplace.add(adapter.id);
         healthSnapshots.push(
           this.createHealth(
             adapter,
@@ -73,7 +80,10 @@ export class ProviderUsageService {
         const result = await adapter.collectUsage(collectContext);
 
         healthSnapshots.push(result.health);
-        usageSnapshots.push(...result.snapshots);
+        if (!this.isTransientFailure(result.health)) {
+          providersToReplace.add(adapter.id);
+          usageSnapshots.push(...result.snapshots);
+        }
       } catch (error) {
         SecureLogger.warn(`Provider collection failed (${adapter.id})`, error);
         healthSnapshots.push(
@@ -89,7 +99,7 @@ export class ProviderUsageService {
     }
 
     await this.storageManager.replaceProviderUsageSnapshotsForProviders(
-      providerIds,
+      Array.from(providersToReplace),
       usageSnapshots
     );
     await this.storageManager.cleanOldProviderSnapshots(
@@ -130,5 +140,12 @@ export class ProviderUsageService {
       health.errorCode = errorCode;
     }
     return health;
+  }
+
+  private isTransientFailure(health: ProviderHealthSnapshot): boolean {
+    return (
+      (health.status === "degraded" || health.status === "unavailable") &&
+      TRANSIENT_PROVIDER_ERROR_CODES.has(health.errorCode ?? "")
+    );
   }
 }

@@ -8,6 +8,7 @@ import { type ConfigManager } from "../core/config/config-manager";
 import { type AugmentApiClient } from "../services/augment-api-client";
 import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { SecureLogger } from "../core/logging/secure-logger";
+import { type ProviderHealthSnapshot } from "../core/types/provider-usage";
 import {
   buildProviderUsageLines,
   formatCompact as sbFormatCompact,
@@ -16,6 +17,7 @@ import {
   buildMarkdownTooltip,
   computeStatusColors,
   computeAccessibilityLabel,
+  getAugmentHealthMessage,
   type ClickAction,
 } from "./status-bar-logic";
 
@@ -82,8 +84,8 @@ export class StatusBarManager implements vscode.Disposable {
       case "openWebsite":
         this.statusBarItem.command = {
           command: "vscode.open",
-          arguments: [vscode.Uri.parse("https://www.augmentcode.com")],
-          title: "Open Augment website",
+          arguments: [vscode.Uri.parse("https://app.augmentcode.com/account")],
+          title: "Open Augment account",
         };
         break;
       case "refresh":
@@ -107,7 +109,6 @@ export class StatusBarManager implements vscode.Disposable {
     this.statusBarItem.text = formatStatusText(valueText);
     this.statusBarItem.accessibilityInformation = {
       label: computeAccessibilityLabel(used, limit, remaining, percentage),
-      role: "status",
     };
   }
 
@@ -146,7 +147,8 @@ export class StatusBarManager implements vscode.Disposable {
         // Silently degrade because target tracking is optional.
       }
     }
-    providerUsageLines = await this.getProviderUsageLines();
+    const providerData = await this.getProviderUsageData();
+    providerUsageLines = providerData.providerUsageLines;
 
     const tooltipContent = buildMarkdownTooltip({
       used,
@@ -167,6 +169,7 @@ export class StatusBarManager implements vscode.Disposable {
       targetProgressPercent,
       projectedDepletionDate,
       providerUsageLines,
+      augmentHealth: providerData.augmentHealth,
     });
     if (revision !== this.displayRevision) {
       return false;
@@ -177,15 +180,21 @@ export class StatusBarManager implements vscode.Disposable {
     return true;
   }
 
-  private async getProviderUsageLines(): Promise<string[]> {
+  private async getProviderUsageData(): Promise<{
+    providerUsageLines: string[];
+    augmentHealth: ProviderHealthSnapshot | undefined;
+  }> {
     try {
       const [providerSnapshots, providerHealth] = await Promise.all([
         this.usageTracker.getProviderUsageSnapshots(),
         this.usageTracker.getProviderHealthSnapshots(),
       ]);
-      return buildProviderUsageLines(providerSnapshots, providerHealth);
+      return {
+        providerUsageLines: buildProviderUsageLines(providerSnapshots, providerHealth),
+        augmentHealth: providerHealth.find(snapshot => snapshot.providerId === "augment"),
+      };
     } catch {
-      return [];
+      return { providerUsageLines: [], augmentHealth: undefined };
     }
   }
 
@@ -254,7 +263,6 @@ export class StatusBarManager implements vscode.Disposable {
       this.statusBarItem.text = formatStatusText(`${sbFormatCompact(remaining)} left`);
       this.statusBarItem.accessibilityInformation = {
         label: `Augment credits: ${remaining.toLocaleString()} remaining; Auggie did not report cycle usage`,
-        role: "status",
       };
     }
 
@@ -282,6 +290,10 @@ export class StatusBarManager implements vscode.Disposable {
       this.displayRevision++;
       this.statusBarItem.text = `$(sync~spin) Augmeter`;
       this.statusBarItem.tooltip = `Augmeter\n\nRefreshing assistant activity and Augment credits...`;
+      this.statusBarItem.command = "augmeter.manualRefresh";
+      this.statusBarItem.accessibilityInformation = {
+        label: "Augmeter: Refreshing assistant activity and Augment credits",
+      };
       this.statusBarItem.backgroundColor = undefined;
       this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
       this.statusBarItem.show();
@@ -322,7 +334,9 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    const providerUsageLines = await this.getProviderUsageLines();
+    const providerData = await this.getProviderUsageData();
+    const providerUsageLines = providerData.providerUsageLines;
+    const augmentHealthMessage = getAugmentHealthMessage(providerData.augmentHealth);
     if (revision !== this.displayRevision) {
       return;
     }
@@ -335,15 +349,16 @@ export class StatusBarManager implements vscode.Disposable {
         ["**Assistant activity:**", ...providerUsageLines.map(line => `- ${line}`)].join("\n")
       );
     }
-    lines.push("**Augment credits**", "Loading Augment credits...");
+    lines.push("**Augment credits**", augmentHealthMessage ?? "Loading Augment credits...");
     lines.push("Click to refresh · [Open assistant usage](command:augmeter.openUsageDashboard)");
     this.statusBarItem.tooltip = this.createTooltipMarkdown(lines);
     this.statusBarItem.command = "augmeter.manualRefresh";
     this.statusBarItem.backgroundColor = undefined;
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
-      label: "Augmeter: Loading Augment credits",
-      role: "status",
+      label: augmentHealthMessage
+        ? `Augmeter: ${augmentHealthMessage}`
+        : "Augmeter: Loading Augment credits",
     };
     this.statusBarItem.show();
   }
@@ -355,7 +370,7 @@ export class StatusBarManager implements vscode.Disposable {
     }
 
     // Always show icon + "Augmeter" in non-data states for clear branding
-    const providerUsageLines = await this.getProviderUsageLines();
+    const providerUsageLines = (await this.getProviderUsageData()).providerUsageLines;
     if (revision !== this.displayRevision) {
       return;
     }
@@ -377,7 +392,6 @@ export class StatusBarManager implements vscode.Disposable {
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
       label: "Augmeter: Assistant usage; Augment credits not connected",
-      role: "status",
     };
     this.statusBarItem.show();
   }

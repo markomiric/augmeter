@@ -111,4 +111,30 @@ describe("UsageTracker.dispose()", () => {
 
     expect(setTimeoutSpy).not.toHaveBeenCalled();
   });
+
+  it("does not restart polling or fetch manually after collection is paused", async () => {
+    const config = makeConfigStub(true);
+    const tracker = new UsageTracker(makeStorageStub(), config);
+    let finish!: (value: boolean) => void;
+    const fetcher = vi.fn(
+      () =>
+        new Promise<boolean>(resolve => {
+          finish = resolve;
+        })
+    );
+    tracker.setRealDataFetcher(fetcher);
+    tracker.startTracking();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetcher).toHaveBeenCalledOnce();
+    vi.mocked(config.isEnabled).mockReturnValue(false);
+    tracker.stopDataFetching();
+    finish(true);
+    await vi.advanceTimersByTimeAsync(0);
+    tracker.triggerRefreshSoon(0, "focus");
+    expect(await tracker.refreshNow()).toBe(false);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    tracker.dispose();
+  });
 });

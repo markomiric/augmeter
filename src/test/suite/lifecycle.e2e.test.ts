@@ -67,7 +67,11 @@ suite("Augment connection lifecycle E2E Test Suite", () => {
       await vscode.commands.executeCommand("augmeter.signOut");
       const disconnectedResult =
         await vscode.commands.executeCommand<boolean>("augmeter.manualRefresh");
-      assert.strictEqual(disconnectedResult, false, "A disconnected refresh should report failure");
+      assert.strictEqual(
+        disconnectedResult,
+        false,
+        "No collection should be reported when Augment is disconnected and local providers are off"
+      );
     } finally {
       await vscode.commands.executeCommand("augmeter.signOut");
       await vscode.commands.executeCommand("workbench.action.closeActiveEditor");

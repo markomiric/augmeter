@@ -6,6 +6,28 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-07
+
+### Changed
+
+- Added direct dashboard refresh, settings, connection, export, and support actions using native controls and VS Code theme tokens.
+- Improved narrow-pane layouts, readable source labels, empty/error states, keyboard focus, and high-contrast support.
+- Dashboard updates preserve focus, scroll position, and expanded details while keeping source timestamps current.
+- Copied diagnostics redact configured paths and GitHub usernames and omit raw provider messages and details.
+
+### Fixed
+
+- Failed refreshes show source health beside retained values; optional disconnected Augment data no longer makes a healthy local refresh fail.
+- Overlapping manual and background refreshes share one collection.
+- Removed unsupported weekly comparisons and clarified partial credit-history windows.
+- Kept alert thresholds ordered below or at 100% and respected an empty assistant selection.
+- Connection feedback distinguishes authentication from credit-loading failures; CLI errors and disconnect results provide visible feedback.
+- Canceling clipboard detection closes the shared connection prompt.
+- Late API and CLI responses cannot restore superseded connections; granting workspace trust triggers collection.
+- Transient local collection errors retain previous counts with source health, and paused collection cannot restart polling.
+- Removed inferred fallback quotas and unsupported depletion claims when a source reports usage without a limit.
+- Sub-day run-out notifications and copied summaries use hours; persistence failures propagate to refresh feedback.
+
 ## [1.1.2] - 2026-08-20
 
 ### Changed

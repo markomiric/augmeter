@@ -5,6 +5,7 @@ import { StatusBarManager } from "../../ui/status-bar";
 
 class FakeUsageTracker {
   private hasRealData = true;
+  private augmentHealth: Record<string, unknown> | undefined;
 
   getCurrentUsage() {
     return 50;
@@ -90,7 +91,7 @@ class FakeUsageTracker {
   }
   async getProviderHealthSnapshots() {
     const nowIso = new Date().toISOString();
-    return [
+    const health = [
       {
         providerId: "claude",
         status: "connected",
@@ -104,24 +105,58 @@ class FakeUsageTracker {
         canCollectInCurrentWorkspace: true,
       },
     ];
+    return this.augmentHealth ? [...health, this.augmentHealth] : health;
+  }
+
+  setAugmentHealth(health: Record<string, unknown>) {
+    this.augmentHealth = health;
   }
   onChanged(_cb: () => void) {
     return { dispose() {} } as vscode.Disposable;
   }
 }
 
+type StatusBarSettings = {
+  enabled: boolean;
+  showInStatusBar: boolean;
+  clickAction: ReturnType<ConfigManager["getClickAction"]>;
+};
+
+function readStatusBarSettings(config: ConfigManager): StatusBarSettings {
+  return {
+    enabled: config.isEnabled(),
+    showInStatusBar: config.shouldShowInStatusBar(),
+    clickAction: config.getClickAction(),
+  };
+}
+
+async function restoreStatusBarSettings(
+  config: ConfigManager,
+  settings: StatusBarSettings
+): Promise<void> {
+  await config.updateConfig("enabled", settings.enabled);
+  await config.updateConfig("showInStatusBar", settings.showInStatusBar);
+  await config.updateConfig("clickAction", settings.clickAction);
+}
+
 suite("StatusBar tooltip Test Suite", () => {
   let config: ConfigManager;
   let manager: StatusBarManager;
+  let initialSettings: StatusBarSettings;
 
-  teardown(() => {
+  setup(() => {
+    config = new ConfigManager();
+    initialSettings = readStatusBarSettings(config);
+  });
+
+  teardown(async () => {
     try {
       manager?.dispose();
     } catch {}
+    await restoreStatusBarSettings(config, initialSettings);
   });
 
   test("Tooltip includes usage bar, used, and remaining", async () => {
-    config = new ConfigManager();
     await config.updateConfig("enabled", true);
 
     manager = new StatusBarManager(new FakeUsageTracker() as any, config);
@@ -157,7 +192,6 @@ suite("StatusBar tooltip Test Suite", () => {
   });
 
   test("Tooltip keeps local assistant activity visible when Augment is disconnected", async () => {
-    config = new ConfigManager();
     await config.updateConfig("enabled", true);
 
     const tracker = new FakeUsageTracker();
@@ -176,9 +210,40 @@ suite("StatusBar tooltip Test Suite", () => {
       `Tooltip should retain local activity, got: ${tooltip}`
     );
   });
+
+  test("Tooltip shows stale Augment health alongside the last known balance", async () => {
+    await config.updateConfig("enabled", true);
+
+    const tracker = new FakeUsageTracker();
+    tracker.setAugmentHealth({
+      providerId: "augment",
+      status: "degraded",
+      checkedAt: new Date().toISOString(),
+      canCollectInCurrentWorkspace: true,
+      message: "Augment credits couldn't be refreshed. Showing the last known data.",
+    });
+    manager = new StatusBarManager(tracker as any, config);
+    await manager.updateDisplay();
+
+    const item = (manager as any).statusBarItem;
+    const tooltip = typeof item.tooltip === "string" ? item.tooltip : (item.tooltip?.value ?? "");
+    assert.ok(tooltip.includes("Augment credits couldn't be refreshed"));
+    assert.ok(tooltip.includes("Used:** 50 of 100 credits (50%)"));
+    assert.strictEqual(item.accessibilityInformation.role, undefined);
+  });
 });
 
 suite("StatusBar fixed presentation", () => {
+  let initialSettings: StatusBarSettings;
+
+  setup(() => {
+    initialSettings = readStatusBarSettings(new ConfigManager());
+  });
+
+  teardown(async () => {
+    await restoreStatusBarSettings(new ConfigManager(), initialSettings);
+  });
+
   test("shows the default Augment credit summary", async () => {
     const config = new ConfigManager();
     await config.updateConfig("enabled", true);
@@ -191,6 +256,45 @@ suite("StatusBar fixed presentation", () => {
       assert.strictEqual(item.text, "Augment · 50/100 · 50 left");
       const tooltip = typeof item.tooltip === "string" ? item.tooltip : (item.tooltip?.value ?? "");
       assert.ok(tooltip.includes("**Remaining:** 50"));
+      assert.strictEqual(item.accessibilityInformation.role, undefined);
+    } finally {
+      manager.dispose();
+    }
+  });
+
+  test("loading state uses a refresh command and current accessibility label", async () => {
+    const config = new ConfigManager();
+    await config.updateConfig("enabled", true);
+    await config.updateConfig("clickAction", "openWebsite");
+    const manager = new StatusBarManager(new FakeUsageTracker() as any, config);
+
+    try {
+      await manager.updateDisplay();
+      manager.showLoading();
+      const item = (manager as any).statusBarItem;
+
+      assert.strictEqual(item.command, "augmeter.manualRefresh");
+      assert.strictEqual(
+        item.accessibilityInformation.label,
+        "Augmeter: Refreshing assistant activity and Augment credits"
+      );
+    } finally {
+      manager.dispose();
+    }
+  });
+
+  test("openWebsite click action opens the Augment account", async () => {
+    const config = new ConfigManager();
+    await config.updateConfig("enabled", true);
+    await config.updateConfig("clickAction", "openWebsite");
+    const manager = new StatusBarManager(new FakeUsageTracker() as any, config);
+
+    try {
+      await manager.updateDisplay();
+      const command = (manager as any).statusBarItem.command;
+      assert.strictEqual(command.command, "vscode.open");
+      assert.strictEqual(command.arguments[0].toString(), "https://app.augmentcode.com/account");
+      assert.strictEqual(command.title, "Open Augment account");
     } finally {
       manager.dispose();
     }

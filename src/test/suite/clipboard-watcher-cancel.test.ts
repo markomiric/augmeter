@@ -19,5 +19,16 @@ suite("Clipboard Watcher (integration)", () => {
 
     const result = await promise;
     assert.strictEqual(result.cookie, null, "Watcher should resolve with null cookie on cancel");
+    assert.strictEqual(result.cancelled, true, "Watcher should report explicit cancellation");
+  });
+
+  test("reports timeout separately from explicit cancellation", async function () {
+    this.timeout(5000);
+
+    await vscode.env.clipboard.writeText("");
+    const result = await watchClipboardForCookie(0, 50);
+
+    assert.strictEqual(result.cookie, null, "Watcher should resolve without a cookie on timeout");
+    assert.strictEqual(result.cancelled, false, "Timeout should not be treated as cancellation");
   });
 });

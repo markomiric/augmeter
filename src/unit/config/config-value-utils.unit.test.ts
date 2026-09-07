@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
+import { ConfigManager } from "../../core/config/config-manager";
 import { toRoundedNumber } from "../../core/config/config-value-utils";
 
 describe("toRoundedNumber", () => {
@@ -25,5 +27,32 @@ describe("toRoundedNumber", () => {
     expect(toRoundedNumber(null, 7)).toBe(7);
     expect(toRoundedNumber({}, 7)).toBe(7);
     expect(toRoundedNumber(true, 7)).toBe(7);
+  });
+});
+
+describe("alert threshold bounds", () => {
+  it("keeps even conflicting legacy values strictly ordered and within 100 percent", () => {
+    const config = vi.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+      get: () => 99,
+    } as never);
+    try {
+      expect(new ConfigManager().getAlertThresholds()).toEqual({
+        warning: 98,
+        high: 99,
+        critical: 100,
+      });
+    } finally {
+      config.mockRestore();
+    }
+  });
+  it("honors an explicitly empty assistant selection", () => {
+    const config = vi
+      .spyOn(vscode.workspace, "getConfiguration")
+      .mockReturnValue({ get: () => [] } as never);
+    try {
+      expect(new ConfigManager().getEnabledProviderIds()).toEqual([]);
+    } finally {
+      config.mockRestore();
+    }
   });
 });

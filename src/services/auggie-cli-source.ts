@@ -206,6 +206,7 @@ export class AuggieCliSource {
   private detectedBinary: string | null | undefined;
   private inFlight: Promise<AuggieFetchResult> | null = null;
   private lastResult: { at: number; result: AuggieFetchResult } | null = null;
+  private fetchGeneration = 0;
 
   constructor(
     private readonly resolveCliPath: () => string = () => "",
@@ -214,8 +215,10 @@ export class AuggieCliSource {
 
   /** Invalidate cached detection and results (e.g. after a config change). */
   reset(): void {
+    this.fetchGeneration += 1;
     this.detectedBinary = undefined;
     this.lastResult = null;
+    this.inFlight = null;
   }
 
   isCliDetectedCached(): boolean {
@@ -224,6 +227,14 @@ export class AuggieCliSource {
 
   isAuthenticatedCached(): boolean {
     return this.lastResult?.result.status === "ok";
+  }
+
+  getFetchGeneration(): number {
+    return this.fetchGeneration;
+  }
+
+  isFetchGenerationCurrent(generation: number): boolean {
+    return generation === this.fetchGeneration;
   }
 
   async detectBinary(): Promise<string | null> {
@@ -262,15 +273,22 @@ export class AuggieCliSource {
     if (this.inFlight) {
       return this.inFlight;
     }
-    this.inFlight = this.doFetch().finally(() => {
-      this.inFlight = null;
+    const generation = this.fetchGeneration;
+    const promise = this.doFetch(generation).finally(() => {
+      if (this.inFlight === promise) {
+        this.inFlight = null;
+      }
     });
-    return this.inFlight;
+    this.inFlight = promise;
+    return promise;
   }
 
-  private async doFetch(): Promise<AuggieFetchResult> {
+  private async doFetch(generation: number): Promise<AuggieFetchResult> {
     const binary = await this.detectBinary();
     if (!binary) {
+      if (generation !== this.fetchGeneration) {
+        return this.discardedResult();
+      }
       return this.store({ status: "cli-missing" });
     }
 
@@ -287,6 +305,10 @@ export class AuggieCliSource {
         shell: useShell,
       });
 
+      if (generation !== this.fetchGeneration) {
+        return this.discardedResult();
+      }
+
       const parsed = parseAuggieAccountStatus(`${stdout}\n${stderr}`);
       if (parsed.kind === "ok") {
         return this.store({ status: "ok", data: parsed.data });
@@ -299,6 +321,9 @@ export class AuggieCliSource {
       });
       return this.store({ status: "error", error: "Unrecognized CLI output" });
     } catch (error) {
+      if (generation !== this.fetchGeneration) {
+        return this.discardedResult();
+      }
       const code = (error as NodeJS.ErrnoException)?.code;
       if (code === "ENOENT") {
         this.detectedBinary = undefined;
@@ -313,5 +338,9 @@ export class AuggieCliSource {
   private store(result: AuggieFetchResult): AuggieFetchResult {
     this.lastResult = { at: Date.now(), result };
     return result;
+  }
+
+  private discardedResult(): AuggieFetchResult {
+    return { status: "error", error: "CLI refresh discarded after the data source changed." };
   }
 }

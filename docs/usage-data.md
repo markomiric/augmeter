@@ -13,6 +13,8 @@ _Rendered from the current dashboard with illustrative values. No local history,
 - **Reported by GitHub** means GitHub supplied Copilot premium-request usage for the current billing period.
 - **Official balance and cycle data from Augment** appears only when the connected source supplies those values.
 
+Use **Refresh** to collect the latest enabled sources, **Settings** to choose sources, and **Exports and support** for occasional actions. If a refresh fails, the source status appears beside any retained values. Missing data is never treated as zero usage or an invented quota.
+
 ## What each number means
 
 | Card           | Value                                                                 | Source                                                      | Important limitations                                                                                                                                                       |
@@ -35,6 +37,10 @@ Augmeter does not infer `0 used` from a balance-only response. It also shows the
 ## Freshness
 
 Each card's **Updated** timestamp is when Augmeter last collected that source. It is not the time the dashboard webview happened to open, and it does not imply that a provider event occurred at that exact moment.
+
+Background collection can reuse local assistant results for up to five minutes. Manual **Refresh** bypasses this cache. A disconnected optional Augment account does not make a successful local refresh fail.
+
+Credit trends are changes between saved readings inside each labeled window, not guaranteed full-window totals. Partial history can cover less than the labeled period. Adjacent weekly snapshots are not compared as if they represented separate weeks.
 
 ## Status tooltip
 

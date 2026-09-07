@@ -188,6 +188,27 @@ describe("AuggieCliSource", () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("discards an in-flight result after the source is reset", async () => {
+    const binary = makeTempBinary();
+    let release!: (value: { stdout: string; stderr: string }) => void;
+    const exec: AuggieExecutor = async () =>
+      await new Promise(resolve => {
+        release = resolve;
+      });
+    const source = new AuggieCliSource(() => binary, exec);
+
+    const pending = source.fetchUsage();
+    await Promise.resolve();
+    source.reset();
+    release({ stdout: CURRENT_OUTPUT, stderr: "" });
+
+    await expect(pending).resolves.toEqual({
+      status: "error",
+      error: "CLI refresh discarded after the data source changed.",
+    });
+    expect(source.isAuthenticatedCached()).toBe(false);
+  });
+
   it("maps unauthenticated CLI output", async () => {
     const binary = makeTempBinary();
     const { exec } = makeExec(async () => ({

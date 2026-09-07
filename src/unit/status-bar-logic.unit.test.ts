@@ -8,6 +8,7 @@ import {
   computeStatusColors,
   computeAccessibilityLabel,
   formatCompact,
+  getAugmentHealthMessage,
 } from "../ui/status-bar-logic";
 
 describe("StatusBar Logic (unit) Test Suite", () => {
@@ -21,7 +22,7 @@ describe("StatusBar Logic (unit) Test Suite", () => {
   it("formats the fixed status value", () => {
     const fmt = (n: number) => `#${n}`;
     expect(formatStatusValue(1200, 2000, 800, fmt)).toBe("#1200/#2000 · #800 left");
-    expect(formatStatusValue(1200, 0, 0, fmt)).toBe("#1200");
+    expect(formatStatusValue(1200, 0, 0, fmt)).toBe("#1200 used");
   });
 
   it("adds the fixed icon only when the value is short", () => {
@@ -64,13 +65,62 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     expect(tooltip).toContain("**Assistant usage**");
     expect(tooltip).toContain("**Augment credits:** Not connected");
     expect(tooltip).toContain(
-      "Run **Augmeter: Connect Augment** to include your credit balance and trends."
+      "Run **Augmeter: Connect Augment** to include your credit balance and metrics reported by the connected source."
     );
     expect(tooltip).toContain("**Assistant activity:**");
     expect(tooltip).toContain("Claude Code: 12 messages in 5 hours · 84 in 7 days");
     expect(tooltip).toContain("Click to open assistant usage");
     expect(tooltip).not.toContain("Click to connect Augment");
     expect(tooltip).not.toContain("real usage");
+  });
+
+  it("shows stale Augment health without hiding the last known balance", () => {
+    const tooltip = buildMarkdownTooltip({
+      used: 400,
+      limit: 1000,
+      remaining: 600,
+      percentage: 40,
+      hasRealData: true,
+      clickAction: "refresh",
+      augmentHealth: {
+        providerId: "augment",
+        status: "degraded",
+        checkedAt: "2026-03-17T10:00:00.000Z",
+        canCollectInCurrentWorkspace: true,
+        message: "Augment credits couldn't be refreshed. Showing the last known data.",
+      },
+    });
+
+    expect(tooltip).toContain("Augment credits couldn't be refreshed");
+    expect(tooltip).toContain(
+      `**Used:** ${(400).toLocaleString()} of ${(1000).toLocaleString()} credits (40%)`
+    );
+    expect(tooltip).toContain(`**Remaining:** ${(600).toLocaleString()} credits left`);
+  });
+
+  it("does not surface non-Augment health in the credit status", () => {
+    expect(
+      getAugmentHealthMessage({
+        providerId: "claude",
+        status: "degraded",
+        checkedAt: "2026-03-17T10:00:00.000Z",
+        canCollectInCurrentWorkspace: true,
+        message: "Claude activity unavailable",
+      })
+    ).toBeNull();
+  });
+
+  it("labels the account action in the tooltip", () => {
+    const tooltip = buildMarkdownTooltip({
+      used: 400,
+      limit: 1000,
+      remaining: 600,
+      percentage: 40,
+      hasRealData: true,
+      clickAction: "openWebsite",
+    });
+
+    expect(tooltip).toContain("Click to open the Augment account");
   });
 
   it("buildProviderUsageLines orders providers and falls back to health status", () => {
@@ -259,6 +309,15 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     it("handles zero values", () => {
       const label = computeAccessibilityLabel(0, 0, 0, 0);
       expect(label).toContain("0");
+    });
+
+    it("does not invent a limit, remaining value, or percentage for usage-only data", () => {
+      const label = computeAccessibilityLabel(1200, 0, 0, 0);
+
+      expect(label).toBe("Augment credits: 1,200 used; cycle limit unavailable.");
+      expect(label).not.toContain("of 0");
+      expect(label).not.toContain("left");
+      expect(label).not.toContain("percent");
     });
   });
 });

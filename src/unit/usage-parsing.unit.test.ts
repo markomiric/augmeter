@@ -108,13 +108,38 @@ describe("Usage parsing (unit) Test Suite", () => {
     expect(out).toBe(null);
   });
 
-  it("Fallback to default limit when all limit fields undefined", () => {
+  it("does not turn an unrecognized response into zero credit usage", () => {
+    for (const data of [{}, { plan: "Team" }, { used: "unavailable" }, { usage: {} }]) {
+      expect(parseUsageResponsePure({ success: true, data })).toBeNull();
+    }
+  });
+
+  it("does not infer exhaustion when usage units omit the remaining balance", () => {
+    const out = parseUsageResponsePure({
+      success: true,
+      data: { usageUnitsUsedThisBillingCycle: 500 },
+    });
+    expect(out?.totalUsage).toBe(500);
+    expect(out?.usageLimit).toBeUndefined();
+  });
+
+  it("keeps usage known when all limit fields are undefined", () => {
     const resp: AugmentApiResponse = {
       success: true,
       data: { used: 500 }, // Only used field, no limit fields
     };
     const out = parseUsageResponsePure(resp)!;
     expect(out.totalUsage).toBe(500);
-    expect(out.usageLimit).toBe(1000); // Default fallback value
+    expect(out.usageLimit).toBeUndefined();
+  });
+
+  it("keeps usage known for a nested usage object without a limit", () => {
+    const resp: AugmentApiResponse = {
+      success: true,
+      data: { usage: { used: 500 } },
+    };
+    const out = parseUsageResponsePure(resp)!;
+    expect(out.totalUsage).toBe(500);
+    expect(out.usageLimit).toBeUndefined();
   });
 });

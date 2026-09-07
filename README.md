@@ -48,7 +48,7 @@ Local Claude Code, Codex, and GitHub Copilot tracking starts automatically when 
 
 ### Augment credits
 
-Run **Augmeter: Connect Augment**. Clicking the disconnected status-bar item opens Assistant Usage, where the connection step is explained.
+Open **Augmeter: Open Assistant Usage** or click the disconnected status-bar item, then choose **Connect Augment**. The same connection command remains available in the Command Palette.
 
 If Auggie CLI is installed and already connected, Augmeter reads `auggie account status`. No additional Augment sign-in is required, and Augmeter never reads CLI credentials.
 
@@ -89,6 +89,10 @@ The status bar labels Augment credit values when connected. Its tooltip and the 
 | Loading       | `Augmeter` with a spinner | Wait or click later to refresh       |
 | Connected     | Labeled Augment values    | Click to refresh, open, or configure |
 
+The dashboard provides **Refresh**, **Settings**, and **Connect Augment** actions. **Exports and support** contains CSV/JSON exports, copy actions, and disconnect. Updates preserve keyboard focus, scroll position, and expanded details. Unavailable sources keep their last recorded values with a visible status; paused collection is labeled explicitly.
+
+Local activity is cached for up to five minutes during background polling. **Refresh** bypasses this cache, and overlapping refreshes share one collection.
+
 ### Commands
 
 - **Augmeter: Refresh Assistant Activity and Augment Credits** updates every enabled source.
@@ -98,7 +102,7 @@ The status bar labels Augment credit values when connected. Its tooltip and the 
 - **Augmeter: Open Assistant Usage** opens local activity and usage reported by connected providers.
 - **Augmeter: Export Augment Credit History (CSV)** exports local Augment snapshots.
 - **Augmeter: Export All Usage Data (JSON)** exports credits, assistant activity, health states, and relevant settings.
-- **Augmeter: Copy Diagnostics** copies redacted support information.
+- **Augmeter: Copy Diagnostics** copies support information with configured paths and GitHub usernames redacted. It excludes raw provider messages and details; review usage figures before sharing.
 - **Augmeter: Open Settings** opens all Augmeter settings.
 
 ## Configuration

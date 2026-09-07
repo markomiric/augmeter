@@ -48,12 +48,10 @@ export async function collectFilesRecursive(
       continue;
     }
 
-    let entries: Array<Dirent<string> | Dirent<Buffer>>;
-    try {
-      entries = await fs.readdir(currentDir, { withFileTypes: true, encoding: "utf8" });
-    } catch {
-      continue;
-    }
+    const entries: Array<Dirent<string> | Dirent<Buffer>> = await fs.readdir(currentDir, {
+      withFileTypes: true,
+      encoding: "utf8",
+    });
 
     for (const entry of entries) {
       const entryName = typeof entry.name === "string" ? entry.name : entry.name.toString("utf8");

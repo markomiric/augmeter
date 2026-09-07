@@ -114,8 +114,13 @@ suite("ConfigManager Test Suite", () => {
 
   test("Should handle updateConfig method", async () => {
     // Test that updateConfig doesn't throw (we can't easily test actual config changes in unit tests)
-    await assert.doesNotReject(async () => {
-      await configManager.updateConfig("enabled", false);
-    }, "updateConfig should not reject");
+    const previousEnabled = configManager.isEnabled();
+    try {
+      await assert.doesNotReject(async () => {
+        await configManager.updateConfig("enabled", false);
+      }, "updateConfig should not reject");
+    } finally {
+      await configManager.updateConfig("enabled", previousEnabled);
+    }
   });
 });

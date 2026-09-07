@@ -65,6 +65,9 @@ export class UsageTracker implements vscode.Disposable {
   private hasRealData: boolean = false;
   private realDataSource: string = "simulation";
   private realDataFetcher: (() => Promise<boolean | void>) | null = null;
+  private inFlightFetch: Promise<boolean> | null = null;
+  private persistenceQueue: Promise<void> = Promise.resolve();
+  private pendingResets = 0;
   private intervals: NodeJS.Timeout[] = [];
   private pollTimeout: NodeJS.Timeout | null = null;
   private disposed: boolean = false;
@@ -128,18 +131,25 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   async resetUsage(): Promise<void> {
-    await this.storageManager.resetUsage();
-    await this.storageManager.resetAlertState();
-    const data = await this.storageManager.getUsageData();
-    this.currentUsage = data.totalUsage;
-    this.currentLimit = 0;
-    this.currentRemainingCredits = null;
-    this.currentMonthlyAllowance = null;
-    this.currentUsageKnown = false;
-    this.lastResetDate = data.lastResetDate;
-    this.hasRealData = false;
-    this.realDataSource = "no_data";
-    this.onChangedEmitter.fire();
+    this.pendingResets += 1;
+    try {
+      await this.enqueuePersistence(async () => {
+        await this.storageManager.resetUsage();
+        await this.storageManager.resetAlertState();
+        const data = await this.storageManager.getUsageData();
+        this.currentUsage = data.totalUsage;
+        this.currentLimit = 0;
+        this.currentRemainingCredits = null;
+        this.currentMonthlyAllowance = null;
+        this.currentUsageKnown = false;
+        this.lastResetDate = data.lastResetDate;
+        this.hasRealData = false;
+        this.realDataSource = "no_data";
+        this.onChangedEmitter.fire();
+      });
+    } finally {
+      this.pendingResets -= 1;
+    }
   }
 
   getCurrentUsage(): number {
@@ -284,7 +294,7 @@ export class UsageTracker implements vscode.Disposable {
    * Returns null if rate is unavailable or zero.
    */
   async getProjectedDaysRemaining(): Promise<number | null> {
-    if (!this.isCurrentUsageKnown()) return null;
+    if (!this.isCurrentUsageKnown() || this.currentLimit <= 0) return null;
 
     const remaining = this.getRemainingCredits();
     if (remaining <= 0) return 0;
@@ -301,7 +311,19 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   async updateWithRealData(realData: RealUsageData): Promise<void> {
+    const acceptedBeforeReset = this.pendingResets === 0;
+    await this.enqueuePersistence(() => {
+      this.assertRealDataUpdateCurrent(acceptedBeforeReset);
+      return this.applyRealData(realData, acceptedBeforeReset);
+    });
+  }
+
+  private async applyRealData(
+    realData: RealUsageData,
+    acceptedBeforeReset: boolean
+  ): Promise<void> {
     try {
+      this.assertRealDataUpdateCurrent(acceptedBeforeReset);
       SecureLogger.info("UsageTracker: updateWithRealData called", {
         totalUsage: realData.totalUsage,
         usageLimit: realData.usageLimit,
@@ -320,12 +342,12 @@ export class UsageTracker implements vscode.Disposable {
         this.currentUsageKnown = usageKnown;
         this.currentRemainingCredits =
           realData.remainingCredits ??
-          (usageKnown && realData.usageLimit !== undefined
-            ? Math.max(realData.usageLimit - realData.totalUsage, 0)
+          (usageKnown && this.currentLimit > 0
+            ? Math.max(this.currentLimit - realData.totalUsage, 0)
             : null);
         this.currentMonthlyAllowance =
           realData.monthlyAllowance ??
-          (usageKnown && realData.usageLimit !== undefined ? realData.usageLimit : null);
+          (usageKnown && this.currentLimit > 0 ? this.currentLimit : null);
         this.hasRealData = true;
         this.realDataSource = realData.sourceKind === "cli" ? "augment_cli" : "augment_api";
         this.lastFetchedAt = new Date();
@@ -339,6 +361,7 @@ export class UsageTracker implements vscode.Disposable {
         // A drop usually indicates a billing-cycle reset, so reset per-cycle alerts.
         if (usageKnown && realData.totalUsage < previousUsage) {
           await this.storageManager.resetAlertState();
+          this.assertRealDataUpdateCurrent(acceptedBeforeReset);
         }
 
         SecureLogger.info("UsageTracker: Augment credit flags set", {
@@ -355,6 +378,7 @@ export class UsageTracker implements vscode.Disposable {
           data.lastUpdateDate = realData.lastUpdate;
         }
         await this.storageManager.saveUsageData(data);
+        this.assertRealDataUpdateCurrent(acceptedBeforeReset);
 
         // Balance-only CLI data cannot support used/rate calculations. Clear
         // previously derived snapshots so they cannot reappear as exact trends.
@@ -368,6 +392,7 @@ export class UsageTracker implements vscode.Disposable {
         } else {
           await this.storageManager.clearSnapshots();
         }
+        this.assertRealDataUpdateCurrent(acceptedBeforeReset);
         const sourceKind = realData.sourceKind ?? "api";
         const remaining = this.getRemainingCredits();
         const providerSnapshot: ProviderUsageSnapshot = {
@@ -377,7 +402,7 @@ export class UsageTracker implements vscode.Disposable {
           metricType: "credits",
           sourceKind,
           source: sourceKind === "cli" ? "auggie_cli" : "augment_api",
-          remaining,
+          ...(this.currentRemainingCredits !== null ? { remaining } : {}),
           confidence: usageKnown ? 1 : 0.7,
           details: {
             usageKnown,
@@ -388,11 +413,10 @@ export class UsageTracker implements vscode.Disposable {
         };
         if (usageKnown) {
           providerSnapshot.used = this.currentUsage;
-          providerSnapshot.percentUsed =
-            this.currentLimit > 0 ? Math.round((this.currentUsage / this.currentLimit) * 100) : 0;
         }
         if (usageKnown && this.currentLimit > 0) {
           providerSnapshot.limit = this.currentLimit;
+          providerSnapshot.percentUsed = Math.round((this.currentUsage / this.currentLimit) * 100);
         }
         if (this.renewalDate) {
           providerSnapshot.resetAt = this.renewalDate;
@@ -407,6 +431,7 @@ export class UsageTracker implements vscode.Disposable {
           ["augment"],
           [providerSnapshot]
         );
+        this.assertRealDataUpdateCurrent(acceptedBeforeReset);
         await this.storageManager.setProviderHealth({
           providerId: "augment",
           status: "connected",
@@ -420,17 +445,20 @@ export class UsageTracker implements vscode.Disposable {
         await this.storageManager.cleanOldProviderSnapshots(
           this.configManager.getHistoryRetentionDays()
         );
+        this.assertRealDataUpdateCurrent(acceptedBeforeReset);
 
         // Check threshold notifications
         if (usageKnown && this.currentLimit > 0) {
           const percentage = Math.round((this.currentUsage / this.currentLimit) * 100);
-          void this.checkThresholdNotifications(percentage);
+          await this.checkThresholdNotifications(percentage);
         }
 
+        this.assertRealDataUpdateCurrent(acceptedBeforeReset);
         this.onChangedEmitter.fire();
       } else if (realData.dailyUsage !== undefined) {
         // Update with daily usage increment
         const data = await this.storageManager.incrementUsage(realData.dailyUsage);
+        this.assertRealDataUpdateCurrent(acceptedBeforeReset);
         this.currentUsage = data.totalUsage;
         this.currentUsageKnown = true;
         this.currentRemainingCredits = null;
@@ -449,6 +477,19 @@ export class UsageTracker implements vscode.Disposable {
       }
     } catch (error) {
       SecureLogger.warn("UsageTracker: Error updating Augment credit data", error);
+      throw error;
+    }
+  }
+
+  private enqueuePersistence(operation: () => Promise<void>): Promise<void> {
+    const queued = this.persistenceQueue.then(operation);
+    this.persistenceQueue = queued.catch(() => undefined);
+    return queued;
+  }
+
+  private assertRealDataUpdateCurrent(acceptedBeforeReset: boolean): void {
+    if (!acceptedBeforeReset || this.pendingResets > 0) {
+      throw new Error("Augment credit update discarded after a usage reset.");
     }
   }
 
@@ -490,11 +531,14 @@ export class UsageTracker implements vscode.Disposable {
       const runOutAlreadyAlerted = await this.storageManager.isRunOutAlertedForCycle(cycleId);
       if (shouldNotifyProjectedRunOut(projectedDays, runOutDays, runOutAlreadyAlerted)) {
         const projectedDaysValue = projectedDays ?? 0;
-        const days = Math.max(1, Math.round(projectedDaysValue));
-        const dayLabel = days === 1 ? "day" : "days";
+        const amount = Math.max(
+          1,
+          Math.round(projectedDaysValue < 1 ? projectedDaysValue * 24 : projectedDaysValue)
+        );
+        const unit = projectedDaysValue < 1 ? "hour" : "day";
         await this.storageManager.setRunOutAlertedForCycle(cycleId, true);
         void UserNotificationService.showWarning(
-          `At your current pace, Augment credits may run out in about ${days} ${dayLabel}.`,
+          `At your current pace, Augment credits may run out in about ${amount} ${unit}${amount === 1 ? "" : "s"}.`,
           {
             text: "Open assistant usage",
             action: async () => {
@@ -519,36 +563,30 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   async refreshNow(): Promise<boolean> {
-    try {
-      this.nextFetchSource = "manual";
-      SecureLogger.info("UsageTracker: refreshNow called", {
-        hasRealDataFetcher: !!this.realDataFetcher,
-        nextFetchSource: this.nextFetchSource,
-      });
-      if (this.realDataFetcher) {
-        return (await this.realDataFetcher()) !== false;
-      } else {
-        SecureLogger.warn("UsageTracker: No realDataFetcher available for refreshNow");
-        return false;
-      }
-    } catch (error) {
-      SecureLogger.error("UsageTracker: Error during immediate refresh", error);
-      return false;
-    }
+    this.nextFetchSource = "manual";
+    return this.fetchRealUsageData();
   }
 
   async getWeeklyUsage(): Promise<number> {
     return await this.storageManager.getWeeklyUsage();
   }
 
-  private async fetchRealUsageData(): Promise<void> {
-    try {
-      if (this.realDataFetcher) {
-        await this.realDataFetcher();
-      }
-    } catch (error) {
-      SecureLogger.error("UsageTracker: Error fetching Augment credit data", error);
-    }
+  private async fetchRealUsageData(): Promise<boolean> {
+    if (!this.configManager.isEnabled()) return false;
+    if (this.inFlightFetch) return this.inFlightFetch;
+    if (!this.realDataFetcher || this.disposed) return false;
+    const fetcher = this.realDataFetcher;
+    this.inFlightFetch = Promise.resolve()
+      .then(() => fetcher())
+      .then(result => result !== false)
+      .catch(error => {
+        SecureLogger.error("UsageTracker: Error fetching assistant usage", error);
+        return false;
+      })
+      .finally(() => {
+        this.inFlightFetch = null;
+      });
+    return this.inFlightFetch;
   }
 
   private getJitteredIntervalMs(): number {
@@ -591,16 +629,16 @@ export class UsageTracker implements vscode.Disposable {
       clearTimeout(this.pollTimeout);
       this.pollTimeout = null;
     }
-    if (this.disposed) {
+    if (this.disposed || !this.configManager.isEnabled()) {
       return;
     }
     this.nextFetchSource = source;
     this.pollTimeout = setTimeout(async () => {
-      if (this.disposed) {
+      if (this.disposed || !this.configManager.isEnabled()) {
         return;
       }
       await this.fetchRealUsageData();
-      if (this.disposed) {
+      if (this.disposed || !this.configManager.isEnabled()) {
         return;
       }
       this.scheduleNextFetch(this.getJitteredIntervalMs(), "poller");
@@ -639,9 +677,6 @@ export class UsageTracker implements vscode.Disposable {
   }
 
   stopDataFetching(): void {
-    // Do not clear the fetcher; only stop timers and reset data
-    this.clearRealDataFlag();
-
     // Clear intervals when stopping data fetching
     this.intervals.forEach(interval => clearInterval(interval));
     this.intervals = [];

@@ -9,6 +9,15 @@ import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentApiClient } from "../services/augment-api-client";
 import { type StatusBarManager } from "../ui/status-bar";
 
+const NON_FAILURE_PROVIDER_CODES = new Set([
+  "CLAUDE_PATH_MISSING",
+  "CLAUDE_NO_LOGS",
+  "CODEX_PATH_MISSING",
+  "CODEX_NO_LOGS",
+  "COPILOT_STATE_DB_MISSING",
+  "COPILOT_COUNTERS_MISSING",
+]);
+
 export class RuntimeCoordinator implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private lastFocusRefreshTs = 0;
@@ -31,6 +40,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
     this.registerConfigurationListener();
     this.registerFocusListener();
     this.registerSecretsListener();
+    this.registerWorkspaceTrustListener();
     this.startTracking();
   }
 
@@ -77,12 +87,25 @@ export class RuntimeCoordinator implements vscode.Disposable {
       return { handled: true, succeeded: false };
     }
 
+    const fetchGeneration = this.auggieCliSource.getFetchGeneration();
     const result = await this.auggieCliSource.fetchUsage();
+
+    if (!this.auggieCliSource.isFetchGenerationCurrent(fetchGeneration)) {
+      if (this.configManager.getDataSource() !== "auggie-cli") {
+        return { handled: false, succeeded: true };
+      }
+      SecureLogger.info(`Discarded stale Auggie CLI refresh (source=${source})`);
+      return { handled: true, succeeded: false };
+    }
+
+    if (!this.configManager.isEnabled()) {
+      return { handled: true, succeeded: false };
+    }
 
     if (result.status === "ok") {
       await this.usageTracker.updateWithRealData({
         totalUsage: result.data.totalUsage ?? 0,
-        usageLimit: result.data.usageLimit ?? 0,
+        usageLimit: result.data.usageLimit,
         remainingCredits: result.data.remainingCredits,
         monthlyAllowance: result.data.monthlyAllowance,
         usageKnown: result.data.usageKnown,
@@ -115,6 +138,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
 
     if (result.status === "error") {
       // Transient failure in CLI-only mode: keep last known data.
+      await this.markAugmentRefreshFailure("cli");
       SecureLogger.warn(`Auggie CLI fetch failed; keeping last data (source=${source})`);
       return { handled: true, succeeded: false };
     }
@@ -140,13 +164,25 @@ export class RuntimeCoordinator implements vscode.Disposable {
   private attachRealDataFetcher(): void {
     const realFetcher = async (): Promise<boolean> => {
       const source = this.usageTracker.getFetchSource();
+      const failureSourceKind = this.configManager.getDataSource() === "auggie-cli" ? "cli" : "api";
+      const apiGeneration = this.apiClient.getRequestGeneration();
+      const cliGeneration = this.auggieCliSource.getFetchGeneration();
       let refreshSucceeded = true;
       try {
         const cliFetch = await this.tryCliFetch(source);
+        if (!this.configManager.isEnabled()) {
+          refreshSucceeded = false;
+          SecureLogger.info(`Skipped refresh while extension is disabled (source=${source})`);
+          return refreshSucceeded;
+        }
         if (cliFetch.handled) {
           refreshSucceeded = cliFetch.succeeded;
         } else if (!this.apiClient.hasCookie()) {
-          refreshSucceeded = false;
+          // Augment is optional; a signed-out refresh can still succeed for
+          // enabled local assistant providers.
+          refreshSucceeded =
+            this.configManager.isProviderTrackingEnabled() &&
+            this.configManager.getEnabledProviderIds().length > 0;
           this.usageTracker.clearRealDataFlag();
           await this.storageManager.setProviderHealth({
             providerId: "augment",
@@ -161,8 +197,12 @@ export class RuntimeCoordinator implements vscode.Disposable {
           SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
         } else {
           SecureLogger.info(`Fetching Augment credit data (source=${source})`);
+          const requestGeneration = this.apiClient.getRequestGeneration();
           const response = await this.apiClient.getUsageData();
-          if (response.success) {
+          if (!this.apiClient.isRequestGenerationCurrent(requestGeneration)) {
+            refreshSucceeded = false;
+            SecureLogger.info(`Discarded stale Augment refresh (source=${source})`);
+          } else if (response.success) {
             const responseData =
               typeof response.data === "object" && response.data !== null ? response.data : null;
             SecureLogger.info(`API response received (source=${source})`, {
@@ -170,7 +210,13 @@ export class RuntimeCoordinator implements vscode.Disposable {
               dataKeys: responseData ? Object.keys(responseData) : [],
             });
             const parsed = await this.apiClient.parseUsageResponse(response);
-            if (parsed) {
+            if (
+              !this.configManager.isEnabled() ||
+              !this.apiClient.isRequestGenerationCurrent(requestGeneration)
+            ) {
+              refreshSucceeded = false;
+              SecureLogger.info(`Discarded stale Augment refresh (source=${source})`);
+            } else if (parsed) {
               SecureLogger.info(`Parsed usage data (source=${source})`, {
                 totalUsage: parsed.totalUsage,
                 usageLimit: parsed.usageLimit,
@@ -179,7 +225,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
               });
               await this.usageTracker.updateWithRealData({
                 totalUsage: parsed.totalUsage ?? 0,
-                usageLimit: parsed.usageLimit ?? 0,
+                usageLimit: parsed.usageLimit,
                 remainingCredits: parsed.remainingCredits,
                 monthlyAllowance: parsed.monthlyAllowance,
                 usageKnown: parsed.usageKnown,
@@ -193,6 +239,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
               SecureLogger.info(`Augment credit data updated successfully (source=${source})`);
             } else {
               refreshSucceeded = false;
+              await this.markAugmentRefreshFailure("api");
               SecureLogger.warn(`Failed to parse Augment credit response (source=${source})`);
             }
           } else if (response.code === "UNAUTHENTICATED") {
@@ -210,6 +257,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
             SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
           } else {
             refreshSucceeded = false;
+            await this.markAugmentRefreshFailure("api");
             SecureLogger.warn(
               `Failed to fetch Augment credit data (source=${source})`,
               response.error
@@ -218,15 +266,31 @@ export class RuntimeCoordinator implements vscode.Disposable {
         }
       } catch (error) {
         refreshSucceeded = false;
+        if (
+          this.configManager.isEnabled() &&
+          this.apiClient.isRequestGenerationCurrent(apiGeneration) &&
+          this.auggieCliSource.isFetchGenerationCurrent(cliGeneration)
+        ) {
+          await this.markAugmentRefreshFailure(failureSourceKind);
+        }
         ErrorHandler.handleSilently(error, `Augment credit fetch (source=${source})`);
       } finally {
         try {
-          await this.providerUsageService.collectUsage({
-            now: new Date(),
-            workspaceTrusted: vscode.workspace.isTrusted,
-            source,
-            forceRefresh: source !== "poller",
-          });
+          if (!this.configManager.isEnabled()) {
+            SecureLogger.info(
+              `Skipped provider collection while extension is disabled (source=${source})`
+            );
+          } else {
+            await this.providerUsageService.collectUsage({
+              now: new Date(),
+              workspaceTrusted: vscode.workspace.isTrusted,
+              source,
+              forceRefresh: source !== "poller",
+            });
+            if (await this.hasEnabledProviderRefreshFailure()) {
+              refreshSucceeded = false;
+            }
+          }
         } catch (providerError) {
           refreshSucceeded = false;
           SecureLogger.warn(`Provider collection failed (source=${source})`, providerError);
@@ -239,6 +303,38 @@ export class RuntimeCoordinator implements vscode.Disposable {
 
     this.realDataFetcher = realFetcher;
     this.usageTracker.setRealDataFetcher(realFetcher);
+  }
+
+  private async markAugmentRefreshFailure(sourceKind: "api" | "cli"): Promise<void> {
+    try {
+      await this.storageManager.setProviderHealth({
+        providerId: "augment",
+        status: "degraded",
+        checkedAt: new Date().toISOString(),
+        canCollectInCurrentWorkspace: true,
+        sourceKind,
+        message: "Augment credits couldn't be refreshed. Showing the last known data.",
+        errorCode: "AUGMENT_REFRESH_FAILED",
+      });
+    } catch (error) {
+      SecureLogger.warn("Failed to record Augment refresh health", error);
+    }
+  }
+
+  private async hasEnabledProviderRefreshFailure(): Promise<boolean> {
+    if (!this.configManager.isProviderTrackingEnabled()) {
+      return false;
+    }
+
+    const enabledIds = new Set<string>(this.configManager.getEnabledProviderIds());
+    const healthSnapshots = await this.storageManager.getAllProviderHealth();
+    return healthSnapshots.some(
+      health =>
+        enabledIds.has(health.providerId) &&
+        health.canCollectInCurrentWorkspace &&
+        (health.status === "degraded" || health.status === "unavailable") &&
+        !NON_FAILURE_PROVIDER_CODES.has(health.errorCode ?? "")
+    );
   }
 
   private registerConfigurationListener(): void {
@@ -266,9 +362,12 @@ export class RuntimeCoordinator implements vscode.Disposable {
         }
 
         if (
+          event.affectsConfiguration("augmeter.enabled") ||
           event.affectsConfiguration("augmeter.dataSource") ||
+          event.affectsConfiguration("augmeter.apiBaseUrl") ||
           event.affectsConfiguration("augmeter.auggieCli.path")
         ) {
+          this.apiClient.invalidateInFlightRequests();
           this.auggieCliSource.reset();
         }
 
@@ -281,11 +380,13 @@ export class RuntimeCoordinator implements vscode.Disposable {
           event.affectsConfiguration("augmeter.history.retentionDays") ||
           event.affectsConfiguration("augmeter.providers") ||
           event.affectsConfiguration("augmeter.dataSource") ||
+          event.affectsConfiguration("augmeter.apiBaseUrl") ||
           event.affectsConfiguration("augmeter.auggieCli.path")
         ) {
           this.usageTracker.triggerRefreshSoon(0, "config-change");
         }
 
+        this.usageTracker.notifyChanged();
         void this.statusBarManager.updateDisplay();
       } catch (error) {
         SecureLogger.warn("Failed to apply configuration change", error);
@@ -353,6 +454,19 @@ export class RuntimeCoordinator implements vscode.Disposable {
     this.disposables.push(disposable);
   }
 
+  private registerWorkspaceTrustListener(): void {
+    const disposable = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      try {
+        this.usageTracker.triggerRefreshSoon(0, "trust-granted");
+        SecureLogger.info("Triggered workspace-trust refresh");
+      } catch (error) {
+        SecureLogger.warn("Failed to trigger workspace-trust refresh", error);
+      }
+    });
+
+    this.disposables.push(disposable);
+  }
+
   private startTracking(): void {
     try {
       if (!this.configManager.isEnabled()) {
@@ -368,6 +482,8 @@ export class RuntimeCoordinator implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.apiClient.invalidateInFlightRequests();
+    this.auggieCliSource.reset();
     this.disposables.forEach(disposable => disposable.dispose());
   }
 }

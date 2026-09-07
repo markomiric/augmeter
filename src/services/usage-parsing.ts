@@ -12,10 +12,11 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
   const usageUnitsConsumed =
     data.usageUnitsConsumedThisBillingCycle ?? data.usageUnitsUsedThisBillingCycle;
   if (usageUnitsConsumed !== undefined) {
-    const available = data.usageUnitsAvailable ?? data.usageUnitsRemaining ?? 0;
+    const available = data.usageUnitsAvailable ?? data.usageUnitsRemaining;
     return {
       totalUsage: toNumber(usageUnitsConsumed),
-      usageLimit: toNumber(available) + toNumber(usageUnitsConsumed),
+      usageLimit:
+        available === undefined ? undefined : toNumber(available) + toNumber(usageUnitsConsumed),
       dailyUsage: toNumber(usageUnitsConsumed),
       monthlyUsage: toNumber(usageUnitsConsumed),
       lastUpdate: new Date().toISOString(),
@@ -73,40 +74,48 @@ export function parseUsageResponsePure(response: AugmentApiResponse): AugmentUsa
 
   // 4) Generic nested usage object variants
   const usageObj = asRecord(data.usage) ?? asRecord(data.Usage);
-  if (
-    usageObj &&
-    usageObj.used !== undefined &&
-    (usageObj.limit !== undefined || usageObj.total !== undefined)
-  ) {
-    return {
+  if (usageObj && usageObj.used !== undefined) {
+    const result: AugmentUsageData = {
       totalUsage: toNumber(usageObj.used),
-      usageLimit: toNumber(usageObj.limit ?? usageObj.total),
       dailyUsage: maybeNumber(usageObj.dailyUsage),
       monthlyUsage: maybeNumber(usageObj.monthlyUsage),
       lastUpdate: asString(usageObj.updatedAt) || new Date().toISOString(),
       subscriptionType: firstString(data.plan, data.tier, data.subscriptionType),
       renewalDate: firstString(data.renewalDate, data.nextBilling),
     };
+    const limit = usageObj.limit ?? usageObj.total;
+    if (limit !== undefined) {
+      result.usageLimit = toNumber(limit);
+    }
+    return result;
   }
 
   // 5) Fallback: infer from common root field names
-  const used = data.used ?? data.totalUsage ?? data.usage ?? data.count ?? 0;
+  const used = data.used ?? data.totalUsage ?? data.usage ?? data.count;
+  if (
+    (typeof used !== "number" && typeof used !== "string") ||
+    (typeof used === "string" && used.trim() === "") ||
+    !Number.isFinite(Number(used))
+  )
+    return null;
   const limit =
     data.limit ??
     data.quota ??
     data.maxUsage ??
-    (data.available !== undefined ? toNumber(used) + toNumber(data.available) : undefined) ??
-    1000;
+    (data.available !== undefined ? toNumber(used) + toNumber(data.available) : undefined);
 
-  return {
+  const result: AugmentUsageData = {
     totalUsage: Number(used) || 0,
-    usageLimit: Number(limit) || 0,
     dailyUsage: maybeNumber(data.dailyUsage ?? data.today),
     monthlyUsage: maybeNumber(data.monthlyUsage ?? data.thisMonth),
     lastUpdate: firstString(data.lastUpdate, data.updatedAt) || new Date().toISOString(),
     subscriptionType: firstString(data.plan, data.tier, data.subscriptionType),
     renewalDate: firstString(data.renewalDate, data.nextBilling),
   };
+  if (limit !== undefined) {
+    result.usageLimit = Number(limit) || 0;
+  }
+  return result;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

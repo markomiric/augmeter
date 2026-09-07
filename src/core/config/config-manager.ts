@@ -97,7 +97,7 @@ export class ConfigManager {
   getAlertThresholds(): AlertThresholdConfig {
     const warning = Math.max(
       50,
-      Math.min(99, toRoundedNumber(this.config.get<number>("alerts.warningPercent", 75), 75))
+      Math.min(98, toRoundedNumber(this.config.get<number>("alerts.warningPercent", 75), 75))
     );
     const high = Math.max(
       warning + 1,
@@ -151,7 +151,7 @@ export class ConfigManager {
     ).filter((value): value is KnownProviderId =>
       ["augment", "claude", "codex", "copilot"].includes(value)
     );
-    return values.length > 0 ? values : defaults;
+    return raw.length === 0 ? [] : values.length > 0 ? values : defaults;
   }
 
   getClaudeProjectsPath(): string {

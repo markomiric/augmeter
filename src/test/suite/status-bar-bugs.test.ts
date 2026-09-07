@@ -103,14 +103,28 @@ class MockApiClient {
   }
 }
 
+type StatusBarSettings = {
+  enabled: boolean;
+  showInStatusBar: boolean;
+  clickAction: ReturnType<ConfigManager["getClickAction"]>;
+};
+
 suite("Status Bar Bugs Test Suite", () => {
   let config: ConfigManager;
   let manager: StatusBarManager;
   let mockUsageTracker: MockUsageTracker;
   let mockApiClient: MockApiClient;
+  let initialSettings: StatusBarSettings;
 
-  setup(() => {
+  setup(async () => {
     config = new ConfigManager();
+    initialSettings = {
+      enabled: config.isEnabled(),
+      showInStatusBar: config.shouldShowInStatusBar(),
+      clickAction: config.getClickAction(),
+    };
+    await config.updateConfig("enabled", true);
+    await config.updateConfig("showInStatusBar", true);
     mockUsageTracker = new MockUsageTracker();
     mockApiClient = new MockApiClient();
   });
@@ -119,15 +133,12 @@ suite("Status Bar Bugs Test Suite", () => {
     try {
       manager?.dispose();
     } catch {}
-    try {
-      await config.updateConfig("showInStatusBar", true);
-    } catch {}
+    await config.updateConfig("enabled", initialSettings.enabled);
+    await config.updateConfig("showInStatusBar", initialSettings.showInStatusBar);
+    await config.updateConfig("clickAction", initialSettings.clickAction);
   });
 
   test("Sign out state always shows icon and Augmeter branding", async () => {
-    // Set density to detailed
-    await config.updateConfig("showInStatusBar", true);
-
     manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // Simulate signed out state (no auth, no real data)
@@ -147,9 +158,6 @@ suite("Status Bar Bugs Test Suite", () => {
   });
 
   test("Sign out state always shows the dashboard icon", async () => {
-    // Set density to compact — icon still shown in non-data states
-    await config.updateConfig("showInStatusBar", true);
-
     manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // Simulate signed out state
@@ -167,7 +175,6 @@ suite("Status Bar Bugs Test Suite", () => {
   });
 
   test("Connected state transitions to sign out state after sign out", async () => {
-    await config.updateConfig("showInStatusBar", true);
     manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // Start in connected state (authenticated but no real data)
@@ -204,7 +211,6 @@ suite("Status Bar Bugs Test Suite", () => {
   });
 
   test("Click command is set correctly for each state", async () => {
-    await config.updateConfig("showInStatusBar", true);
     manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
 
     // The disconnected state remains useful for local assistant activity.
@@ -243,7 +249,6 @@ suite("Status Bar Bugs Test Suite", () => {
   });
 
   test("A slow disconnected render cannot overwrite a newer connected state", async () => {
-    await config.updateConfig("showInStatusBar", true);
     manager = new StatusBarManager(mockUsageTracker as any, config, mockApiClient as any);
     await manager.updateDisplay();
     await new Promise<void>(resolve => setImmediate(resolve));

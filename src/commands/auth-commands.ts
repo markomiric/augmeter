@@ -12,6 +12,7 @@ import { type ConfigManager } from "../core/config/config-manager";
 import { type StorageManager } from "../core/storage/storage-manager";
 import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentApiClient } from "../services/augment-api-client";
+import { type ProviderHealthSnapshot } from "../core/types/provider-usage";
 
 export class AuthCommands {
   private signInInProgress = false;
@@ -66,18 +67,72 @@ export class AuthCommands {
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
       progress.report({ message: "Loading Augment credits..." });
       this.statusBarManager.showLoading();
-      await this.usageTracker.refreshNow();
+      const refreshSucceeded = await this.usageTracker.refreshNow();
       await this.statusBarManager.updateDisplay();
-      UserNotificationService.showSuccess("Augment connected");
+      await this.showSessionResult("Augment connected", refreshSucceeded);
     });
   }
 
   private async finalizeAuthenticatedSession(successMessage = "Augment connected"): Promise<void> {
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
-    await this.usageTracker.refreshNow();
+    const refreshSucceeded = await this.usageTracker.refreshNow();
     await this.statusBarManager.updateDisplay();
-    UserNotificationService.showSuccess(successMessage);
+    await this.showSessionResult(successMessage, refreshSucceeded);
+  }
+
+  private async showSessionResult(
+    successMessage: string,
+    refreshSucceeded: boolean
+  ): Promise<void> {
+    if (refreshSucceeded) {
+      UserNotificationService.showSuccess(successMessage);
+      return;
+    }
+
+    let healthSnapshots: ProviderHealthSnapshot[] = [];
+    try {
+      healthSnapshots = await this.usageTracker.getProviderHealthSnapshots();
+    } catch {
+      // Keep the authenticated session result useful even if health is unavailable.
+    }
+
+    const augmentHealth = healthSnapshots.find(snapshot => snapshot.providerId === "augment");
+    if (augmentHealth?.status === "degraded" || augmentHealth?.status === "unavailable") {
+      void UserNotificationService.showWarning(
+        `${successMessage}, but Augment credits couldn't be refreshed. Try again.`,
+        {
+          text: "Retry",
+          action: async () => {
+            await vscode.commands.executeCommand("augmeter.manualRefresh");
+          },
+        }
+      );
+      return;
+    }
+
+    const activityRefreshFailed = healthSnapshots.some(
+      snapshot =>
+        snapshot.providerId !== "augment" &&
+        snapshot.canCollectInCurrentWorkspace &&
+        (snapshot.status === "degraded" || snapshot.status === "unavailable")
+    );
+    if (activityRefreshFailed) {
+      UserNotificationService.showSuccess(
+        `${successMessage}; some assistant activity couldn't be refreshed`
+      );
+      return;
+    }
+
+    void UserNotificationService.showWarning(
+      `${successMessage}, but the latest data couldn't be loaded. Try again.`,
+      {
+        text: "Retry",
+        action: async () => {
+          await vscode.commands.executeCommand("augmeter.manualRefresh");
+        },
+      }
+    );
   }
 
   /**
@@ -144,8 +199,20 @@ export class AuthCommands {
       return true;
     }
 
-    // Transient CLI error: fall back to the cookie flow in auto mode,
-    // but stop here when the CLI is the only allowed source.
+    if (result.status === "error" && mode === "auggie-cli") {
+      void UserNotificationService.showWarning(
+        "Augmeter couldn't read Auggie CLI credits. Check the CLI and try again.",
+        {
+          text: "Retry",
+          action: async () => {
+            await vscode.commands.executeCommand("augmeter.signIn");
+          },
+        }
+      );
+      return true;
+    }
+
+    // Transient CLI error: fall back to the cookie flow in auto mode.
     return mode === "auggie-cli";
   }
 
@@ -296,6 +363,9 @@ export class AuthCommands {
           if (cookie) {
             // Cancel the input prompt and resolve with cookie
             resolveOnce(cookie);
+          } else if (result.cancelled) {
+            // An explicit cancel on the clipboard progress should close the input prompt too.
+            resolveOnce(null);
           }
         })
         .catch(() => {
@@ -443,10 +513,12 @@ export class AuthCommands {
 
       // Ensure status bar updates after all state is cleared
       await this.statusBarManager.updateDisplay();
-      // No success popup - status bar shows signed out state
+      if (!wasCliAuthenticated) {
+        UserNotificationService.showSuccess("Augment disconnected");
+      }
     } catch (error) {
       SecureLogger.error("Disconnect Augment failed", error);
-      // No error popup - fail silently
+      void UserNotificationService.showError("Couldn't disconnect Augment completely. Try again.");
     }
   }
 }

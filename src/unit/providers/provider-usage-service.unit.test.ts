@@ -134,4 +134,94 @@ describe("ProviderUsageService", () => {
     expect(await storage.getProviderUsageSnapshots("claude")).toHaveLength(0);
     expect((await storage.getProviderHealth("claude"))?.status).toBe("disabled");
   });
+
+  it("preserves cached snapshots when an adapter throws transiently", async () => {
+    const storage = new StorageManager(createMockContext());
+    await storage.saveProviderUsageSnapshot({
+      providerId: "claude",
+      timestamp: new Date("2026-02-16T11:00:00.000Z").toISOString(),
+      windowType: "weekly_7d",
+      metricType: "messages",
+      sourceKind: "file",
+      used: 99,
+    });
+
+    const config = new ConfigManager();
+    vi.spyOn(config, "isProviderTrackingEnabled").mockReturnValue(true);
+    vi.spyOn(config, "getEnabledProviderIds").mockReturnValue(["claude"]);
+    vi.spyOn(config, "getHistoryRetentionDays").mockReturnValue(35);
+
+    const service = new ProviderUsageService(storage, config, [
+      {
+        id: "claude",
+        displayName: "Claude Code",
+        collectUsage: async () => {
+          throw new Error("fixture read failure");
+        },
+      },
+    ]);
+
+    await service.collectUsage({
+      workspaceTrusted: true,
+      now: new Date("2026-02-16T12:00:00.000Z"),
+      forceRefresh: true,
+      source: "unit-test",
+    });
+
+    expect(await storage.getProviderUsageSnapshots("claude")).toEqual([
+      expect.objectContaining({ used: 99 }),
+    ]);
+    expect(await storage.getProviderHealth("claude")).toEqual(
+      expect.objectContaining({
+        status: "degraded",
+        errorCode: "PROVIDER_COLLECTION_FAILED",
+      })
+    );
+  });
+
+  it("preserves cached snapshots for a returned transient adapter health", async () => {
+    const storage = new StorageManager(createMockContext());
+    await storage.saveProviderUsageSnapshot({
+      providerId: "copilot",
+      timestamp: new Date("2026-02-16T11:00:00.000Z").toISOString(),
+      windowType: "custom",
+      metricType: "messages",
+      sourceKind: "file",
+      used: 42,
+    });
+
+    const config = new ConfigManager();
+    vi.spyOn(config, "isProviderTrackingEnabled").mockReturnValue(true);
+    vi.spyOn(config, "getEnabledProviderIds").mockReturnValue(["copilot"]);
+    vi.spyOn(config, "getHistoryRetentionDays").mockReturnValue(35);
+
+    const service = new ProviderUsageService(storage, config, [
+      {
+        id: "copilot",
+        displayName: "GitHub Copilot",
+        collectUsage: async () => ({
+          snapshots: [],
+          health: {
+            providerId: "copilot",
+            status: "degraded",
+            checkedAt: new Date("2026-02-16T12:00:00.000Z").toISOString(),
+            canCollectInCurrentWorkspace: true,
+            sourceKind: "file",
+            errorCode: "COPILOT_QUERY_FAILED",
+          },
+        }),
+      },
+    ]);
+
+    await service.collectUsage({
+      workspaceTrusted: true,
+      now: new Date("2026-02-16T12:00:00.000Z"),
+      forceRefresh: true,
+      source: "unit-test",
+    });
+
+    expect(await storage.getProviderUsageSnapshots("copilot")).toEqual([
+      expect.objectContaining({ used: 42 }),
+    ]);
+  });
 });

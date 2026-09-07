@@ -1,9 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as vscode from "vscode";
 import { AuthCommands } from "../commands/auth-commands";
 
 describe("Smart Sign In (unit)", () => {
-  function makeMocks(options?: { quickWatchMs?: number; websiteWatchMs?: number }) {
+  function makeMocks(options?: {
+    quickWatchMs?: number;
+    websiteWatchMs?: number;
+    refreshSucceeded?: boolean;
+    providerHealth?: Array<Record<string, unknown>>;
+    dataSource?: "cookie" | "auto" | "auggie-cli";
+    cliBinary?: string | null;
+    cliResult?: Record<string, unknown>;
+  }) {
     const calls: any = {
       setSessionCookie: 0,
       testConnection: 0,
@@ -29,7 +37,9 @@ describe("Smart Sign In (unit)", () => {
     const usageTracker = {
       refreshNow: async () => {
         calls.refreshNow++;
+        return options?.refreshSucceeded ?? true;
       },
+      getProviderHealthSnapshots: async () => options?.providerHealth ?? [],
     } as any;
 
     const statusBarManager = {
@@ -42,12 +52,12 @@ describe("Smart Sign In (unit)", () => {
     const configManager = {
       getSmartSignInQuickWatchMs: () => options?.quickWatchMs ?? 0,
       getSmartSignInWebsiteWatchMs: () => options?.websiteWatchMs ?? 500,
-      getDataSource: () => "cookie",
+      getDataSource: () => options?.dataSource ?? "cookie",
     } as any;
 
     const auggieCliSource = {
-      detectBinary: async () => null,
-      fetchUsage: async () => ({ status: "cli-missing" }),
+      detectBinary: async () => options?.cliBinary ?? null,
+      fetchUsage: async () => options?.cliResult ?? { status: "cli-missing" },
       isAuthenticatedCached: () => false,
       reset: () => {},
     } as any;
@@ -137,5 +147,88 @@ describe("Smart Sign In (unit)", () => {
     expect(calls.testConnection).toBeGreaterThanOrEqual(2);
 
     disposables.forEach((d: any) => d.dispose?.());
+  }, 5000);
+
+  it("does not claim credits loaded when the authenticated refresh fails", async () => {
+    vi.clearAllMocks();
+    const { disposables } = makeMocks({
+      quickWatchMs: 200,
+      refreshSucceeded: false,
+      providerHealth: [
+        {
+          providerId: "augment",
+          status: "degraded",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+          message: "Augment credits couldn't be refreshed. Showing the last known data.",
+        },
+      ],
+    });
+    const token = "D".repeat(64);
+    await vscode.env.clipboard.writeText(token);
+
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      "Augment connected, but Augment credits couldn't be refreshed. Try again.",
+      "Retry"
+    );
+    expect(vscode.window.setStatusBarMessage).not.toHaveBeenCalledWith(
+      "✅ Augment connected",
+      expect.any(Number)
+    );
+
+    disposables.forEach(d => d.dispose?.());
+  }, 5000);
+
+  it("keeps a healthy credit result separate from unrelated activity failure", async () => {
+    vi.clearAllMocks();
+    const { disposables } = makeMocks({
+      quickWatchMs: 200,
+      refreshSucceeded: false,
+      providerHealth: [
+        {
+          providerId: "augment",
+          status: "connected",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+        },
+        {
+          providerId: "claude",
+          status: "degraded",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+        },
+      ],
+    });
+    await vscode.env.clipboard.writeText("E".repeat(64));
+
+    await vscode.commands.executeCommand("augmeter.smartSignIn");
+
+    expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(
+      "✅ Augment connected; some assistant activity couldn't be refreshed",
+      expect.any(Number)
+    );
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+
+    disposables.forEach(d => d.dispose?.());
+  }, 5000);
+
+  it("shows a retry action for a CLI-only read error", async () => {
+    vi.clearAllMocks();
+    const { disposables } = makeMocks({
+      dataSource: "auggie-cli",
+      cliBinary: "auggie",
+      cliResult: { status: "error", error: "private CLI detail" },
+    });
+
+    await vscode.commands.executeCommand("augmeter.signIn");
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      "Augmeter couldn't read Auggie CLI credits. Check the CLI and try again.",
+      "Retry"
+    );
+
+    disposables.forEach(d => d.dispose?.());
   }, 5000);
 });

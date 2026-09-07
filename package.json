@@ -2,7 +2,7 @@
   "name": "augmeter",
   "displayName": "Augmeter: Assistant Usage",
   "description": "See local coding-assistant activity alongside usage reported by connected providers.",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "publisher": "kamacode",
   "author": "Marko",
   "repository": {
@@ -240,8 +240,8 @@
             "type": "number",
             "default": 75,
             "minimum": 50,
-            "maximum": 99,
-            "description": "Notify when Augment credit use reaches this warning threshold."
+            "maximum": 98,
+            "description": "Notify when Augment credit use reaches this warning threshold. High and critical thresholds are kept above it, up to 100%."
           },
           "augmeter.alerts.highPercent": {
             "type": "number",
@@ -306,7 +306,7 @@
             ],
             "enumDescriptions": [
               "Refresh assistant activity and Augment credits",
-              "Open the Augment website",
+              "Open the Augment account",
               "Open Augmeter settings"
             ],
             "default": "refresh",
@@ -330,7 +330,7 @@
           "augmeter.refreshInterval": {
             "type": "number",
             "default": 60,
-            "description": "Refresh assistant activity and Augment credits at this interval while VS Code is focused (1-300 seconds).",
+            "description": "Check sources at this interval while VS Code is focused (1-300 seconds). Local activity may be cached for up to five minutes; use Refresh to collect it immediately.",
             "minimum": 1,
             "maximum": 300
           },

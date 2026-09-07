@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["src/test/suite/**/*.test.ts", ".vscode-test.mjs"],
+  "entry": ["src/test/**/*.test.ts", ".vscode-test.mjs"],
   "project": ["src/**/*.ts"],
   "ignore": [".claude/**"],
   // @vscode/test-cli imports @vscode/test-electron at runtime without
@@ -9,6 +9,6 @@
   // Exported types describe public function signatures and feed TypeDoc.
   "includeEntryExports": false,
   "rules": {
-    "types": "off"
-  }
+    "types": "off",
+  },
 }

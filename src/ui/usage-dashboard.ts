@@ -14,6 +14,8 @@ import {
 export interface UsageDashboardData {
   generatedAt: Date;
   hasRealData: boolean;
+  enabled?: boolean;
+  augmentConnected?: boolean;
   usage: number;
   limit: number;
   remaining: number;
@@ -79,10 +81,9 @@ function formatDaysRemaining(value: number | null | undefined): string {
   return `~${days} ${pluralize(days, "day")}`;
 }
 
-function computeWindowUsage(snapshots: UsageSnapshot[], hours: number): number | null {
+function computeWindowUsage(snapshots: UsageSnapshot[], hours: number, now: number): number | null {
   if (snapshots.length < 2) return null;
 
-  const now = Date.now();
   const cutoff = now - hours * 60 * 60 * 1000;
 
   const inWindow = snapshots
@@ -109,7 +110,7 @@ interface ProviderSummary {
   healthText: string;
   rollingFiveHourMessages: number | null;
   weeklyMessages: number | null;
-  weeklyDeltaMessages: number | null;
+  health: ProviderHealthSnapshot | undefined;
   monthlyMessages: number | null;
   cumulativeMessages: number | null;
   riskPercent: number | null;
@@ -138,8 +139,7 @@ function summarizeProviders(
 
   const findLatest = (
     providerId: string,
-    windowType: ProviderUsageSnapshot["windowType"],
-    offset: number = 0
+    windowType: ProviderUsageSnapshot["windowType"]
   ): ProviderUsageSnapshot | null => {
     const candidates = snapshots
       .filter(
@@ -149,7 +149,7 @@ function summarizeProviders(
           snapshot.windowType === windowType
       )
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return candidates[offset] ?? null;
+    return candidates[0] ?? null;
   };
 
   const knownOrder = ["augment", "claude", "codex", "copilot"];
@@ -166,7 +166,6 @@ function summarizeProviders(
     const providerHealth = healthByProvider.get(providerId);
     const rolling = findLatest(providerId, "rolling_5h");
     const weekly = findLatest(providerId, "weekly_7d");
-    const previousWeekly = findLatest(providerId, "weekly_7d", 1);
     const monthly = findLatest(providerId, "monthly");
     const cumulative = findLatest(providerId, "custom");
     const freshnessAt =
@@ -187,13 +186,7 @@ function summarizeProviders(
       healthText: providerHealthText(providerHealth),
       rollingFiveHourMessages: rolling?.used ?? null,
       weeklyMessages: weekly?.used ?? null,
-      weeklyDeltaMessages:
-        weekly?.used !== undefined &&
-        weekly?.used !== null &&
-        previousWeekly?.used !== undefined &&
-        previousWeekly?.used !== null
-          ? weekly.used - previousWeekly.used
-          : null,
+      health: providerHealth,
       monthlyMessages: monthly?.used ?? null,
       cumulativeMessages: cumulative?.used ?? null,
       riskPercent,
@@ -231,9 +224,9 @@ function renderTargetCard(
 export function renderUsageDashboard(data: UsageDashboardData): string {
   const styleNonce = randomUUID();
   const usageKnown = data.usageKnown !== false;
-  const used24h = computeWindowUsage(data.snapshots, 24);
-  const used7d = computeWindowUsage(data.snapshots, 24 * 7);
-  const used30d = computeWindowUsage(data.snapshots, 24 * 30);
+  const used24h = computeWindowUsage(data.snapshots, 24, data.generatedAt.getTime());
+  const used7d = computeWindowUsage(data.snapshots, 24 * 7, data.generatedAt.getTime());
+  const used30d = computeWindowUsage(data.snapshots, 24 * 30, data.generatedAt.getTime());
   const renewal = formatDate(data.renewalDate);
   const projectedDate = formatDate(data.projectedDepletionDate);
   const ratioWidth = Math.max(0, Math.min(100, data.percentage));
@@ -241,6 +234,9 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
     data.providerSnapshots ?? [],
     data.providerHealth ?? []
   );
+  const augmentHealth = data.providerHealth?.find(health => health.providerId === "augment");
+  const creditProblem =
+    augmentHealth?.status === "unavailable" || augmentHealth?.status === "degraded";
   const providerMarkup =
     providerSummaries.length > 0
       ? providerSummaries
@@ -267,13 +263,6 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               const count = Math.round(summary.weeklyMessages);
               lines.push(`Last 7 days: ${formatNumber(count)} ${pluralize(count, metricNoun)}`);
             }
-            if (summary.weeklyDeltaMessages !== null) {
-              const direction = summary.weeklyDeltaMessages >= 0 ? "Up" : "Down";
-              const count = Math.round(Math.abs(summary.weeklyDeltaMessages));
-              lines.push(
-                `${direction} ${formatNumber(count)} ${pluralize(count, metricNoun)} from the previous 7 days`
-              );
-            }
             if (summary.monthlyMessages !== null) {
               const count = Math.round(summary.monthlyMessages);
               const label =
@@ -297,7 +286,11 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
                 }
               }
             }
-            const primary = lines.shift() ?? summary.healthText;
+            const primary = lines.shift();
+            const healthNotice =
+              summary.health && summary.health.status !== "connected"
+                ? `<p class="metric-state">${escapeHtml(summary.healthText.charAt(0).toUpperCase() + summary.healthText.slice(1))}${primary ? ". Last recorded values shown." : "."}</p>`
+                : "";
             const targetLine =
               summary.riskPercent === null
                 ? ""
@@ -311,7 +304,8 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               <div class="metric-card">
                 <h3>${escapeHtml(summary.label)}</h3>
                 <p class="metric-source">${sourceLabel}</p>
-                <p class="metric-value">${escapeHtml(primary)}</p>
+                ${primary ? `<p class="metric-value">${escapeHtml(primary)}</p>` : ""}
+                ${healthNotice || (!primary ? `<p class="metric-state">${escapeHtml(summary.healthText.charAt(0).toUpperCase() + summary.healthText.slice(1))}.</p>` : "")}
                 ${details}
                 ${targetLine ? `<p class="metric-subtle">${escapeHtml(targetLine)}</p>` : ""}
                 ${freshness ? `<p class="metric-freshness">Updated ${escapeHtml(freshness)}</p>` : ""}
@@ -319,14 +313,13 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
             `;
           })
           .join("\n")
-      : `<p class="metric-subtle">No assistant activity recorded yet. Use an enabled assistant, then refresh Augmeter.</p>`;
+      : `<p class="metric-subtle">No assistant activity recorded yet. Choose assistants in Settings, use one, then refresh.</p>`;
   const unavailableDataNotice = !data.hasRealData
-    ? `
-      <div class="notice-card" role="status" aria-live="polite">
-        <h2>Augment credits aren&#39;t connected</h2>
-        <p class="metric-subtle">Run <strong>Augmeter: Connect Augment</strong> to include your credit balance, renewal, and trends.</p>
-      </div>
-    `
+    ? `<section class="notice-card" aria-labelledby="connect-heading">
+        <h2 id="connect-heading">${creditProblem ? "Augment credits unavailable" : data.augmentConnected ? "Waiting for Augment credits" : "Augment credits aren&#39;t connected"}</h2>
+        <p class="metric-subtle">${creditProblem ? escapeHtml(augmentHealth.message ?? "Couldn’t refresh Augment credits. Try again.") : data.augmentConnected ? "Refresh to load your credit balance." : "Connect Augment to see your credit balance alongside local activity."}</p>
+        ${!data.augmentConnected || augmentHealth?.errorCode === "AUGMENT_UNAUTHENTICATED" ? '<button id="connect-augment" data-command="augmeter.signIn">Connect Augment</button>' : ""}
+      </section>`
     : "";
   const planLine = data.subscriptionType
     ? `<p class="metric-subtle">Plan: ${escapeHtml(data.subscriptionType)}</p>`
@@ -348,7 +341,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
   if (projectedRemaining) {
     paceDetails.push(`At this pace: ${projectedRemaining} left`);
   }
-  if (projectedDate) {
+  if (usageKnown && projectedDate) {
     paceDetails.push(`Estimated run-out: ${projectedDate}`);
   }
   const paceCard =
@@ -384,7 +377,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
           <p class="metric-subtle">${formatNumber(data.usage)} used this cycle · ${data.percentage}% used</p>
           ${planLine}
           ${creditFreshnessLine}
-          <div class="progress" role="progressbar" aria-label="${data.percentage}% of Augment credits used" aria-valuenow="${ratioWidth}" aria-valuemin="0" aria-valuemax="100"><div class="bar"></div></div>
+          <meter min="0" max="100" value="${ratioWidth}" aria-label="Augment cycle credits used" aria-valuetext="${data.percentage}% used">${data.percentage}% used</meter>
         </div>`
       : `<div class="metric-card">
           <h3>Current cycle</h3>
@@ -397,6 +390,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
     ? `<div class="section">
         <h2>Augment credits</h2>
         <p class="metric-subtle section-description">Official balance and cycle data from Augment.</p>
+        ${creditProblem ? `<p class="metric-state" role="status">${escapeHtml(augmentHealth.message ?? "Couldn’t refresh Augment credits. Last recorded values shown.")}</p>` : ""}
         <div class="grid">
           ${currentCycleCard}
           ${paceCard}
@@ -410,6 +404,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
     data.hasRealData && usageKnown
       ? `<div class="section">
         <h2>Augment credit trends</h2>
+        <p class="metric-subtle section-description">Changes between saved readings within each window. Partial history may cover less time.</p>
         ${
           trendValues.some(value => value !== null)
             ? `<div class="grid">${[
@@ -432,21 +427,31 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${styleNonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${styleNonce}'; script-src 'nonce-${styleNonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Augmeter assistant usage</title>
     <style nonce="${styleNonce}">
       :root {
         color-scheme: light dark;
+        --space-small: 8px;
+        --space-card: 12px;
+        --space-section: 16px;
+        --surface-border: var(--vscode-contrastBorder, var(--vscode-panel-border));
       }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: var(--vscode-font-family, sans-serif);
+        font-size: var(--vscode-font-size, 13px);
+        line-height: 1.5;
         margin: 0;
         padding: 20px;
         background: var(--vscode-editor-background);
         color: var(--vscode-editor-foreground);
         box-sizing: border-box;
       }
+      main { max-width: 1100px; margin: 0 auto; }
+      h1 { font-size: 1.7em; }
+      h2 { font-size: 1.25em; }
+      h3 { font-size: 1em; }
       h1, h2, h3 {
         margin: 0 0 8px 0;
         font-weight: 600;
@@ -454,33 +459,33 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       .subtitle {
         margin: 0 0 20px 0;
         color: var(--vscode-descriptionForeground);
-        font-size: 12px;
+        font-size: 1em;
       }
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-        gap: 12px;
+        gap: var(--space-card);
       }
       .metric-card {
-        border: 1px solid var(--vscode-panel-border);
+        border: 1px solid var(--surface-border);
         border-radius: 8px;
-        padding: 12px;
+        padding: var(--space-card);
         background: var(--vscode-editorWidget-background);
         min-width: 0;
         overflow-wrap: anywhere;
       }
       .notice-card {
-        border: 1px solid var(--vscode-panel-border);
+        border: 1px solid var(--surface-border);
         border-left: 4px solid var(--vscode-progressBar-background);
         border-radius: 8px;
-        padding: 12px;
+        padding: var(--space-card);
         margin: 16px 0;
         background: var(--vscode-editorWidget-background);
         min-width: 0;
         overflow-wrap: anywhere;
       }
       .metric-value {
-        font-size: 20px;
+        font-size: 1.5em;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         margin: 6px 0 0;
@@ -488,7 +493,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       .metric-subtle {
         margin: 6px 0 0;
         color: var(--vscode-descriptionForeground);
-        font-size: 12px;
+        font-size: 1em;
       }
       .section-description {
         margin-bottom: 12px;
@@ -496,21 +501,19 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       .metric-source {
         margin: 0;
         color: var(--vscode-descriptionForeground);
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        font-size: 0.95em;
+        font-weight: 400;
       }
       .metric-freshness {
         margin: 10px 0 0;
         color: var(--vscode-descriptionForeground);
-        font-size: 11px;
+        font-size: 0.95em;
         font-variant-numeric: tabular-nums;
       }
       .methodology {
         margin: 8px 0 12px;
         color: var(--vscode-descriptionForeground);
-        font-size: 12px;
+        font-size: 1em;
       }
       .methodology summary {
         cursor: pointer;
@@ -518,8 +521,8 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
         min-height: 28px;
         width: fit-content;
       }
-      .methodology summary:focus-visible {
-        outline: 1px solid var(--vscode-focusBorder);
+      :is(button, summary):focus-visible {
+        outline: 2px solid var(--vscode-focusBorder);
         outline-offset: 2px;
       }
       .methodology p {
@@ -529,47 +532,124 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       .section {
         margin-top: 16px;
       }
-      .progress {
-        width: 100%;
-        height: 10px;
-        border-radius: 999px;
-        background: var(--vscode-panel-border);
-        overflow: hidden;
-        margin-top: 8px;
+      .actions { display: flex; flex-wrap: wrap; gap: var(--space-small); margin: 12px 0; }
+      button {
+        font: inherit;
+        line-height: 1.4;
+        min-height: 32px;
+        padding: 5px 12px;
+        border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, transparent));
+        border-radius: 3px;
+        color: var(--vscode-button-secondaryForeground);
+        background: var(--vscode-button-secondaryBackground);
+        cursor: pointer;
       }
-      .bar {
-        height: 100%;
-        background: var(--vscode-progressBar-background);
-        width: ${ratioWidth}%;
-      }
+      button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+      button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+      button.primary:hover { background: var(--vscode-button-hoverBackground); }
+      button:disabled { opacity: 0.6; cursor: wait; }
+      .metric-state { font-size: 1em; margin: 8px 0; }
+      .notice-card button { margin-top: 12px; }
+      .refresh-status { min-height: 1.5em; margin: 0; color: var(--vscode-descriptionForeground); }
+      .secondary-actions { margin-top: var(--space-section); border-top: 1px solid var(--surface-border); padding-top: 12px; }
+      summary { cursor: pointer; min-height: 28px; width: fit-content; }
+      meter { display: block; width: 100%; height: 12px; margin-top: 8px; }
+      meter::-webkit-meter-bar { background: var(--vscode-input-background); border: 1px solid var(--surface-border); }
+      meter::-webkit-meter-optimum-value { background: var(--vscode-progressBar-background); }
       @media (max-width: 520px) {
         body {
-          padding: 12px;
+          padding: var(--space-card);
         }
         .grid {
           grid-template-columns: minmax(0, 1fr);
         }
         .metric-value {
-          font-size: 18px;
+          font-size: 1.4em;
         }
       }
     </style>
   </head>
   <body>
+    <main id="dashboard">
     <h1>Assistant usage</h1>
     <p class="subtitle">Local activity and provider-reported usage, separated by source.</p>
-    <div class="section">
-      <h2>Assistant activity</h2>
-      <p class="metric-subtle">Claude Code and Codex show local user turns. Copilot shows local requests or GitHub-reported usage.</p>
-      <details class="methodology">
-        <summary>How these counts are calculated</summary>
+    <nav class="actions" aria-label="Usage actions">
+      <button class="primary" id="refresh" data-command="augmeter.manualRefresh" ${data.enabled === false ? "disabled" : ""}>Refresh</button>
+      <button id="settings" data-command="augmeter.openSettings">Settings</button>
+    </nav>
+    <p id="refresh-status" class="refresh-status" role="status" aria-live="polite"></p>
+    <div id="usage-content">
+    ${data.enabled === false ? '<p class="notice-card" role="status">Augmeter is paused. Enable it in Settings to resume collection. Last recorded values shown.</p>' : ""}
+    <section class="section" aria-labelledby="activity-heading">
+      <h2 id="activity-heading">Assistant activity</h2>
+      <details class="methodology" id="methodology">
+        <summary id="methodology-toggle">How these counts are calculated</summary>
         <p>Claude Code and Codex counts come from local session history. Tool results, metadata, and agent sessions are excluded. VS Code does not provide a time range for local Copilot requests. These counts show activity, not provider quotas.</p>
       </details>
       <div class="grid">${providerMarkup}</div>
-    </div>
+    </section>
     ${unavailableDataNotice}
     ${augmentMarkup}
     ${trendsMarkup}
+    <details class="secondary-actions" id="more-actions">
+      <summary id="more-actions-toggle">Exports and support</summary>
+      <div class="actions">
+        <button id="export-json" data-command="augmeter.exportUsageBundleJson">Export all usage (JSON)</button>
+        ${data.snapshots.length ? '<button id="export-csv" data-command="augmeter.exportUsageHistoryCsv">Export credit history (CSV)</button>' : ""}
+        ${data.hasRealData ? '<button id="copy-summary" data-command="augmeter.copyUsageSummary">Copy credit summary</button>' : ""}
+        <button id="diagnostics" data-command="augmeter.runDiagnostics">Copy diagnostics</button>
+        ${data.hasRealData || data.augmentConnected ? '<button id="disconnect" data-command="augmeter.signOut">Disconnect Augment</button>' : ""}
+      </div>
+    </details>
+    </div>
+    </main>
+    <script nonce="${styleNonce}">
+      const vscode = acquireVsCodeApi();
+      const content = document.getElementById('usage-content');
+      const refresh = document.getElementById('refresh');
+      const status = document.getElementById('refresh-status');
+      let refreshing = false;
+      let restoreRefreshFocus = false;
+      document.addEventListener('click', event => {
+        const button = event.target.closest('button[data-command]');
+        if (!button || button.disabled) return;
+        if (button === refresh) {
+          restoreRefreshFocus = document.activeElement === refresh;
+          refreshing = true;
+          refresh.disabled = true;
+          refresh.textContent = 'Refreshing…';
+          content.setAttribute('aria-busy', 'true');
+          status.textContent = 'Refreshing enabled sources…';
+        }
+        vscode.postMessage({ command: button.dataset.command });
+      });
+      window.addEventListener('message', ({ data }) => {
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'update' && typeof data.html === 'string') {
+          const next = new DOMParser().parseFromString(data.html, 'text/html');
+          const activeId = document.activeElement?.id;
+          const openIds = Array.from(content.querySelectorAll('details[open]'), node => node.id);
+          const scrollY = window.scrollY;
+          content.innerHTML = next.getElementById('usage-content').innerHTML;
+          for (const id of openIds) document.getElementById(id)?.setAttribute('open', '');
+          refresh.disabled = refreshing || next.getElementById('refresh').disabled;
+          if (activeId && activeId !== 'refresh' && activeId !== 'settings') {
+            (document.getElementById(activeId) || refresh).focus({ preventScroll: true });
+          }
+          window.scrollTo(0, scrollY);
+        }
+        if (data.type === 'refreshComplete') {
+          refreshing = false;
+          refresh.disabled = data.disabled === true;
+          refresh.textContent = 'Refresh';
+          content.removeAttribute('aria-busy');
+          if (restoreRefreshFocus && document.activeElement === document.body) refresh.focus({ preventScroll: true });
+          restoreRefreshFocus = false;
+          status.textContent = data.succeeded ? 'Enabled sources refreshed.' : 'Some sources could not refresh. Check their status below or copy diagnostics.';
+        }
+      });
+      vscode.postMessage({ command: 'ready' });
+    </script>
   </body>
 </html>`;
 }

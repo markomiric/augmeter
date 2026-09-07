@@ -4,6 +4,7 @@ import { SecureLogger } from "../logging/secure-logger";
 
 export interface ClipboardWatchResult {
   cookie: string | null;
+  cancelled: boolean;
 }
 
 /**
@@ -34,7 +35,7 @@ export async function watchClipboardForCookie(
       while (Date.now() - started < timeoutMs) {
         if (token.isCancellationRequested || externalCancel?.isCancellationRequested) {
           SecureLogger.info("Clipboard cookie watch cancelled");
-          return { cookie: null };
+          return { cookie: null, cancelled: true };
         }
 
         try {
@@ -47,7 +48,7 @@ export async function watchClipboardForCookie(
             if (validation.valid) {
               const masked = sessionValue.slice(0, 4) + "…" + sessionValue.slice(-4);
               SecureLogger.info("Detected _session cookie from clipboard (masked)", { masked });
-              return { cookie: text };
+              return { cookie: text, cancelled: false };
             }
           }
         } catch (err) {
@@ -57,7 +58,7 @@ export async function watchClipboardForCookie(
         await new Promise(res => setTimeout(res, pollIntervalMs));
       }
 
-      return { cookie: null };
+      return { cookie: null, cancelled: false };
     }
   );
 }

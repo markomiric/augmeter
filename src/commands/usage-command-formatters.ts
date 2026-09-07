@@ -95,7 +95,7 @@ export function buildUsageSummaryText(input: UsageSummaryTextInput): string {
     projectedDays,
   } = input;
   const percentage = limit > 0 ? Math.round((usage / limit) * 100) : 0;
-  const remaining = input.remainingCredits ?? (limit > 0 ? Math.max(limit - usage, 0) : 0);
+  const remaining = input.remainingCredits ?? (limit > 0 ? Math.max(limit - usage, 0) : undefined);
   const lines: string[] = ["Augment credit summary"];
 
   if (subscriptionType) {
@@ -103,12 +103,19 @@ export function buildUsageSummaryText(input: UsageSummaryTextInput): string {
   }
 
   if (usageKnown) {
-    lines.push(
-      `Used: ${usage.toLocaleString()} of ${limit.toLocaleString()} credits (${percentage}%)`
-    );
-    lines.push(`Remaining: ${remaining.toLocaleString()} credits`);
+    if (limit > 0) {
+      lines.push(
+        `Used: ${usage.toLocaleString()} of ${limit.toLocaleString()} credits (${percentage}%)`
+      );
+      lines.push(`Remaining: ${remaining?.toLocaleString() ?? "0"} credits`);
+    } else {
+      lines.push(`Used: ${usage.toLocaleString()} credits`);
+      lines.push("Cycle limit: unavailable");
+    }
   } else {
-    lines.push(`Remaining: ${remaining.toLocaleString()} credits`);
+    if (remaining !== undefined) {
+      lines.push(`Remaining: ${remaining.toLocaleString()} credits`);
+    }
     if (monthlyAllowance !== null && monthlyAllowance !== undefined) {
       lines.push(`Monthly allowance: ${monthlyAllowance.toLocaleString()} credits`);
     }
@@ -124,6 +131,9 @@ export function buildUsageSummaryText(input: UsageSummaryTextInput): string {
   if (usageKnown && projectedDays !== null) {
     if (projectedDays <= 0) {
       lines.push("At this pace: credits exhausted");
+    } else if (projectedDays < 1) {
+      const hours = Math.max(1, Math.round(projectedDays * 24));
+      lines.push(`At this pace: about ${hours} ${hours === 1 ? "hour" : "hours"} left`);
     } else {
       const days = Math.max(1, Math.round(projectedDays));
       lines.push(`At this pace: about ${days} ${days === 1 ? "day" : "days"} left`);
@@ -289,10 +299,33 @@ export function buildDiagnosticsPayload(input: DiagnosticsInput): {
       renewalDate: input.usage.renewalDate,
       lastFetchedAt: input.usage.lastFetchedAt?.toISOString() || null,
     },
-    config: input.config,
+    config: {
+      refreshInterval: input.config.refreshInterval,
+      clickAction: input.config.clickAction,
+      showInStatusBar: input.config.showInStatusBar,
+      alertThresholds: input.config.alertThresholds,
+      runOutDays: input.config.runOutDays,
+      cycleTarget: input.config.cycleTarget,
+      retentionDays: input.config.retentionDays,
+      providerTrackingEnabled: input.config.providerTrackingEnabled,
+      enabledProviders: input.config.enabledProviders,
+      claudeProjectsPath: redactConfiguredPath(input.config.claudeProjectsPath),
+      codexSessionsPath: redactConfiguredPath(input.config.codexSessionsPath),
+      copilotStateDbPath: redactConfiguredPath(input.config.copilotStateDbPath),
+      copilotApi: {
+        enabled: input.config.copilotApi.enabled,
+        username: redactUsername(input.config.copilotApi.username),
+        tokenPresent: input.config.copilotApi.tokenPresent,
+      },
+      logLevel: input.config.logLevel,
+    },
     providers: {
-      health: input.providerHealth,
-      latestUsage: buildLatestProviderSnapshots(input.providerSnapshots),
+      health: input.providerHealth.map(redactProviderHealth),
+      latestUsage: Object.fromEntries(
+        Object.entries(buildLatestProviderSnapshots(input.providerSnapshots)).map(
+          ([key, snapshot]) => [key, redactProviderSnapshot(snapshot)]
+        )
+      ),
     },
     support: {
       issueUrl: input.supportIssueUrl,
@@ -319,6 +352,63 @@ export function buildLatestProviderSnapshots(
     }
   }
   return latest;
+}
+
+function redactConfiguredPath(value: string): string {
+  const trimmed = value.trim();
+  return trimmed === "" || trimmed === "(default)" ? "(default)" : "[REDACTED]";
+}
+
+function redactUsername(value: string): string {
+  return value.trim() === "" ? "" : "[REDACTED]";
+}
+
+function redactProviderHealth(health: ProviderHealthSnapshot): ProviderHealthSnapshot {
+  const redacted: ProviderHealthSnapshot = {
+    providerId: health.providerId,
+    status: health.status,
+    checkedAt: health.checkedAt,
+    canCollectInCurrentWorkspace: health.canCollectInCurrentWorkspace,
+  };
+  if (health.sourceKind !== undefined) {
+    redacted.sourceKind = health.sourceKind;
+  }
+  if (health.errorCode !== undefined) {
+    redacted.errorCode = health.errorCode;
+  }
+  return redacted;
+}
+
+function redactProviderSnapshot(snapshot: ProviderUsageSnapshot): ProviderUsageSnapshot {
+  const redacted: ProviderUsageSnapshot = {
+    providerId: snapshot.providerId,
+    timestamp: snapshot.timestamp,
+    windowType: snapshot.windowType,
+    metricType: snapshot.metricType,
+    sourceKind: snapshot.sourceKind,
+  };
+  if (snapshot.used !== undefined) {
+    redacted.used = snapshot.used;
+  }
+  if (snapshot.limit !== undefined) {
+    redacted.limit = snapshot.limit;
+  }
+  if (snapshot.remaining !== undefined) {
+    redacted.remaining = snapshot.remaining;
+  }
+  if (snapshot.percentUsed !== undefined) {
+    redacted.percentUsed = snapshot.percentUsed;
+  }
+  if (snapshot.resetAt !== undefined) {
+    redacted.resetAt = snapshot.resetAt;
+  }
+  if (snapshot.freshnessAt !== undefined) {
+    redacted.freshnessAt = snapshot.freshnessAt;
+  }
+  if (snapshot.confidence !== undefined) {
+    redacted.confidence = snapshot.confidence;
+  }
+  return redacted;
 }
 
 function escapeCsv(value: string): string {

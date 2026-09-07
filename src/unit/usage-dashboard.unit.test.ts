@@ -48,7 +48,7 @@ describe("Usage dashboard renderer", () => {
     expect(html).toContain("@media (max-width: 520px)");
     expect(html).toContain(`Updated ${new Date("2026-03-18T01:56:29.000Z").toLocaleString()}`);
     expect(html).toContain("Augment credits aren&#39;t connected");
-    expect(html).toContain("Augmeter: Connect Augment");
+    expect(html).toContain('data-command="augmeter.signIn"');
     expect(html).toMatch(/\.notice-card\s*\{[^}]*margin: 16px 0;/s);
     expect(html.indexOf("Assistant activity")).toBeLessThan(
       html.indexOf("Augment credits aren&#39;t connected")
@@ -153,7 +153,7 @@ describe("Usage dashboard renderer", () => {
     expect(html).toContain("Auggie reports your balance but not what you&#39;ve used this cycle");
     expect(html).toContain(`Updated ${freshnessAt.toLocaleString()}`);
     expect(html).not.toContain("0 used this cycle");
-    expect(html).not.toContain('role="progressbar"');
+    expect(html).not.toContain("<meter");
     expect(html).not.toContain("Augment credit trends");
   });
 
@@ -188,7 +188,7 @@ describe("Usage dashboard renderer", () => {
     expect(html).toContain("120 credits used");
     expect(html).toContain("Augment didn&#39;t provide a cycle limit");
     expect(html).not.toContain("120 of 0 credits");
-    expect(html).not.toContain('role="progressbar"');
+    expect(html).not.toContain("<meter");
   });
 
   it("labels current monthly activity as used rather than projected", () => {
@@ -233,5 +233,76 @@ describe("Usage dashboard renderer", () => {
 
     expect(html).toContain("At this pace: ~1 day left");
     expect(html).not.toContain("~1 days");
+  });
+  it("keeps source failures visible beside cached values and escapes provider text", () => {
+    const html = renderUsageDashboard({
+      generatedAt: new Date(),
+      hasRealData: true,
+      usage: 420,
+      limit: 1000,
+      remaining: 580,
+      percentage: 42,
+      snapshots: [],
+      providerSnapshots: [
+        {
+          providerId: "codex",
+          timestamp: new Date().toISOString(),
+          windowType: "weekly_7d",
+          metricType: "messages",
+          sourceKind: "file",
+          used: 12,
+        },
+      ],
+      providerHealth: [
+        {
+          providerId: "codex",
+          status: "unavailable",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+          errorCode: "CODEX_PATH_MISSING",
+        },
+        {
+          providerId: "augment",
+          status: "degraded",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+          message: '<img src=x onerror="alert(1)">',
+        },
+      ],
+    });
+    expect(html).toContain("Last 7 days: 12 turns");
+    expect(html).toContain("No history found; check the Codex path");
+    expect(html).toContain("Last recorded values shown.");
+    expect(html).toContain("&lt;img");
+    expect(html).not.toContain("<img");
+    expect(html).toContain('id="refresh"');
+    expect(html).toContain('aria-label="Usage actions"');
+    expect(html).toContain("script-src 'nonce-");
+  });
+
+  it("removes unsupported weekly comparisons and distinguishes paused and waiting states", () => {
+    const html = renderUsageDashboard({
+      generatedAt: new Date(),
+      hasRealData: false,
+      enabled: false,
+      augmentConnected: true,
+      usage: 0,
+      limit: 0,
+      remaining: 0,
+      percentage: 0,
+      snapshots: [],
+      providerSnapshots: [1, 2].map(used => ({
+        providerId: "codex",
+        timestamp: new Date(used).toISOString(),
+        windowType: "weekly_7d",
+        metricType: "messages",
+        sourceKind: "file",
+        used,
+      })),
+    });
+    expect(html).toContain("Augmeter is paused");
+    expect(html).toContain("Waiting for Augment credits");
+    expect(html).toContain('data-command="augmeter.manualRefresh" disabled');
+    expect(html).not.toContain("from the previous 7 days");
   });
 });
