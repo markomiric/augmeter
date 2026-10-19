@@ -11,24 +11,24 @@
 
 See local coding-assistant activity alongside usage reported by connected providers.
 
-Augmeter reads local Claude Code, Codex, and GitHub Copilot activity, with optional Augment credit data.
+Augmeter reads local Claude Code and Codex activity, and can read GitHub Copilot usage from GitHub. Augment credit tracking is a legacy option that is off by default.
 
-| Assistant          | What Augmeter shows                                                | Source                              |
-| ------------------ | ------------------------------------------------------------------ | ----------------------------------- |
-| **Claude Code**    | Local user turns for 5-hour and 7-day windows                      | `~/.claude/projects` logs           |
-| **Codex**          | Local user turns for 5-hour and 7-day windows                      | `~/.codex/sessions` logs            |
-| **GitHub Copilot** | Cumulative local requests, or official premium requests by month   | VS Code data or the GitHub API      |
-| **Augment**        | Credit balance and, when available, cycle usage, renewal, and pace | Auggie CLI or secure session cookie |
+| Assistant            | What Augmeter shows                                                                      | Source                              |
+| -------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------- |
+| **Claude Code**      | Prompts you sent, as local user turns for 5-hour and 7-day windows                       | `~/.claude/projects` logs           |
+| **Codex**            | Turns you started, from `task_started` records, for 5-hour and 7-day windows             | `~/.codex/sessions` logs            |
+| **GitHub Copilot**   | AI Credits used this month, or legacy premium requests, when the GitHub API is turned on | The GitHub billing API              |
+| **Augment** (legacy) | Credit balance and, when available, cycle usage, renewal, and pace                       | Auggie CLI or secure session cookie |
 
-Local activity counts are signals, not provider quotas. Claude Code, Codex, and local Copilot activity stays on this machine. Augmeter contacts Augment for credit data and contacts GitHub only when Copilot API tracking is enabled.
+Local activity counts are approximate signals, not provider quotas. Claude Code and Codex activity stays on this machine. Augmeter contacts GitHub only when Copilot API tracking is turned on, and contacts Augment only when Augment credit tracking is turned on.
 
-Claude Code and Codex counts exclude tool results, metadata, and agent/subagent sessions. The local Copilot counter is cumulative because VS Code does not provide a reliable time window for it.
+Claude Code counts leave out tool results, metadata, subagent sessions, background task notifications, local slash commands such as `/model` or `/clear`, bash mode, interrupt markers, and compaction summaries. Codex counts leave out subagent sessions and turns Codex starts on its own, such as scheduled heartbeats, retries, resumed tasks, and reviewer turns.
 
 > Augmeter is independent and open source. It is not affiliated with or endorsed by Augment, Anthropic, OpenAI, GitHub, or Microsoft. Product names are trademarks of their respective owners.
 
 ![Augmeter Assistant Usage dashboard with illustrative provider data](images/tooltip.png)
 
-This screenshot is rendered from the current dashboard with illustrative values. It contains no local history, provider account data, or credentials.
+This screenshot was rendered from an earlier version of the dashboard with illustrative values. It still shows Augment credits without the legacy label, and Copilot premium requests instead of AI Credits. It contains no local history, provider account data, or credentials.
 
 See [Understanding assistant usage data](docs/usage-data.md) for the exact source and limitations of every number.
 
@@ -40,15 +40,34 @@ See [Understanding assistant usage data](docs/usage-data.md) for the exact sourc
 
 ### Assistant activity
 
-Local Claude Code, Codex, and GitHub Copilot tracking starts automatically when the workspace is trusted. No separate account sign-in is required.
+Local Claude Code and Codex tracking starts automatically when the workspace is trusted. No account sign-in is required.
 
 - Use `augmeter.providers.enabledIds` to choose assistants.
-- Local Copilot counting requires `sqlite3` on your `PATH`. You can instead enable official GitHub API data in `augmeter.providers.copilot.api.enabled`.
-- Local file and VS Code database reading is off in untrusted workspaces.
+- GitHub Copilot needs the GitHub API. See [GitHub Copilot usage](#github-copilot-usage).
+- Local file reading is off in untrusted workspaces.
 
-### Augment credits
+### GitHub Copilot usage
 
-Open **Augmeter: Open Assistant Usage** or click the disconnected status-bar item, then choose **Connect Augment**. The same connection command remains available in the Command Palette.
+VS Code no longer records local Copilot request counts, so Augmeter reads Copilot usage from GitHub's billing API. Until you set it up, the Copilot card says so.
+
+1. Create a GitHub token that can read your billing usage. For a fine-grained personal access token, grant the **Plan** user permission (read). See GitHub's [Billing usage](https://docs.github.com/en/rest/billing/usage) reference for the token types each endpoint accepts.
+2. Set the token as the `GITHUB_TOKEN` environment variable where VS Code starts, so the extension host can see it. Restart VS Code after you set it.
+3. Set `augmeter.providers.copilot.api.username` to your GitHub username.
+4. Turn on `augmeter.providers.copilot.api.enabled`.
+
+Augmeter shows the AI Credits you used this month. If your plan still bills premium requests, it shows premium requests instead. GitHub reports consumption only, so Augmeter shows no allowance, percentage, or reset date.
+
+This API covers Copilot plans billed to you. If an organization or enterprise pays for your Copilot, GitHub may return no personal billing data, and the card says so.
+
+### Augment credits (legacy)
+
+Augment changed its billing to dollar-based usage, so credit data may be incomplete or stop updating. Augment credit tracking is now a legacy option:
+
+- It is off by default. While it is off, Augmeter runs no Auggie CLI command, makes no Augment request, and shows no Augment information or commands.
+- If you already used Augment in Augmeter (stored credit data or a saved session cookie), Augmeter turns `augmeter.augment.enabled` on for you once. It never overrides a value you set yourself.
+- To turn it on, set `augmeter.augment.enabled` to `true`.
+
+When it is on, open **Augmeter: Open Assistant Usage** or click the disconnected status-bar item, then choose **Connect Augment**. **Augmeter: Connect Augment (Legacy)** remains available in the Command Palette.
 
 If Auggie CLI is installed and already connected, Augmeter reads `auggie account status`. No additional Augment sign-in is required, and Augmeter never reads CLI credentials.
 
@@ -65,7 +84,7 @@ If VS Code cannot find an installed CLI, set `augmeter.auggieCli.path` to its fu
 
 When Auggie CLI is unavailable, Augmeter can use your Augment `_session` cookie:
 
-1. Run **Augmeter: Connect Augment**.
+1. Run **Augmeter: Connect Augment (Legacy)**.
 2. Sign in at [app.augmentcode.com](https://app.augmentcode.com).
 3. In browser developer tools, open Application or Storage, then Cookies.
 4. Copy the value of `_session`.
@@ -81,13 +100,14 @@ Treat `_session` as a credential: never paste it into an issue, log, screenshot,
 
 ## Usage
 
-The status bar labels Augment credit values when connected. Its tooltip and the Assistant usage view put local assistant activity first, whether or not Augment is connected.
+The status bar tooltip and the Assistant Usage view put assistant activity first. Augment values appear only when Augment credit tracking (legacy) is on.
 
-| Augment state | Status bar                | Next action                          |
-| ------------- | ------------------------- | ------------------------------------ |
-| Disconnected  | `Augmeter`                | Click to open Assistant usage        |
-| Loading       | `Augmeter` with a spinner | Wait or click later to refresh       |
-| Connected     | Labeled Augment values    | Click to refresh, open, or configure |
+| State                    | Status bar                | Next action                          |
+| ------------------------ | ------------------------- | ------------------------------------ |
+| Augment off (default)    | `Augmeter`                | Click to open Assistant Usage        |
+| Augment on, disconnected | `Augmeter`                | Click to open Assistant Usage        |
+| Loading                  | `Augmeter` with a spinner | Wait or click later to refresh       |
+| Augment on, connected    | Labeled Augment values    | Click to refresh, open, or configure |
 
 The dashboard provides **Refresh**, **Settings**, and **Connect Augment** actions. **Exports and support** contains CSV/JSON exports, copy actions, and disconnect. Updates preserve keyboard focus, scroll position, and expanded details. Unavailable sources keep their last recorded values with a visible status; paused collection is labeled explicitly.
 
@@ -95,61 +115,68 @@ Local activity is cached for up to five minutes during background polling. **Ref
 
 ### Commands
 
-- **Augmeter: Refresh Assistant Activity and Augment Credits** updates every enabled source.
-- **Augmeter: Connect Augment** reads credits through Auggie CLI or a session cookie.
-- **Augmeter: Disconnect Augment** removes Augmeter's connection. It does not sign out Auggie CLI.
-- **Augmeter: Copy Augment Credit Summary** copies the current Augment balance and pace.
-- **Augmeter: Open Assistant Usage** opens local activity and usage reported by connected providers.
-- **Augmeter: Export Augment Credit History (CSV)** exports local Augment snapshots.
-- **Augmeter: Export All Usage Data (JSON)** exports credits, assistant activity, health states, and relevant settings.
+- **Augmeter: Refresh Assistant Usage** updates every enabled source.
+- **Augmeter: Open Assistant Usage** opens assistant activity and usage reported by connected providers.
+- **Augmeter: Export All Usage Data (JSON)** exports assistant activity, Augment credits when present, health states, and relevant settings.
 - **Augmeter: Copy Diagnostics** copies support information with configured paths and GitHub usernames redacted. It excludes raw provider messages and details; review usage figures before sharing.
 - **Augmeter: Open Settings** opens all Augmeter settings.
+
+These commands appear in the Command Palette only when Augment credit tracking (legacy) is on:
+
+- **Augmeter: Connect Augment (Legacy)** reads credits through Auggie CLI or a session cookie.
+- **Augmeter: Disconnect Augment (Legacy)** removes Augmeter's connection. It does not sign out Auggie CLI. It also appears while the option is off if a session cookie is still stored, so you can remove it without sending a request.
+- **Augmeter: Copy Augment Credit Summary (Legacy)** copies the current Augment balance and pace.
+- **Augmeter: Export Augment Credit History (CSV) (Legacy)** exports local Augment snapshots.
 
 ## Configuration
 
 All settings live under `augmeter.*` in VS Code Settings. These are the most common controls:
 
-| Setting                          | Default                      | What it controls                                      |
-| -------------------------------- | ---------------------------- | ----------------------------------------------------- |
-| `enabled`                        | `true`                       | All Augmeter collection and display                   |
-| `refreshInterval`                | `60` seconds                 | Refresh interval while VS Code is focused             |
-| `clickAction`                    | `refresh`                    | Status-bar click behavior                             |
-| `providers.enabled`              | `true`                       | Local assistant activity tracking                     |
-| `providers.enabledIds`           | `claude`, `codex`, `copilot` | Assistants included in local tracking                 |
-| `providers.copilot.api.enabled`  | `false`                      | Official Copilot premium-request usage                |
-| `providers.copilot.api.username` | empty                        | GitHub account used for official Copilot data         |
-| `budget.cycleTarget`             | `0`                          | Personal target for the current Augment billing cycle |
-| `history.retentionDays`          | `35`                         | Local credit history kept for trends and CSV export   |
+| Setting                          | Default                      | What it controls                                            |
+| -------------------------------- | ---------------------------- | ----------------------------------------------------------- |
+| `enabled`                        | `true`                       | All Augmeter collection and display                         |
+| `refreshInterval`                | `60` seconds                 | Refresh interval while VS Code is focused                   |
+| `clickAction`                    | `refresh`                    | Status-bar click behavior                                   |
+| `providers.enabled`              | `true`                       | Assistant activity tracking                                 |
+| `providers.enabledIds`           | `claude`, `codex`, `copilot` | Assistants included in tracking                             |
+| `providers.copilot.api.enabled`  | `false`                      | Copilot AI Credits (or legacy premium requests) from GitHub |
+| `providers.copilot.api.username` | empty                        | GitHub account whose Copilot usage Augmeter reads           |
+| `augment.enabled`                | `false`                      | Augment credit tracking (legacy)                            |
+| `budget.cycleTarget`             | `0`                          | Personal target for the current Augment billing cycle       |
+| `history.retentionDays`          | `35`                         | Local credit history kept for trends and CSV export         |
 
-The status bar uses one consistent presentation: current Augment cycle usage, credits left, and native VS Code warning colors. The tooltip and Assistant Usage view provide the detailed breakdown.
+When Augment credit tracking (legacy) is on and connected, the status bar shows current Augment cycle usage, credits left, and native VS Code warning colors. Otherwise it shows `Augmeter`. The tooltip and Assistant Usage view provide the detailed breakdown.
 
 ## Data sources and privacy
 
-- Augment credit requests use Auggie CLI or the Augment API.
+- Claude Code and Codex turn counts come from local session logs and never leave this machine.
+- Copilot usage comes from GitHub's billing API, only when you turn it on. Augmeter reads `GITHUB_TOKEN` from the extension host environment and sends it only to GitHub. It does not store or log the token.
+- Augment credit requests use Auggie CLI or the Augment API, only when Augment credit tracking (legacy) is on.
 - Session cookies are stored in VS Code's secure storage and redacted from logs.
-- Claude Code and Codex user-turn counts come from local session logs; tool results, metadata, and Claude Code/Codex agent/subagent sessions are excluded.
-- Local Copilot activity is a cumulative counter from VS Code's database through a fixed, read-only `sqlite3` query. VS Code does not expose a reliable time window for this counter.
-- Optional official Copilot data reads `GITHUB_TOKEN` from the extension host environment. The token is not persisted by Augmeter.
 - Credit history, assistant activity, and diagnostics remain local unless you export or paste them.
 - Augmeter does not send extension analytics or telemetry events.
-- Local file and database reading is disabled in untrusted workspaces.
+- Local file reading and the Copilot API request are off in untrusted workspaces.
 
 For counting rules, freshness semantics, and a source-by-source explanation of the dashboard, see [Understanding assistant usage data](docs/usage-data.md).
 
-Augmeter ships with zero runtime package dependencies. It can invoke the existing `auggie` and `sqlite3` binaries for the sources described above. See [SECURITY.md](SECURITY.md) for the subprocess, secret, and Workspace Trust model.
+Augmeter ships with zero runtime package dependencies. It can invoke an existing `auggie` binary, only when Augment credit tracking (legacy) is on. See [SECURITY.md](SECURITY.md) for the subprocess, secret, and Workspace Trust model.
 
 ## Requirements
 
 - VS Code `>= 1.104.0`
-- `sqlite3` on `PATH` for local GitHub Copilot counts
 - Node.js `>= 20.18.0` for development only
 
 ## Troubleshooting
 
-- **Augment credits not connected:** Run **Augmeter: Connect Augment**. If a saved cookie expired, copy a fresh `_session` value.
-- **Augment credits keep loading:** Run **Refresh Assistant Activity and Augment Credits**, then check your network and Output > Augmeter.
+- **No Augment information or commands:** Augment credit tracking (legacy) is off. Set `augmeter.augment.enabled` to `true` if you still want it.
+- **Augment credits not connected:** Run **Augmeter: Connect Augment (Legacy)**. If a saved cookie expired, copy a fresh `_session` value.
+- **Augment credits keep loading:** Run **Augmeter: Refresh Assistant Usage**, then check your network and Output > Augmeter.
 - **No Claude Code or Codex activity:** Confirm the configured path contains session logs and the workspace is trusted.
-- **No local Copilot activity:** Install `sqlite3`, confirm GitHub Copilot has recorded requests, and check `providers.copilot.stateDbPath` only if VS Code data is stored in a custom location.
+- **Claude Code or Codex numbers changed after an update:** Augmeter now counts only turns you started. See [Understanding assistant usage data](docs/usage-data.md).
+- **Copilot says the GitHub API is not set up:** Follow [GitHub Copilot usage](#github-copilot-usage).
+- **Copilot can't find `GITHUB_TOKEN`:** Set the variable before VS Code starts, then restart VS Code. A variable set only in an integrated terminal is not visible to the extension host.
+- **Copilot says GitHub returned no personal billing data:** The billing API covers Copilot plans billed to you. Organization-managed Copilot seats may return nothing.
+- **Copilot says GitHub denied access (HTTP 403):** Check that `GITHUB_TOKEN` can read your billing usage. A fine-grained personal access token needs the **Plan** user permission (read).
 - **No status-bar item:** Check `augmeter.enabled` and `augmeter.showInStatusBar`, then review Output > Augmeter.
 
 ## Contributing

@@ -6,6 +6,28 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Fixed
+
+- Claude Code counts no longer include lines Claude Code writes itself: background task notifications, local slash commands such as `/model` and `/clear` and their output, bash mode, interrupt markers, compaction summaries, and messages from other agents. Expect noticeably lower numbers, often about a third of what earlier versions showed. Prompt-type slash commands such as skills, and prompts sent through headless `claude -p` or the Agent SDK, still count.
+- Codex counts work again on current Codex versions, which no longer write the record earlier versions of Augmeter counted. Augmeter now counts `task_started` turns you started and leaves out turns Codex starts on its own, such as scheduled heartbeats, retries, resumed tasks, and reviewer turns. Older history files are still counted, without counting a turn twice.
+- Codex refreshes no longer reopen every session file. Files older than 7 days are skipped, and subagent checks are cached.
+- GitHub Copilot API tracking now reads GitHub's documented billing usage response instead of reporting that it couldn't read the data.
+- Lines appended to a session log during a refresh are counted once, on the next refresh.
+
+### Changed
+
+- Augment credit tracking is now a legacy option, after changes to Augment's product and billing in 2026. It is off by default (`augmeter.augment.enabled`). Augmeter turns it on once for people who already used Augment in Augmeter and never overrides a value you set. While it is off, Augmeter runs no Auggie CLI command, makes no Augment request, and shows no Augment information or commands, except **Disconnect Augment (Legacy)** while a session cookie is still stored.
+- When Augment credit tracking is on, its sections read "Augment credits (legacy)", the dashboard notes that credit data may be incomplete or stop updating, and its commands carry a "(Legacy)" suffix.
+- **Refresh Assistant Activity and Augment Credits** is now **Refresh Assistant Usage**.
+- GitHub Copilot shows AI Credits used this month, or premium requests for plans that still bill them. Augmeter shows no allowance, percentage, or reset date because GitHub does not report them.
+- Without the GitHub API turned on, the Copilot card explains how to set it up instead of showing a local count.
+- Diagnostics and the JSON export include whether Augment credit tracking is on.
+
+### Removed
+
+- The local GitHub Copilot request counter. VS Code stopped recording it in version 1.97, so it showed nothing or a stale number on every supported VS Code version.
+- The `sqlite3` requirement and the `augmeter.providers.copilot.stateDbPath` setting.
+
 ## [1.2.0] - 2026-09-07
 
 ### Changed
