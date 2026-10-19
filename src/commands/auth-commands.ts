@@ -86,7 +86,7 @@ export class AuthCommands {
         await apiClient.clearSessionCookie();
         return;
       }
-      const result = await apiClient.testConnection();
+      const result = await apiClient.testConnection(() => !this.augmentTurnedOff());
       if (this.augmentTurnedOff()) {
         await apiClient.clearSessionCookie();
         return;
@@ -306,7 +306,7 @@ export class AuthCommands {
       if (this.augmentTurnedOff()) {
         return true; // handled: stop the connect flow quietly
       }
-      const result = await apiClient.testConnection();
+      const result = await apiClient.testConnection(() => !this.augmentTurnedOff());
       if (this.augmentTurnedOff()) {
         return true;
       }

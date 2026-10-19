@@ -96,4 +96,30 @@ describe("AugmentApiClient", () => {
       vi.useRealTimers();
     }
   });
+  it("stops connection-test retries once the caller says to stop", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      let requests = 0;
+      let keepGoing = true;
+      const fetcher = vi.fn(async () => {
+        requests++;
+        keepGoing = false; // e.g. Augment credit tracking was turned off during sign-in
+        return new Response(JSON.stringify({ error: "unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+      const client = new AugmentApiClient(undefined, () => "https://tenant.example/api", fetcher);
+      client.setSessionCookie("A".repeat(64));
+
+      const pending = client.testConnection(() => keepGoing);
+      await vi.advanceTimersByTimeAsync(5_000);
+      const result = await pending;
+
+      expect(result.success).toBe(false);
+      expect(requests).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

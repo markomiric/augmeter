@@ -63,7 +63,24 @@ describe("JsonlSessionScanner", () => {
     expect(second.rollingFiveHourMessages).toBe(2);
   });
 
-  it("keeps a file's last counts, or skips it, when it can't be read after stat", async () => {
+  it("fails the scan when a file it never read can't be read", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "aug-scanner-locked-"));
+    tempDirs.push(root);
+    const fresh = path.join(root, "fresh.jsonl");
+    fs.writeFileSync(fresh, tsLine(new Date(nowMs - 30 * 60 * 1000).toISOString()) + "\n");
+
+    const scanner = new JsonlSessionScanner(extract);
+    vi.spyOn(
+      scanner as unknown as { readTimestampsIncremental: () => Promise<unknown> },
+      "readTimestampsIncremental"
+    ).mockRejectedValue(Object.assign(new Error("locked"), { code: "EBUSY" }));
+
+    await expect(scanner.countMessages([fresh], cutoffFiveHour, cutoffWeekly)).rejects.toThrow(
+      "locked"
+    );
+  });
+
+  it("keeps a file's last counts, or skips it if deleted, when it can't be read after stat", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "aug-scanner-unreadable-"));
     tempDirs.push(root);
     const known = path.join(root, "known.jsonl");
@@ -82,7 +99,7 @@ describe("JsonlSessionScanner", () => {
         scanner as unknown as { readTimestampsIncremental: () => Promise<unknown> },
         "readTimestampsIncremental"
       )
-      .mockRejectedValue(Object.assign(new Error("locked"), { code: "EBUSY" }));
+      .mockRejectedValue(Object.assign(new Error("gone"), { code: "ENOENT" }));
 
     const result = await scanner.countMessages([known, fresh], cutoffFiveHour, cutoffWeekly);
 

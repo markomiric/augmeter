@@ -14,6 +14,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - GitHub Copilot API tracking now reads GitHub's documented billing usage response instead of reporting that it couldn't read the data.
 - Lines appended to a session log during a refresh are counted once, on the next refresh.
 - Connecting Augment while a refresh is still running now loads credits right away instead of reusing the refresh that started before you connected.
+- A temporary GitHub Copilot API failure keeps the last Copilot reading instead of clearing it, and an empty AI Credits response is no longer shown as 0 when the premium-request check fails.
+- A Claude Code or Codex session file that can't be read keeps the saved counts with a degraded status instead of being counted as zero.
+- Turning Augment credit tracking off during a connection check stops its retries, so no further Augment request is sent.
 
 ### Changed
 

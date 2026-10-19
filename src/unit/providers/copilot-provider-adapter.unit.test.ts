@@ -149,8 +149,9 @@ describe("CopilotProviderAdapter", () => {
 
   it.each<[string, Reply]>([
     ["empty", { status: 200, body: usagePayload([]) }],
-    ["an error", { status: 500 }],
-  ])("shows 0 AI Credits when both endpoints are empty or premium is %s", async (_n, premium) => {
+    ["404", { status: 404 }],
+    ["403", { status: 403 }],
+  ])("shows 0 AI Credits when AI Credits are empty and premium is %s", async (_n, premium) => {
     process.env.GITHUB_TOKEN = TOKEN;
     const fetcher = mockFetcher({ aiCredits: { status: 200, body: usagePayload([]) }, premium });
 
@@ -159,6 +160,23 @@ describe("CopilotProviderAdapter", () => {
     expect(result.health.status).toBe("connected");
     expect(result.snapshots[0]).toMatchObject({ used: 0, details: { mode: "ai_credits" } });
   });
+
+  it.each<[string, Reply]>([
+    ["HTTP 503", { status: 503 }],
+    ["a network error", new Error("connect ETIMEDOUT")],
+  ])(
+    "reports a failure, not 0 AI Credits, when the premium fallback hits %s",
+    async (_n, premium) => {
+      process.env.GITHUB_TOKEN = TOKEN;
+      const fetcher = mockFetcher({ aiCredits: { status: 200, body: usagePayload([]) }, premium });
+
+      const result = await collect(enabledAdapter(fetcher));
+
+      expect(result.snapshots).toHaveLength(0);
+      expect(result.health.status).toBe("degraded");
+      expect(result.health.errorCode).toBe("COPILOT_API_FAILED");
+    }
+  );
 
   it("explains personal-plan coverage when both endpoints return 404", async () => {
     process.env.GITHUB_TOKEN = TOKEN;

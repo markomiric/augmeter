@@ -144,7 +144,15 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     if (premium.kind === "usage" && (premium.usage.itemCount > 0 || !aiCreditsEmpty)) {
       return this.usageResult(now, "premium_requests", premium.usage);
     }
-    if (aiCreditsEmpty && aiCredits.kind === "usage") {
+    // DECISION: empty AI Credits are a real zero only when premium requests are empty too or
+    // GitHub answers that the account has no premium-request billing (404/403). A timeout,
+    // 5xx, or unreadable payload is a failure, so a previous reading is kept, not zeroed.
+    if (
+      aiCreditsEmpty &&
+      aiCredits.kind === "usage" &&
+      (premium.kind === "usage" ||
+        (premium.kind === "http" && (premium.status === 404 || premium.status === 403)))
+    ) {
       return this.usageResult(now, "ai_credits", aiCredits.usage);
     }
     return this.failureResult(now, premium);

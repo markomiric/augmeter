@@ -207,7 +207,7 @@ describe("ProviderUsageService", () => {
             checkedAt: new Date("2026-02-16T12:00:00.000Z").toISOString(),
             canCollectInCurrentWorkspace: true,
             sourceKind: "file",
-            errorCode: "COPILOT_QUERY_FAILED",
+            errorCode: "COPILOT_API_FAILED",
           },
         }),
       },

@@ -16,7 +16,7 @@ export interface ProviderCollectionOptions {
 }
 
 const TRANSIENT_PROVIDER_ERROR_CODES = new Set([
-  "COPILOT_QUERY_FAILED",
+  "COPILOT_API_FAILED",
   "PROVIDER_COLLECTION_FAILED",
 ]);
 

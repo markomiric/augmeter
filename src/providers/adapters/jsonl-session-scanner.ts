@@ -97,13 +97,18 @@ export class JsonlSessionScanner {
       let next: FileScanState;
       try {
         next = await this.readTimestampsIncremental(filePath, stats, previous);
-      } catch {
-        // A file deleted or locked between stat and read keeps its last counts (or is
-        // skipped) instead of failing the whole provider collection.
-        if (!previous) {
+      } catch (error) {
+        // A file read before keeps its last counts, and a file deleted since stat is
+        // skipped. DECISION: any other read failure on a file never read is rethrown so
+        // the provider keeps its saved readings with degraded health instead of
+        // publishing counts that silently leave the file out.
+        if (previous) {
+          next = previous;
+        } else if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
           continue;
+        } else {
+          throw error;
         }
-        next = previous;
       }
       filesScanned += 1;
 

@@ -309,15 +309,17 @@ export class AugmentApiClient {
 
   private async makeRequest(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    shouldContinue?: () => boolean
   ): Promise<AugmentApiResponse> {
-    return this.makeRequestWithBase(this.getApiBaseUrl(), endpoint, options);
+    return this.makeRequestWithBase(this.getApiBaseUrl(), endpoint, options, shouldContinue);
   }
 
-  async checkHealth(): Promise<AugmentApiResponse> {
+  /** `shouldContinue` stops retries once it returns false (for example, Augment turned off). */
+  async checkHealth(shouldContinue?: () => boolean): Promise<AugmentApiResponse> {
     try {
       // Use the credits endpoint for health check since /health doesn't exist
-      const response = await this.makeRequest("/credits");
+      const response = await this.makeRequest("/credits", {}, shouldContinue);
 
       if (response.success) {
         return {
@@ -417,9 +419,9 @@ export class AugmentApiClient {
     }
   }
 
-  async testConnection(): Promise<AugmentApiResponse> {
+  async testConnection(shouldContinue?: () => boolean): Promise<AugmentApiResponse> {
     // Use health check as the primary connection test
-    const healthCheck = await this.checkHealth();
+    const healthCheck = await this.checkHealth(shouldContinue);
     if (healthCheck.success) {
       return {
         success: true,
