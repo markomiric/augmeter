@@ -62,7 +62,6 @@
         "augmeter.providers.enabledIds",
         "augmeter.providers.claude.path",
         "augmeter.providers.codex.path",
-        "augmeter.providers.copilot.stateDbPath",
         "augmeter.providers.copilot.api.enabled",
         "augmeter.providers.copilot.api.username"
       ]
@@ -181,20 +180,15 @@
             "default": "",
             "description": "Override the local Codex session path. Leave blank to use ~/.codex/sessions."
           },
-          "augmeter.providers.copilot.stateDbPath": {
-            "type": "string",
-            "default": "",
-            "description": "Override the VS Code database used for local Copilot request counts. Leave blank to use the platform default."
-          },
           "augmeter.providers.copilot.api.enabled": {
             "type": "boolean",
             "default": false,
-            "description": "Read official Copilot premium-request usage from GitHub. Uses GITHUB_TOKEN and falls back to local VS Code counts if unavailable."
+            "description": "Read your GitHub Copilot AI Credits (or legacy premium requests) for this month from GitHub. Uses the GITHUB_TOKEN environment variable. VS Code no longer records local Copilot counts, so this is the only Copilot source."
           },
           "augmeter.providers.copilot.api.username": {
             "type": "string",
             "default": "",
-            "description": "GitHub username whose Copilot premium-request usage Augmeter should read."
+            "description": "GitHub username whose Copilot AI Credits (or legacy premium requests) Augmeter should read."
           }
         }
       },

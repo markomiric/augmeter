@@ -7,11 +7,27 @@
 import { promises as fs, createReadStream } from "node:fs";
 
 /**
+ * Largest unfinished trailing line kept between scans. A longer fragment is
+ * dropped whole: a tail alone would never parse as the record it came from.
+ */
+const MAX_TRAILING_FRAGMENT_CHARS = 1024 * 1024;
+
+/**
  * Extracts a user-message timestamp (epoch ms) from one JSONL line, or `null`
  * when the line is not a countable user message. Providers embed their own
  * quick-check + JSON shape validation here.
  */
 export type ExtractTimestamp = (line: string) => number | null;
+
+/**
+ * Returned by a primary extractor for a primary record that must not be counted
+ * (for example an automated turn). It still marks the file as containing primary
+ * records, so the fallback extractor's timestamps are ignored for that file.
+ */
+export const PRIMARY_RECORD_SEEN = "seen";
+
+/** A primary extractor: a countable timestamp, a seen-but-not-countable record, or `null`. */
+export type ExtractPrimaryTimestamp = (line: string) => number | typeof PRIMARY_RECORD_SEEN | null;
 
 export interface JsonlScanCounts {
   rollingFiveHourMessages: number;
@@ -19,10 +35,15 @@ export interface JsonlScanCounts {
   filesScanned: number;
 }
 
-interface FileScanState {
+interface LineMatches {
+  weeklyTimestamps: number[];
+  fallbackTimestamps: number[];
+  hasPrimary: boolean;
+}
+
+interface FileScanState extends LineMatches {
   mtimeMs: number;
   sizeBytes: number;
-  weeklyTimestamps: number[];
   trailingFragment: string;
 }
 
@@ -31,11 +52,17 @@ interface FileScanState {
  * so appended lines are read once, and rolls matching timestamps up into
  * rolling-5h and weekly-7d counts. One instance per provider adapter (holds
  * that provider's per-file scan state).
+ *
+ * With a fallback extractor, each file counts its primary timestamps when it
+ * contains any primary record, and its fallback timestamps otherwise.
  */
 export class JsonlSessionScanner {
   private fileScanState = new Map<string, FileScanState>();
 
-  constructor(private readonly extractTimestamp: ExtractTimestamp) {}
+  constructor(
+    private readonly extractTimestamp: ExtractTimestamp | ExtractPrimaryTimestamp,
+    private readonly extractFallbackTimestamp?: ExtractTimestamp
+  ) {}
 
   async countMessages(
     files: string[],
@@ -53,6 +80,9 @@ export class JsonlSessionScanner {
       }
     }
 
+    const withinWeek = (timestamps: number[]): number[] =>
+      timestamps.filter(timestamp => timestamp >= cutoffWeekly).sort((a, b) => a - b);
+
     for (const filePath of files) {
       const stats = await this.getStats(filePath);
       if (!stats) {
@@ -64,22 +94,32 @@ export class JsonlSessionScanner {
         continue;
       }
 
+      let next: FileScanState;
+      try {
+        next = await this.readTimestampsIncremental(filePath, stats, previous);
+      } catch {
+        // A file deleted or locked between stat and read keeps its last counts (or is
+        // skipped) instead of failing the whole provider collection.
+        if (!previous) {
+          continue;
+        }
+        next = previous;
+      }
       filesScanned += 1;
 
-      const next = await this.readTimestampsIncremental(filePath, stats, previous);
-      const weeklyTimestamps = next.weeklyTimestamps
-        .filter(timestamp => timestamp >= cutoffWeekly)
-        .sort((a, b) => a - b);
-
-      this.fileScanState.set(filePath, {
+      const state: FileScanState = {
         mtimeMs: next.mtimeMs,
         sizeBytes: next.sizeBytes,
-        weeklyTimestamps,
+        weeklyTimestamps: withinWeek(next.weeklyTimestamps),
+        fallbackTimestamps: withinWeek(next.fallbackTimestamps),
+        hasPrimary: next.hasPrimary,
         trailingFragment: next.trailingFragment,
-      });
+      };
+      this.fileScanState.set(filePath, state);
 
-      weeklyMessages += weeklyTimestamps.length;
-      for (const timestamp of weeklyTimestamps) {
+      const counted = state.hasPrimary ? state.weeklyTimestamps : state.fallbackTimestamps;
+      weeklyMessages += counted.length;
+      for (const timestamp of counted) {
         if (timestamp >= cutoffFiveHour) {
           rollingFiveHourMessages += 1;
         }
@@ -109,38 +149,56 @@ export class JsonlSessionScanner {
       stats.mtimeMs < previous.mtimeMs ||
       (stats.mtimeMs > previous.mtimeMs && stats.sizeBytes === previous.sizeBytes)
     ) {
-      const full = await this.readChunk(filePath, 0, "");
-      return {
-        mtimeMs: stats.mtimeMs,
-        sizeBytes: stats.sizeBytes,
-        weeklyTimestamps: full.timestamps,
-        trailingFragment: full.trailingFragment,
-      };
+      const full = await this.readChunk(filePath, 0, stats.sizeBytes, "");
+      return { ...full, mtimeMs: stats.mtimeMs, sizeBytes: stats.sizeBytes };
     }
 
     if (stats.sizeBytes === previous.sizeBytes && stats.mtimeMs === previous.mtimeMs) {
       return previous;
     }
 
-    const delta = await this.readChunk(filePath, previous.sizeBytes, previous.trailingFragment);
+    const delta = await this.readChunk(
+      filePath,
+      previous.sizeBytes,
+      stats.sizeBytes,
+      previous.trailingFragment
+    );
     return {
       mtimeMs: stats.mtimeMs,
       sizeBytes: stats.sizeBytes,
-      weeklyTimestamps: previous.weeklyTimestamps.concat(delta.timestamps),
+      weeklyTimestamps: previous.weeklyTimestamps.concat(delta.weeklyTimestamps),
+      fallbackTimestamps: previous.fallbackTimestamps.concat(delta.fallbackTimestamps),
+      hasPrimary: previous.hasPrimary || delta.hasPrimary,
       trailingFragment: delta.trailingFragment,
     };
   }
 
+  /**
+   * Reads bytes `[startByte, endByte)`. `endByte` is the size captured by `stat`,
+   * so bytes appended during the read are left for the next scan instead of being
+   * counted now and again from the stored offset.
+   */
   private async readChunk(
     filePath: string,
     startByte: number,
+    endByte: number,
     initialFragment: string
-  ): Promise<{ timestamps: number[]; trailingFragment: string }> {
+  ): Promise<LineMatches & { trailingFragment: string }> {
+    const matches: LineMatches = {
+      weeklyTimestamps: [],
+      fallbackTimestamps: [],
+      hasPrimary: false,
+    };
+    const start = Math.max(0, startByte);
+    if (endByte <= start) {
+      return { ...matches, trailingFragment: initialFragment };
+    }
+
     return await new Promise((resolve, reject) => {
-      const timestamps: number[] = [];
       const stream = createReadStream(filePath, {
         encoding: "utf8",
-        start: Math.max(0, startByte),
+        start,
+        end: endByte - 1,
       });
       let buffer = initialFragment;
       let ended = false;
@@ -151,7 +209,7 @@ export class JsonlSessionScanner {
         while (nextBreak >= 0) {
           const line = buffer.slice(0, nextBreak).replace(/\r$/, "");
           buffer = buffer.slice(nextBreak + 1);
-          this.collectTimestamp(line, timestamps);
+          this.collectLine(line, matches);
           nextBreak = buffer.indexOf("\n");
         }
       });
@@ -165,20 +223,33 @@ export class JsonlSessionScanner {
         if (!ended) {
           return;
         }
-        const trailingFragment = this.flushTrailingFragment(buffer, timestamps);
-        resolve({ timestamps, trailingFragment });
+        const trailingFragment = this.flushTrailingFragment(buffer, matches);
+        resolve({ ...matches, trailingFragment });
       });
     });
   }
 
-  private collectTimestamp(line: string, target: number[]): void {
-    const timestamp = this.extractTimestamp(line);
-    if (timestamp !== null) {
-      target.push(timestamp);
+  /** Records what one line contributes; returns whether either extractor matched it. */
+  private collectLine(line: string, target: LineMatches): boolean {
+    const primary = this.extractTimestamp(line);
+    if (primary === PRIMARY_RECORD_SEEN) {
+      target.hasPrimary = true;
+      return true;
     }
+    if (primary !== null) {
+      target.hasPrimary = true;
+      target.weeklyTimestamps.push(primary);
+      return true;
+    }
+    const fallback = this.extractFallbackTimestamp?.(line) ?? null;
+    if (fallback !== null) {
+      target.fallbackTimestamps.push(fallback);
+      return true;
+    }
+    return false;
   }
 
-  private flushTrailingFragment(fragment: string, target: number[]): string {
+  private flushTrailingFragment(fragment: string, target: LineMatches): string {
     if (fragment.length === 0) {
       return "";
     }
@@ -188,13 +259,11 @@ export class JsonlSessionScanner {
       return "";
     }
 
-    const beforeCount = target.length;
-    this.collectTimestamp(trimmed, target);
-    if (target.length > beforeCount) {
+    if (this.collectLine(trimmed, target)) {
       return "";
     }
 
-    return fragment.length > 4096 ? fragment.slice(-4096) : fragment;
+    return fragment.length > MAX_TRAILING_FRAGMENT_CHARS ? "" : fragment;
   }
 }
 

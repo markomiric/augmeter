@@ -7,6 +7,7 @@ import {
 import {
   pluralize,
   providerDisplayName,
+  copilotMonthlyUnit,
   providerHealthText,
   providerMetricNoun,
 } from "../core/copy/provider-copy";
@@ -115,6 +116,7 @@ interface ProviderSummary {
   cumulativeMessages: number | null;
   riskPercent: number | null;
   monthlySourceKind: ProviderUsageSnapshot["sourceKind"] | null;
+  monthlyDetails: ProviderUsageSnapshot["details"] | undefined;
   cumulativeSourceKind: ProviderUsageSnapshot["sourceKind"] | null;
   freshnessAt: string | null;
 }
@@ -191,6 +193,7 @@ function summarizeProviders(
       cumulativeMessages: cumulative?.used ?? null,
       riskPercent,
       monthlySourceKind: monthly?.sourceKind ?? null,
+      monthlyDetails: monthly?.details,
       cumulativeSourceKind: cumulative?.sourceKind ?? null,
       freshnessAt,
     };
@@ -253,7 +256,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               : summary.providerId === "claude" || summary.providerId === "codex"
                 ? "From local session history"
                 : summary.providerId === "copilot"
-                  ? "From VS Code on this device"
+                  ? "GitHub billing API"
                   : "Local activity";
             if (summary.rollingFiveHourMessages !== null) {
               const count = Math.round(summary.rollingFiveHourMessages);
@@ -264,27 +267,22 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
               lines.push(`Last 7 days: ${formatNumber(count)} ${pluralize(count, metricNoun)}`);
             }
             if (summary.monthlyMessages !== null) {
-              const count = Math.round(summary.monthlyMessages);
-              const label =
-                summary.providerId === "copilot" && summary.monthlySourceKind === "api"
-                  ? "premium requests"
-                  : pluralize(count, metricNoun);
-              lines.push(`This month: ${formatNumber(count)} ${label}`);
+              if (summary.providerId === "copilot" && summary.monthlySourceKind === "api") {
+                // AI Credits can be fractional; show up to two decimals instead of rounding.
+                const value = summary.monthlyMessages;
+                const unit = copilotMonthlyUnit(summary.monthlyDetails, value);
+                lines.push(
+                  `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit.noun} ${unit.suffix}`
+                );
+              } else {
+                const count = Math.round(summary.monthlyMessages);
+                lines.push(`This month: ${formatNumber(count)} ${pluralize(count, metricNoun)}`);
+              }
             }
             if (summary.cumulativeMessages !== null) {
               const count = Math.round(summary.cumulativeMessages);
-              if (summary.providerId === "copilot" && summary.cumulativeSourceKind === "api") {
-                lines.push(`${formatNumber(count)} premium requests`);
-                lines.push("Current billing period");
-              } else {
-                if (summary.providerId === "copilot") {
-                  lines.push(`${formatNumber(count)} requests recorded`);
-                  lines.push("VS Code doesn't provide a time range for this count");
-                } else {
-                  lines.push(`${formatNumber(count)} ${pluralize(count, metricNoun)}`);
-                  lines.push("Recorded locally");
-                }
-              }
+              lines.push(`${formatNumber(count)} ${pluralize(count, metricNoun)}`);
+              lines.push("Recorded locally");
             }
             const primary = lines.shift();
             const healthNotice =
@@ -584,7 +582,7 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       <h2 id="activity-heading">Assistant activity</h2>
       <details class="methodology" id="methodology">
         <summary id="methodology-toggle">How these counts are calculated</summary>
-        <p>Claude Code and Codex counts come from local session history. Tool results, metadata, and agent sessions are excluded. VS Code does not provide a time range for local Copilot requests. These counts show activity, not provider quotas.</p>
+        <p>Claude Code and Codex counts come from local session history. Tool results, metadata, and agent sessions are excluded. Copilot usage is consumption only; GitHub does not report an allowance. These counts show activity, not provider quotas.</p>
       </details>
       <div class="grid">${providerMarkup}</div>
     </section>

@@ -1,11 +1,73 @@
 import { type ProviderAdapter, type ProviderAdapterResult } from "../provider-adapter";
 import { promises as fs } from "node:fs";
 import { collectFilesRecursive, directoryExists, resolveHomePath } from "../local-file-utils";
-import { JsonlSessionScanner, asRecord, toTimestamp } from "./jsonl-session-scanner";
+import {
+  JsonlSessionScanner,
+  PRIMARY_RECORD_SEEN,
+  asRecord,
+  toTimestamp,
+} from "./jsonl-session-scanner";
 
 /**
- * Codex session logs mark user turns with an `event_msg` whose payload is a
- * `user_message`; count those.
+ * `turn_attribution.turn_trigger` values for turns Codex starts on its own.
+ * The field is free-form, so unknown triggers count (a denylist, not an allowlist).
+ */
+const AUTOMATED_TURN_TRIGGERS: ReadonlySet<string> = new Set([
+  "automation_heartbeat_scheduled",
+  "capacity_retry_automatic",
+  "guardian_review",
+  "resume_interrupted_task",
+  "retry",
+  "goal",
+]);
+
+/**
+ * Current Codex rollouts write an `event_msg` / `task_started` record per turn.
+ * Count root turns not started by an automated trigger; child and automated
+ * turns are reported as seen so the legacy `user_message` fallback stays off
+ * for this file.
+ */
+function extractCodexTurnStart(line: string): number | typeof PRIMARY_RECORD_SEEN | null {
+  if (!line.includes('"type":"event_msg"') || !line.includes('"task_started"')) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  const event = asRecord(parsed);
+  if (!event || event.type !== "event_msg") {
+    return null;
+  }
+
+  const payload = asRecord(event.payload);
+  if (!payload || payload.type !== "task_started") {
+    return null;
+  }
+
+  const attribution = asRecord(payload.turn_attribution);
+  if (attribution) {
+    const parentTurnId = attribution.parent_turn_id;
+    if (parentTurnId !== undefined && parentTurnId !== null) {
+      return PRIMARY_RECORD_SEEN;
+    }
+    const trigger = attribution.turn_trigger;
+    if (typeof trigger === "string" && AUTOMATED_TURN_TRIGGERS.has(trigger)) {
+      return PRIMARY_RECORD_SEEN;
+    }
+  }
+
+  return toTimestamp(event.timestamp) ?? PRIMARY_RECORD_SEEN;
+}
+
+/**
+ * Legacy Codex history mode marks user turns with an `event_msg` whose payload
+ * is a `user_message`. Used only for files without any `task_started` record,
+ * because legacy rollouts write both records for the same turn.
  */
 function extractCodexTimestamp(line: string): number | null {
   if (!line.includes('"type":"event_msg"') || !line.includes('"user_message"')) {
@@ -32,7 +94,12 @@ function extractCodexTimestamp(line: string): number | null {
   return toTimestamp(event.timestamp);
 }
 
-async function isSubagentSession(filePath: string): Promise<boolean> {
+/**
+ * Classifies a session from its first line. Returns `null` when the head is
+ * empty, partial, malformed, or not a `session_meta` record, so the caller
+ * re-checks it later instead of caching an unconfirmed answer.
+ */
+async function isSubagentSession(filePath: string): Promise<boolean | null> {
   let handle: fs.FileHandle | undefined;
   try {
     handle = await fs.open(filePath, "r");
@@ -40,17 +107,17 @@ async function isSubagentSession(filePath: string): Promise<boolean> {
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     const firstLine = buffer.subarray(0, bytesRead).toString("utf8").split(/\r?\n/, 1)[0];
     if (!firstLine) {
-      return false;
+      return null;
     }
     const event = asRecord(JSON.parse(firstLine));
     if (event?.type !== "session_meta") {
-      return false;
+      return null;
     }
     const payload = asRecord(event.payload);
     const source = asRecord(payload?.source);
     return source !== null && Object.hasOwn(source, "subagent");
   } catch {
-    return false;
+    return null;
   } finally {
     await handle?.close();
   }
@@ -63,7 +130,9 @@ export class CodexProviderAdapter implements ProviderAdapter {
   private readonly minRefreshMs = 5 * 60 * 1000;
   private lastCollectedAt = 0;
   private lastResult: ProviderAdapterResult | null = null;
-  private readonly scanner = new JsonlSessionScanner(extractCodexTimestamp);
+  private readonly scanner = new JsonlSessionScanner(extractCodexTurnStart, extractCodexTimestamp);
+  /** Confirmed subagent classifications by path, with the file size last seen. */
+  private readonly subagentCache = new Map<string, { isSubagent: boolean; sizeBytes: number }>();
 
   constructor(private readonly resolveCustomPath: () => string = () => "") {}
 
@@ -133,15 +202,9 @@ export class CodexProviderAdapter implements ProviderAdapter {
       return result;
     }
 
-    const userSessionFiles: string[] = [];
-    for (const file of files) {
-      if (!(await isSubagentSession(file))) {
-        userSessionFiles.push(file);
-      }
-    }
-
     const cutoffFiveHour = nowMs - 5 * 60 * 60 * 1000;
     const cutoffWeekly = nowMs - 7 * 24 * 60 * 60 * 1000;
+    const userSessionFiles = await this.selectUserSessionFiles(files, cutoffWeekly);
     const counts = await this.scanner.countMessages(userSessionFiles, cutoffFiveHour, cutoffWeekly);
 
     const nowIso = context.now.toISOString();
@@ -188,6 +251,52 @@ export class CodexProviderAdapter implements ProviderAdapter {
 
     this.cache(result, nowMs);
     return result;
+  }
+
+  /**
+   * Drops files not modified within the weekly window before opening them, then
+   * excludes subagent sessions. The subagent flag lives in the immutable first
+   * line, so confirmed answers are cached until the file shrinks (truncated or
+   * replaced).
+   */
+  private async selectUserSessionFiles(files: string[], cutoffWeekly: number): Promise<string[]> {
+    const activeFiles = new Set(files);
+    for (const cachedPath of Array.from(this.subagentCache.keys())) {
+      if (!activeFiles.has(cachedPath)) {
+        this.subagentCache.delete(cachedPath);
+      }
+    }
+
+    const userSessionFiles: string[] = [];
+    for (const file of files) {
+      let stats: { mtimeMs: number; size: number };
+      try {
+        stats = await fs.stat(file);
+      } catch {
+        continue;
+      }
+      if (stats.mtimeMs < cutoffWeekly) {
+        continue;
+      }
+
+      const cached = this.subagentCache.get(file);
+      let isSubagent: boolean | null;
+      if (cached && stats.size >= cached.sizeBytes) {
+        isSubagent = cached.isSubagent;
+      } else {
+        isSubagent = await isSubagentSession(file);
+      }
+
+      if (isSubagent === null) {
+        this.subagentCache.delete(file);
+      } else {
+        this.subagentCache.set(file, { isSubagent, sizeBytes: stats.size });
+      }
+      if (isSubagent !== true) {
+        userSessionFiles.push(file);
+      }
+    }
+    return userSessionFiles;
   }
 
   private cache(result: ProviderAdapterResult, nowMs: number): void {

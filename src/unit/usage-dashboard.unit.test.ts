@@ -102,7 +102,67 @@ describe("Usage dashboard renderer", () => {
     expect(html).not.toContain(">Unknown<");
   });
 
-  it("does not compare cumulative local Copilot counts with a monthly target", () => {
+  it("labels Copilot AI Credits and legacy premium requests reported by GitHub", () => {
+    const render = (mode: string) =>
+      renderUsageDashboard({
+        generatedAt: new Date("2026-03-18T01:56:39.000Z"),
+        hasRealData: false,
+        usage: 0,
+        limit: 0,
+        remaining: 0,
+        percentage: 0,
+        snapshots: [],
+        providerSnapshots: [
+          {
+            providerId: "copilot",
+            timestamp: "2026-03-18T01:56:29.000Z",
+            windowType: "monthly",
+            metricType: "messages",
+            sourceKind: "api",
+            used: 1500,
+            details: { mode, year: 2026, month: 3 },
+          },
+        ],
+      });
+
+    const aiCredits = render("ai_credits");
+    expect(aiCredits).toContain("Reported by GitHub");
+    expect(aiCredits).toContain("1,500 AI Credits used this month");
+    expect(aiCredits).not.toContain("From VS Code on this device");
+    expect(aiCredits).not.toContain("% of the reported limit used");
+
+    expect(render("premium_requests")).toContain("1,500 premium requests this month");
+  });
+
+  it("shows fractional Copilot AI Credits with up to two decimals", () => {
+    const render = (used: number) =>
+      renderUsageDashboard({
+        generatedAt: new Date("2026-03-18T01:56:39.000Z"),
+        hasRealData: false,
+        usage: 0,
+        limit: 0,
+        remaining: 0,
+        percentage: 0,
+        snapshots: [],
+        providerSnapshots: [
+          {
+            providerId: "copilot",
+            timestamp: "2026-03-18T01:56:29.000Z",
+            windowType: "monthly",
+            metricType: "messages",
+            sourceKind: "api",
+            used,
+            details: { mode: "ai_credits" },
+          },
+        ],
+      });
+
+    expect(render(150.5)).toContain("150.5 AI Credits used this month");
+    expect(render(0.4)).toContain("0.4 AI Credits used this month");
+    expect(render(1)).toContain("1 AI Credit used this month");
+  });
+
+  it("shows the specific Copilot health message when there is no Copilot data", () => {
     const html = renderUsageDashboard({
       generatedAt: new Date("2026-03-18T01:56:39.000Z"),
       hasRealData: false,
@@ -111,21 +171,24 @@ describe("Usage dashboard renderer", () => {
       remaining: 0,
       percentage: 0,
       snapshots: [],
-      providerSnapshots: [
+      providerSnapshots: [],
+      providerHealth: [
         {
           providerId: "copilot",
-          timestamp: "2026-03-18T01:56:29.000Z",
-          windowType: "custom",
-          metricType: "messages",
-          sourceKind: "file",
-          used: 291,
+          status: "unavailable",
+          checkedAt: "2026-03-18T01:56:29.000Z",
+          canCollectInCurrentWorkspace: true,
+          errorCode: "COPILOT_API_NOT_CONFIGURED",
+          message:
+            "VS Code no longer records local Copilot request counts. Turn on augmeter.providers.copilot.api.enabled to read your AI Credits from GitHub.",
         },
       ],
     });
 
-    expect(html).toContain("291 requests recorded");
-    expect(html).toContain("VS Code doesn&#39;t provide a time range for this count");
-    expect(html).not.toContain("Projected at");
+    expect(html).toContain(
+      "VS Code no longer records local Copilot request counts. Turn on augmeter.providers.copilot.api.enabled to read your AI Credits from GitHub."
+    );
+    expect(html).not.toContain("activity unavailable");
   });
 
   it("does not present a balance-only Auggie response as zero cycle usage", () => {

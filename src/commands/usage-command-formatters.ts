@@ -73,7 +73,6 @@ export interface DiagnosticsInput {
     enabledProviders: readonly string[];
     claudeProjectsPath: string;
     codexSessionsPath: string;
-    copilotStateDbPath: string;
     copilotApi: CopilotApiConfig & { tokenPresent: boolean };
     logLevel: string;
   };
@@ -311,7 +310,6 @@ export function buildDiagnosticsPayload(input: DiagnosticsInput): {
       enabledProviders: input.config.enabledProviders,
       claudeProjectsPath: redactConfiguredPath(input.config.claudeProjectsPath),
       codexSessionsPath: redactConfiguredPath(input.config.codexSessionsPath),
-      copilotStateDbPath: redactConfiguredPath(input.config.copilotStateDbPath),
       copilotApi: {
         enabled: input.config.copilotApi.enabled,
         username: redactUsername(input.config.copilotApi.username),

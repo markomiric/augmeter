@@ -160,22 +160,88 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     ]);
   });
 
-  it("buildProviderUsageLines surfaces monthly provider snapshots", () => {
+  it("buildProviderUsageLines labels Copilot AI Credits and legacy premium requests", () => {
+    const copilotMonthly = (mode: string, used: number) => ({
+      providerId: "copilot",
+      timestamp: "2026-03-17T10:00:00.000Z",
+      windowType: "monthly" as const,
+      metricType: "messages" as const,
+      sourceKind: "api" as const,
+      used,
+      details: { mode },
+    });
+
+    expect(buildProviderUsageLines([copilotMonthly("ai_credits", 1500)], [])).toEqual([
+      "GitHub Copilot: 1,500 AI Credits used this month",
+    ]);
+    expect(buildProviderUsageLines([copilotMonthly("premium_requests", 42)], [])).toEqual([
+      "GitHub Copilot: 42 premium requests this month",
+    ]);
+    expect(buildProviderUsageLines([copilotMonthly("ai_credits", 0)], [])).toEqual([
+      "GitHub Copilot: 0 AI Credits used this month",
+    ]);
+    expect(buildProviderUsageLines([copilotMonthly("ai_credits", 150.5)], [])).toEqual([
+      "GitHub Copilot: 150.5 AI Credits used this month",
+    ]);
+    expect(buildProviderUsageLines([copilotMonthly("ai_credits", 0.4)], [])).toEqual([
+      "GitHub Copilot: 0.4 AI Credits used this month",
+    ]);
+    expect(buildProviderUsageLines([copilotMonthly("ai_credits", 1)], [])).toEqual([
+      "GitHub Copilot: 1 AI Credit used this month",
+    ]);
+    expect(buildProviderUsageLines([copilotMonthly("ai_credits", 2.456)], [])).toEqual([
+      "GitHub Copilot: 2.46 AI Credits used this month",
+    ]);
+  });
+
+  it("shows the specific Copilot setup message in the tooltip when there is no Copilot data", () => {
+    const checkedAt = "2026-03-17T10:00:00.000Z";
+    const notConfigured =
+      "VS Code no longer records local Copilot request counts. Turn on augmeter.providers.copilot.api.enabled to read your AI Credits from GitHub.";
     const lines = buildProviderUsageLines(
+      [],
       [
         {
           providerId: "copilot",
-          timestamp: "2026-03-17T10:00:00.000Z",
-          windowType: "monthly",
-          metricType: "messages",
-          sourceKind: "api",
-          used: 42,
+          status: "unavailable",
+          checkedAt,
+          canCollectInCurrentWorkspace: true,
+          errorCode: "COPILOT_API_NOT_CONFIGURED",
+          message: notConfigured,
         },
-      ],
-      []
+      ]
     );
+    expect(lines).toEqual([`GitHub Copilot: ${notConfigured}`]);
 
-    expect(lines).toEqual(["GitHub Copilot: 42 premium requests reported by GitHub this month"]);
+    const tooltip = buildMarkdownTooltip({
+      used: 0,
+      limit: 0,
+      remaining: 0,
+      percentage: 0,
+      hasRealData: false,
+      clickAction: "refresh",
+      providerUsageLines: lines,
+    });
+    expect(tooltip).toContain(`- GitHub Copilot: ${notConfigured}`);
+    expect(tooltip).not.toContain("requests recorded by VS Code");
+
+    const noBilling =
+      "GitHub returned no personal Copilot billing data (HTTP 404); this API covers Copilot plans you pay for yourself.";
+    expect(
+      buildProviderUsageLines(
+        [],
+        [
+          {
+            providerId: "copilot",
+            status: "degraded",
+            checkedAt,
+            canCollectInCurrentWorkspace: true,
+            errorCode: "COPILOT_API_NO_BILLING_DATA",
+            message: noBilling,
+          },
+        ]
+      )
+    ).toEqual([`GitHub Copilot: ${noBilling}`]);
   });
 
   it("treats missing activity history as an empty state", () => {
@@ -197,40 +263,12 @@ describe("StatusBar Logic (unit) Test Suite", () => {
           canCollectInCurrentWorkspace: true,
           errorCode: "CODEX_NO_LOGS",
         },
-        {
-          providerId: "copilot",
-          status: "degraded",
-          checkedAt,
-          canCollectInCurrentWorkspace: true,
-          errorCode: "COPILOT_COUNTERS_MISSING",
-        },
       ]
     );
 
     expect(lines).toEqual([
       "Claude Code: no activity recorded yet",
       "Codex: no activity recorded yet",
-      "GitHub Copilot: no activity recorded yet",
-    ]);
-  });
-
-  it("labels custom-window Copilot API data as official", () => {
-    const lines = buildProviderUsageLines(
-      [
-        {
-          providerId: "copilot",
-          timestamp: "2026-03-17T10:00:00.000Z",
-          windowType: "custom",
-          metricType: "messages",
-          sourceKind: "api",
-          used: 42,
-        },
-      ],
-      []
-    );
-
-    expect(lines).toEqual([
-      "GitHub Copilot: 42 premium requests reported by GitHub this billing period",
     ]);
   });
 

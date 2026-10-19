@@ -2,7 +2,29 @@ import { type ProviderAdapter, type ProviderAdapterResult } from "../provider-ad
 import { collectFilesRecursive, directoryExists, resolveHomePath } from "../local-file-utils";
 import { JsonlSessionScanner, asRecord, toTimestamp } from "./jsonl-session-scanner";
 
-/** Claude logs also use `type: "user"` for tool results; count human input only. */
+/**
+ * Text prefixes of `type: "user"` lines that Claude Code writes itself: background
+ * task notifications, local built-in commands and their output, bash mode, and
+ * interrupt markers. Prompt-type slash commands start with `<command-message>`
+ * instead and keep counting.
+ */
+const SYSTEM_TEXT_PREFIXES = [
+  "<task-notification>",
+  "<local-command-stdout>",
+  "<local-command-stderr>",
+  "<command-name>",
+  "<bash-input>",
+  "<bash-stdout>",
+  "<bash-stderr>",
+  "[Request interrupted by user",
+] as const;
+
+const COUNTED_TURN_ORIGINS = new Set(["human", "sdk"]);
+
+/**
+ * Claude logs also use `type: "user"` for tool results, task notifications, local
+ * commands, compaction summaries, and peer messages; count human input only.
+ */
 function extractClaudeTimestamp(line: string): number | null {
   if (!line.includes('"type":"user"') || !line.includes('"timestamp"')) {
     return null;
@@ -16,7 +38,24 @@ function extractClaudeTimestamp(line: string): number | null {
   }
 
   const event = asRecord(parsed);
-  if (!event || event.type !== "user" || event.isMeta === true) {
+  if (
+    !event ||
+    event.type !== "user" ||
+    event.isMeta === true ||
+    event.isCompactSummary === true ||
+    event.isVisibleInTranscriptOnly === true
+  ) {
+    return null;
+  }
+
+  const origin = asRecord(event.origin);
+  if (origin && Object.hasOwn(origin, "kind") && origin.kind !== "human") {
+    return null;
+  }
+  if (
+    event.turnOrigin !== undefined &&
+    !(typeof event.turnOrigin === "string" && COUNTED_TURN_ORIGINS.has(event.turnOrigin))
+  ) {
     return null;
   }
 
@@ -33,7 +72,27 @@ function extractClaudeTimestamp(line: string): number | null {
     return null;
   }
 
+  const text = typeof content === "string" ? content : joinTextBlocks(content);
+  const leading = text.trimStart();
+  if (SYSTEM_TEXT_PREFIXES.some(prefix => leading.startsWith(prefix))) {
+    return null;
+  }
+
   return toTimestamp(event.timestamp);
+}
+
+function joinTextBlocks(content: unknown): string {
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  let text = "";
+  for (const block of content) {
+    const item = asRecord(block);
+    if (item?.type === "text" && typeof item.text === "string") {
+      text += item.text;
+    }
+  }
+  return text;
 }
 
 export class ClaudeProviderAdapter implements ProviderAdapter {

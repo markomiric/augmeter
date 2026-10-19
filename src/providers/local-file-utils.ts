@@ -25,15 +25,6 @@ export async function directoryExists(targetPath: string): Promise<boolean> {
   }
 }
 
-export async function fileExists(targetPath: string): Promise<boolean> {
-  try {
-    const stats = await fs.stat(targetPath);
-    return stats.isFile();
-  } catch {
-    return false;
-  }
-}
-
 export async function collectFilesRecursive(
   rootDir: string,
   includeFile: (fileName: string) => boolean,

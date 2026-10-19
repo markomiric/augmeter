@@ -162,10 +162,6 @@ export class ConfigManager {
     return (this.config.get<string>("providers.codex.path", "") ?? "").trim();
   }
 
-  getCopilotStateDbPath(): string {
-    return (this.config.get<string>("providers.copilot.stateDbPath", "") ?? "").trim();
-  }
-
   getCopilotApiConfig(): CopilotApiConfig {
     return {
       enabled: this.config.get<boolean>("providers.copilot.api.enabled", false) === true,

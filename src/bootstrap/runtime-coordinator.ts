@@ -14,8 +14,13 @@ const NON_FAILURE_PROVIDER_CODES = new Set([
   "CLAUDE_NO_LOGS",
   "CODEX_PATH_MISSING",
   "CODEX_NO_LOGS",
-  "COPILOT_STATE_DB_MISSING",
-  "COPILOT_COUNTERS_MISSING",
+  // DECISION: Copilot setup and permission states need user action, not a retry, so a
+  // manual refresh does not report them as failures. COPILOT_API_FAILED still does.
+  "COPILOT_API_NOT_CONFIGURED",
+  "COPILOT_API_USERNAME_MISSING",
+  "COPILOT_API_TOKEN_MISSING",
+  "COPILOT_API_NO_BILLING_DATA",
+  "COPILOT_API_FORBIDDEN",
 ]);
 
 export class RuntimeCoordinator implements vscode.Disposable {

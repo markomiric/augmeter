@@ -119,11 +119,7 @@ export class ExtensionBootstrap {
     const providerAdapters = [
       new ClaudeProviderAdapter(() => this.configManager.getClaudeProjectsPath()),
       new CodexProviderAdapter(() => this.configManager.getCodexSessionsPath()),
-      new CopilotProviderAdapter(
-        () => this.configManager.getCopilotStateDbPath(),
-        undefined,
-        () => this.configManager.getCopilotApiConfig()
-      ),
+      new CopilotProviderAdapter(() => this.configManager.getCopilotApiConfig()),
     ];
     this.providerUsageService = new ProviderUsageService(
       this.storageManager,

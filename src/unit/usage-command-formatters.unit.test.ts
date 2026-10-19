@@ -222,7 +222,6 @@ describe("usage-command-formatters", () => {
         enabledProviders: ["claude"],
         claudeProjectsPath: "(default)",
         codexSessionsPath: "(default)",
-        copilotStateDbPath: "(default)",
         copilotApi: {
           enabled: false,
           username: "",
@@ -273,7 +272,6 @@ describe("usage-command-formatters", () => {
         enabledProviders: ["claude"],
         claudeProjectsPath: "/Users/marko/.claude/projects",
         codexSessionsPath: "/private/custom/marko/codex-sessions",
-        copilotStateDbPath: "/Users/marko/Library/Application Support/Code/state.vscdb",
         copilotApi: {
           enabled: true,
           username: "marko-private-user",
@@ -309,7 +307,6 @@ describe("usage-command-formatters", () => {
 
     expect(text).toContain('"claudeProjectsPath": "[REDACTED]"');
     expect(text).toContain('"codexSessionsPath": "[REDACTED]"');
-    expect(text).toContain('"copilotStateDbPath": "[REDACTED]"');
     expect(text).toContain('"username": "[REDACTED]"');
     expect(text).toContain('"status": "degraded"');
     expect(text).toContain('"used": 12');

@@ -71,11 +71,6 @@ suite("ConfigManager Test Suite", () => {
       "",
       "Default Codex sessions path should be empty"
     );
-    assert.strictEqual(
-      configManager.getCopilotStateDbPath(),
-      "",
-      "Default Copilot state DB path should be empty"
-    );
   });
 
   test("Should reload configuration correctly", () => {

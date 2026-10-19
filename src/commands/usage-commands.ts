@@ -475,7 +475,6 @@ export class UsageCommands {
             enabledProviders: this.configManager.getEnabledProviderIds(),
             claudeProjectsPath: this.configManager.getClaudeProjectsPath() || "(default)",
             codexSessionsPath: this.configManager.getCodexSessionsPath() || "(default)",
-            copilotStateDbPath: this.configManager.getCopilotStateDbPath() || "(default)",
             copilotApi: {
               ...copilotApiSettings,
               tokenPresent: Boolean(process.env.GITHUB_TOKEN),

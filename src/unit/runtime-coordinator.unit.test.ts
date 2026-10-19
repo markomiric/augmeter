@@ -214,6 +214,32 @@ describe("RuntimeCoordinator refresh result", () => {
     await expect(fetcher()).resolves.toBe(false);
   });
 
+  it.each([
+    ["COPILOT_API_NOT_CONFIGURED", "unavailable", true],
+    ["COPILOT_API_USERNAME_MISSING", "unavailable", true],
+    ["COPILOT_API_TOKEN_MISSING", "unavailable", true],
+    ["COPILOT_API_NO_BILLING_DATA", "degraded", true],
+    ["COPILOT_API_FORBIDDEN", "degraded", true],
+    ["COPILOT_API_FAILED", "degraded", false],
+  ])("treats Copilot %s (%s) as refresh success: %s", async (errorCode, status, expected) => {
+    const { fetcher } = createCoordinator({
+      hasCookie: false,
+      providerTrackingEnabled: true,
+      enabledProviderIds: ["copilot"],
+      providerHealth: [
+        {
+          providerId: "copilot",
+          status,
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+          errorCode,
+        },
+      ],
+    });
+
+    await expect(fetcher()).resolves.toBe(expected);
+  });
+
   it("refreshes local providers when workspace trust is granted", () => {
     let onTrustGranted: (() => void) | undefined;
     const workspace = vscode.workspace as unknown as {

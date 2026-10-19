@@ -1,5 +1,6 @@
 import type { ProviderHealthSnapshot, ProviderUsageSnapshot } from "../core/types/provider-usage";
 import {
+  copilotMonthlyUnit,
   pluralize,
   providerDisplayName,
   providerHealthText,
@@ -153,31 +154,23 @@ export function buildProviderUsageLines(
         usageParts.push(`${count.toLocaleString()} ${pluralize(count, metricNoun)} in 7 days`);
       }
       if (typeof monthly?.used === "number" && Number.isFinite(monthly.used)) {
-        const count = Math.round(monthly.used);
-        const label =
-          providerId === "copilot" && monthly.sourceKind === "api"
-            ? "premium requests reported by GitHub"
-            : pluralize(count, metricNoun);
-        usageParts.push(`${count.toLocaleString()} ${label} this month`);
+        if (providerId === "copilot" && monthly.sourceKind === "api") {
+          // AI Credits can be fractional; show up to two decimals instead of rounding.
+          const unit = copilotMonthlyUnit(monthly.details, monthly.used);
+          usageParts.push(
+            `${monthly.used.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit.noun} ${unit.suffix}`
+          );
+        } else {
+          const count = Math.round(monthly.used);
+          usageParts.push(`${count.toLocaleString()} ${pluralize(count, metricNoun)} this month`);
+        }
       }
       if (typeof cumulative?.used === "number" && Number.isFinite(cumulative.used)) {
         const count = Math.round(cumulative.used);
-        if (providerId === "copilot" && cumulative.sourceKind === "api") {
-          usageParts.push(
-            `${count.toLocaleString()} premium requests reported by GitHub this billing period`
-          );
-        } else {
-          if (providerId === "copilot" && cumulative.sourceKind === "file") {
-            usageParts.push(
-              `${count.toLocaleString()} requests recorded by VS Code (no time range)`
-            );
-          } else {
-            const local = cumulative.sourceKind === "file" ? "local " : "";
-            usageParts.push(
-              `${count.toLocaleString()} ${local}${pluralize(count, metricNoun)} recorded`
-            );
-          }
-        }
+        const local = cumulative.sourceKind === "file" ? "local " : "";
+        usageParts.push(
+          `${count.toLocaleString()} ${local}${pluralize(count, metricNoun)} recorded`
+        );
       }
 
       if (usageParts.length === 0) {

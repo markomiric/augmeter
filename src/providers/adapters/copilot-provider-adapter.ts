@@ -1,19 +1,10 @@
-import { execFile } from "node:child_process";
-import * as os from "node:os";
-import * as path from "node:path";
-import { promisify } from "node:util";
+import { SecureLogger } from "../../core/logging/secure-logger";
 import { type ProviderAdapter, type ProviderAdapterResult } from "../provider-adapter";
-import { fileExists } from "../local-file-utils";
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com";
+const GITHUB_API_VERSION = "2026-03-10";
+const TOKEN_ENV_VAR = "GITHUB_TOKEN";
 
-interface SqliteRow {
-  key: string;
-  value: string;
-}
-
-export type SqliteJsonQueryExecutor = (databasePath: string, sql: string) => Promise<string>;
 export type CopilotApiFetcher = (
   input: string | URL | globalThis.Request,
   init?: RequestInit
@@ -24,12 +15,25 @@ export interface CopilotApiSettings {
   username: string;
 }
 
-async function defaultQueryExecutor(databasePath: string, sql: string): Promise<string> {
-  const { stdout } = await execFileAsync("sqlite3", ["-json", databasePath, sql], {
-    maxBuffer: 1024 * 1024,
-  });
-  return stdout;
+type CopilotUsageMode = "ai_credits" | "premium_requests";
+
+interface ParsedUsage {
+  used: number;
+  itemCount: number;
+  year: number | null;
+  month: number | null;
 }
+
+/** Outcome of one billing-usage request. */
+type EndpointResult =
+  | { kind: "usage"; usage: ParsedUsage }
+  | { kind: "http"; status: number }
+  | { kind: "error"; message: string };
+
+const BILLING_PATHS: Record<CopilotUsageMode, string> = {
+  ai_credits: "ai_credit",
+  premium_requests: "premium_request",
+};
 
 export class CopilotProviderAdapter implements ProviderAdapter {
   readonly id = "copilot";
@@ -38,10 +42,10 @@ export class CopilotProviderAdapter implements ProviderAdapter {
   private readonly minRefreshMs = 5 * 60 * 1000;
   private lastCollectedAt = 0;
   private lastResult: ProviderAdapterResult | null = null;
+  /** The API settings that produced `lastResult`. */
+  private lastSettingsKey = "";
 
   constructor(
-    private readonly resolveStateDbPath: () => string = () => "",
-    private readonly queryExecutor: SqliteJsonQueryExecutor = defaultQueryExecutor,
     private readonly resolveApiSettings: () => CopilotApiSettings = () => ({
       enabled: false,
       username: "",
@@ -62,418 +66,254 @@ export class CopilotProviderAdapter implements ProviderAdapter {
           status: "restricted",
           checkedAt: context.now.toISOString(),
           canCollectInCurrentWorkspace: false,
-          sourceKind: "file",
+          sourceKind: "api",
           message: "GitHub Copilot activity is not read in untrusted workspaces.",
         },
       };
     }
 
     const nowMs = context.now.getTime();
+    const settings = this.resolveApiSettings();
+    const settingsKey = this.settingsKey(settings);
     if (
       !context.forceRefresh &&
       this.lastResult &&
+      this.lastSettingsKey === settingsKey &&
       nowMs - this.lastCollectedAt < this.minRefreshMs
     ) {
       return this.lastResult;
     }
 
-    let apiFallbackMessage: string | null = null;
-    const apiSettings = this.resolveApiSettings();
-    if (apiSettings.enabled) {
-      const apiResult = await this.tryCollectFromApi(apiSettings, context.now);
-      if (apiResult.result) {
-        this.cache(apiResult.result, nowMs);
-        return apiResult.result;
-      }
-      if (apiResult.errorMessage) {
-        apiFallbackMessage = apiResult.errorMessage;
-      }
+    const result = await this.collectFromApi(settings, context.now);
+    // A collection that started before the settings changed must not become the cache.
+    if (this.settingsKey(this.resolveApiSettings()) === settingsKey) {
+      this.cache(result, nowMs, settingsKey);
     }
-
-    const stateDbPath = this.resolvePath();
-    if (!(await fileExists(stateDbPath))) {
-      const result: ProviderAdapterResult = {
-        snapshots: [],
-        health: {
-          providerId: this.id,
-          status: "unavailable",
-          checkedAt: context.now.toISOString(),
-          canCollectInCurrentWorkspace: true,
-          sourceKind: "file",
-          message: apiFallbackMessage
-            ? `${apiFallbackMessage} Augmeter also couldn't find local Copilot counters in VS Code.`
-            : "No local GitHub Copilot counters were found in VS Code.",
-          errorCode: "COPILOT_STATE_DB_MISSING",
-        },
-      };
-      this.cache(result, nowMs);
-      return result;
-    }
-
-    const query = "SELECT key, value FROM ItemTable WHERE key LIKE 'languageModelStats.copilot-%';";
-
-    try {
-      const stdout = await this.queryExecutor(stateDbPath, query);
-      const rows = this.parseRows(stdout);
-      if (rows.length === 0) {
-        const result: ProviderAdapterResult = {
-          snapshots: [],
-          health: {
-            providerId: this.id,
-            status: "degraded",
-            checkedAt: context.now.toISOString(),
-            canCollectInCurrentWorkspace: true,
-            sourceKind: "file",
-            message: "No GitHub Copilot requests have been recorded in VS Code yet.",
-            errorCode: "COPILOT_COUNTERS_MISSING",
-          },
-        };
-        this.cache(result, nowMs);
-        return result;
-      }
-
-      const requestCount = this.computeRequestCount(rows);
-      const nowIso = context.now.toISOString();
-
-      const result: ProviderAdapterResult = {
-        snapshots: [
-          {
-            providerId: this.id,
-            timestamp: nowIso,
-            windowType: "custom",
-            metricType: "messages",
-            sourceKind: "file",
-            source: "vscode-state-vscdb",
-            used: requestCount,
-            freshnessAt: nowIso,
-            confidence: 0.7,
-            details: {
-              mode: "cumulative",
-            },
-          },
-        ],
-        health: {
-          providerId: this.id,
-          status: "connected",
-          checkedAt: nowIso,
-          canCollectInCurrentWorkspace: true,
-          sourceKind: "file",
-          message: apiFallbackMessage
-            ? `${apiFallbackMessage} Showing local VS Code request counters instead.`
-            : "Read cumulative GitHub Copilot requests from VS Code.",
-        },
-      };
-
-      this.cache(result, nowMs);
-      return result;
-    } catch (error) {
-      const message = this.getErrorMessage(error);
-      const combinedMessage = apiFallbackMessage
-        ? `${apiFallbackMessage} Local fallback failed: ${message}`
-        : message;
-      const result: ProviderAdapterResult = {
-        snapshots: [],
-        health: {
-          providerId: this.id,
-          status: "degraded",
-          checkedAt: context.now.toISOString(),
-          canCollectInCurrentWorkspace: true,
-          sourceKind: "file",
-          message: combinedMessage,
-          errorCode: "COPILOT_QUERY_FAILED",
-        },
-      };
-      this.cache(result, nowMs);
-      return result;
-    }
+    return result;
   }
 
-  private async tryCollectFromApi(
+  private settingsKey(settings: CopilotApiSettings): string {
+    return `${settings.enabled}:${settings.username.trim()}`;
+  }
+
+  private async collectFromApi(
     settings: CopilotApiSettings,
     now: Date
-  ): Promise<{ result: ProviderAdapterResult | null; errorMessage?: string }> {
+  ): Promise<ProviderAdapterResult> {
+    if (!settings.enabled) {
+      return this.healthOnly(
+        now,
+        "unavailable",
+        "VS Code no longer records local Copilot request counts. Turn on augmeter.providers.copilot.api.enabled to read your AI Credits from GitHub.",
+        "COPILOT_API_NOT_CONFIGURED"
+      );
+    }
+
     const username = settings.username.trim();
     if (!username) {
-      return {
-        result: null,
-        errorMessage:
-          "GitHub Copilot API tracking needs a username in augmeter.providers.copilot.api.username.",
-      };
+      return this.healthOnly(
+        now,
+        "unavailable",
+        "GitHub Copilot API tracking needs a username in augmeter.providers.copilot.api.username.",
+        "COPILOT_API_USERNAME_MISSING"
+      );
     }
 
-    const tokenEnvVar = "GITHUB_TOKEN";
-    const token = process.env[tokenEnvVar];
-    if (!token || token.trim().length === 0) {
-      return {
-        result: null,
-        errorMessage: `GitHub Copilot API tracking can't find the ${tokenEnvVar} environment variable.`,
-      };
+    const token = process.env[TOKEN_ENV_VAR]?.trim();
+    if (!token) {
+      return this.healthOnly(
+        now,
+        "unavailable",
+        `GitHub Copilot API tracking can't find the ${TOKEN_ENV_VAR} environment variable.`,
+        "COPILOT_API_TOKEN_MISSING"
+      );
     }
 
+    const aiCredits = await this.requestUsage("ai_credits", username, token);
+    if (aiCredits.kind === "usage" && aiCredits.usage.itemCount > 0) {
+      return this.usageResult(now, "ai_credits", aiCredits.usage);
+    }
+    const aiCreditsEmpty = aiCredits.kind === "usage";
+    if (!aiCreditsEmpty && !(aiCredits.kind === "http" && aiCredits.status === 404)) {
+      return this.failureResult(now, aiCredits);
+    }
+
+    // DECISION: annual-plan holdouts still bill premium requests, so query them when
+    // AI Credits returned nothing (404 or an empty usageItems list).
+    const premium = await this.requestUsage("premium_requests", username, token);
+    if (premium.kind === "usage" && (premium.usage.itemCount > 0 || !aiCreditsEmpty)) {
+      return this.usageResult(now, "premium_requests", premium.usage);
+    }
+    if (aiCreditsEmpty && aiCredits.kind === "usage") {
+      return this.usageResult(now, "ai_credits", aiCredits.usage);
+    }
+    return this.failureResult(now, premium);
+  }
+
+  private async requestUsage(
+    mode: CopilotUsageMode,
+    username: string,
+    token: string
+  ): Promise<EndpointResult> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 6000);
-
     try {
-      const endpoint = `${DEFAULT_GITHUB_API_BASE_URL}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage`;
+      const endpoint = `${DEFAULT_GITHUB_API_BASE_URL}/users/${encodeURIComponent(username)}/settings/billing/${BILLING_PATHS[mode]}/usage`;
       const response = await this.fetcher(endpoint, {
         method: "GET",
         signal: controller.signal,
         headers: {
           Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${token.trim()}`,
-          "X-GitHub-Api-Version": "2022-11-28",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": GITHUB_API_VERSION,
         },
       });
-
       if (!response.ok) {
+        return { kind: "http", status: response.status };
+      }
+      const usage = this.parseUsagePayload(await response.json());
+      if (!usage) {
         return {
-          result: null,
-          errorMessage: `GitHub Copilot returned HTTP ${response.status}.`,
+          kind: "error",
+          message: "GitHub Copilot returned billing data Augmeter couldn't read.",
         };
       }
-
-      const payload = await response.json();
-      const usage = this.parseApiUsagePayload(payload);
-      if (!usage || usage.used === null) {
-        return {
-          result: null,
-          errorMessage: "GitHub Copilot returned premium-request data Augmeter couldn't read.",
-        };
-      }
-
-      const nowIso = now.toISOString();
-      const windowType = this.resolveApiWindowType(usage.startDate, usage.endDate);
-      const snapshot: ProviderAdapterResult["snapshots"][number] = {
-        providerId: this.id,
-        timestamp: nowIso,
-        windowType,
-        metricType: "messages",
-        sourceKind: "api",
-        source: "github-rest",
-        used: usage.used,
-        confidence: 0.95,
-        freshnessAt: nowIso,
-        details: {
-          mode: "premium_requests",
-          tokenEnvVar,
-        },
-      };
-
-      if (usage.limit !== null) {
-        snapshot.limit = usage.limit;
-      }
-      if (usage.remaining !== null) {
-        snapshot.remaining = usage.remaining;
-      }
-      if (usage.limit !== null && usage.used !== null && usage.limit > 0) {
-        snapshot.percentUsed = Math.round((usage.used / usage.limit) * 100);
-      }
-      if (usage.endDate) {
-        snapshot.resetAt = usage.endDate;
-      }
-      if (usage.startDate && snapshot.details) {
-        snapshot.details.startDate = usage.startDate;
-      }
-      if (usage.endDate && snapshot.details) {
-        snapshot.details.endDate = usage.endDate;
-      }
-
-      return {
-        result: {
-          snapshots: [snapshot],
-          health: {
-            providerId: this.id,
-            status: "connected",
-            checkedAt: nowIso,
-            canCollectInCurrentWorkspace: true,
-            sourceKind: "api",
-            message: "Read GitHub Copilot premium requests from GitHub.",
-          },
-        },
-      };
+      return { kind: "usage", usage };
     } catch (error) {
-      const message = this.getErrorMessage(error);
+      SecureLogger.warn(`GitHub Copilot ${mode} usage request failed`, error);
       return {
-        result: null,
-        errorMessage: `GitHub Copilot API is unavailable (${message}).`,
+        kind: "error",
+        message: `GitHub Copilot API is unavailable (${this.getErrorMessage(error)}).`,
       };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  private cache(result: ProviderAdapterResult, nowMs: number): void {
-    this.lastCollectedAt = nowMs;
-    this.lastResult = result;
-  }
-
-  private resolvePath(): string {
-    const configured = this.resolveStateDbPath().trim();
-    if (configured.length > 0) {
-      if (configured.startsWith("~/")) {
-        return path.join(os.homedir(), configured.slice(2));
-      }
-      return configured;
-    }
-
-    if (process.platform === "darwin") {
-      return path.join(
-        os.homedir(),
-        "Library",
-        "Application Support",
-        "Code",
-        "User",
-        "globalStorage",
-        "state.vscdb"
-      );
-    }
-
-    if (process.platform === "win32") {
-      const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-      return path.join(appData, "Code", "User", "globalStorage", "state.vscdb");
-    }
-
-    return path.join(os.homedir(), ".config", "Code", "User", "globalStorage", "state.vscdb");
-  }
-
-  private resolveApiWindowType(
-    startDate: string | null,
-    endDate: string | null
-  ): "monthly" | "custom" {
-    if (!startDate || !endDate) {
-      return "custom";
-    }
-    const start = new Date(startDate).getTime();
-    const end = new Date(endDate).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-      return "custom";
-    }
-    const days = (end - start) / (24 * 60 * 60 * 1000);
-    return days <= 45 ? "monthly" : "custom";
-  }
-
-  private parseApiUsagePayload(raw: unknown): {
-    used: number | null;
-    limit: number | null;
-    remaining: number | null;
-    startDate: string | null;
-    endDate: string | null;
-  } | null {
+  /**
+   * Parses the documented `{ timePeriod, user, usageItems[] }` billing response.
+   * Every field is untrusted; `used` is the sum of finite, non-negative `grossQuantity`.
+   */
+  private parseUsagePayload(raw: unknown): ParsedUsage | null {
     const data = this.asRecord(raw);
-    if (!data) {
+    if (!data || !Array.isArray(data.usageItems)) {
       return null;
     }
 
-    const used =
-      this.toFiniteNumberOrNull(data.total_usage) ??
-      this.toFiniteNumberOrNull(data.usage) ??
-      this.toFiniteNumberOrNull(data.used_premium_requests) ??
-      this.toFiniteNumberOrNull(data.used);
-
-    const totalAvailable =
-      this.toFiniteNumberOrNull(data.total_available) ??
-      this.toFiniteNumberOrNull(data.remaining) ??
-      this.toFiniteNumberOrNull(data.available);
-
-    const quota =
-      this.toFiniteNumberOrNull(data.annual_quota) ??
-      this.toFiniteNumberOrNull(data.monthly_quota) ??
-      this.toFiniteNumberOrNull(data.included_premium_requests) ??
-      this.toFiniteNumberOrNull(data.quota);
-
-    let limit: number | null = quota ?? null;
-    if (limit === null && used !== null && totalAvailable !== null) {
-      limit = used + totalAvailable;
+    let used = 0;
+    let itemCount = 0;
+    for (const entry of data.usageItems) {
+      const quantity = this.toFiniteNumberOrNull(this.asRecord(entry)?.grossQuantity);
+      if (quantity !== null && quantity >= 0) {
+        used += quantity;
+        itemCount += 1;
+      }
+    }
+    if (data.usageItems.length > 0 && itemCount === 0) {
+      return null;
     }
 
-    let remaining: number | null = totalAvailable ?? null;
-    if (remaining === null && limit !== null && used !== null) {
-      remaining = Math.max(limit - used, 0);
-    }
-
-    const startDate = typeof data.start_date === "string" ? data.start_date : null;
-    const endDate = typeof data.end_date === "string" ? data.end_date : null;
-
+    const timePeriod = this.asRecord(data.timePeriod);
     return {
       used,
-      limit,
-      remaining,
-      startDate,
-      endDate,
+      itemCount,
+      year: this.toFiniteNumberOrNull(timePeriod?.year),
+      month: this.toFiniteNumberOrNull(timePeriod?.month),
     };
   }
 
-  private parseRows(raw: string): SqliteRow[] {
-    if (!raw || raw.trim().length === 0) {
-      return [];
+  private usageResult(
+    now: Date,
+    mode: CopilotUsageMode,
+    usage: ParsedUsage
+  ): ProviderAdapterResult {
+    const nowIso = now.toISOString();
+    const details: Record<string, string | number | boolean | null> = { mode };
+    if (usage.year !== null) {
+      details.year = usage.year;
     }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return [];
+    if (usage.month !== null) {
+      details.month = usage.month;
     }
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map(row => this.asRecord(row))
-      .filter((row): row is Record<string, unknown> => row !== null)
-      .map(row => ({
-        key: typeof row.key === "string" ? row.key : "",
-        value: typeof row.value === "string" ? row.value : "",
-      }))
-      .filter(row => row.key.length > 0);
+    return {
+      snapshots: [
+        {
+          providerId: this.id,
+          timestamp: nowIso,
+          windowType: "monthly",
+          metricType: "messages",
+          sourceKind: "api",
+          source: "github-rest",
+          used: usage.used,
+          confidence: 0.95,
+          freshnessAt: nowIso,
+          details,
+        },
+      ],
+      health: {
+        providerId: this.id,
+        status: "connected",
+        checkedAt: nowIso,
+        canCollectInCurrentWorkspace: true,
+        sourceKind: "api",
+        message:
+          mode === "ai_credits"
+            ? "Read GitHub Copilot AI Credits from GitHub."
+            : "Read GitHub Copilot premium requests from GitHub.",
+      },
+    };
   }
 
-  private computeRequestCount(rows: SqliteRow[]): number {
-    let total = 0;
-
-    for (const row of rows) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(row.value);
-      } catch {
-        continue;
-      }
-
-      const data = this.asRecord(parsed);
-      if (!data || !Array.isArray(data.extensions)) {
-        continue;
-      }
-
-      for (const extensionEntry of data.extensions) {
-        const extension = this.asRecord(extensionEntry);
-        if (!extension) {
-          continue;
-        }
-
-        const extensionCount = this.toFiniteNumber(extension.requestCount);
-        const participantCount = Array.isArray(extension.participants)
-          ? extension.participants.reduce((sum, participantEntry) => {
-              const participant = this.asRecord(participantEntry);
-              if (!participant) {
-                return sum;
-              }
-              return sum + this.toFiniteNumber(participant.requestCount);
-            }, 0)
-          : 0;
-
-        total += Math.max(extensionCount, participantCount);
-      }
+  private failureResult(now: Date, failure: EndpointResult): ProviderAdapterResult {
+    if (failure.kind === "http" && failure.status === 403) {
+      return this.healthOnly(
+        now,
+        "degraded",
+        "GitHub denied access to Copilot billing data (HTTP 403). Check that GITHUB_TOKEN can read billing usage (a fine-grained token needs the Plan user permission); this API covers only Copilot plans you pay for yourself.",
+        "COPILOT_API_FORBIDDEN"
+      );
     }
-
-    return total;
+    if (failure.kind === "http" && failure.status === 404) {
+      return this.healthOnly(
+        now,
+        "degraded",
+        "GitHub returned no personal Copilot billing data (HTTP 404); this API covers Copilot plans you pay for yourself.",
+        "COPILOT_API_NO_BILLING_DATA"
+      );
+    }
+    const message =
+      failure.kind === "http"
+        ? `GitHub Copilot returned HTTP ${failure.status}.`
+        : failure.kind === "error"
+          ? failure.message
+          : "GitHub Copilot returned billing data Augmeter couldn't read.";
+    return this.healthOnly(now, "degraded", message, "COPILOT_API_FAILED");
   }
 
-  private toFiniteNumber(value: unknown): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return 0;
-    }
-    return value;
+  private healthOnly(
+    now: Date,
+    status: "unavailable" | "degraded",
+    message: string,
+    errorCode: string
+  ): ProviderAdapterResult {
+    return {
+      snapshots: [],
+      health: {
+        providerId: this.id,
+        status,
+        checkedAt: now.toISOString(),
+        canCollectInCurrentWorkspace: true,
+        sourceKind: "api",
+        message,
+        errorCode,
+      },
+    };
+  }
+
+  private cache(result: ProviderAdapterResult, nowMs: number, settingsKey: string): void {
+    this.lastCollectedAt = nowMs;
+    this.lastResult = result;
+    this.lastSettingsKey = settingsKey;
   }
 
   private toFiniteNumberOrNull(value: unknown): number | null {
@@ -490,21 +330,12 @@ export class CopilotProviderAdapter implements ProviderAdapter {
     return value as Record<string, unknown>;
   }
 
+  /** Fixed wording only: health messages are shown in trusted tooltip markdown. */
   private getErrorMessage(error: unknown): string {
     const errorRecord = this.asRecord(error);
-    if (errorRecord) {
-      const code = errorRecord.code;
-      if (code === "ENOENT") {
-        return "Install sqlite3 to read local GitHub Copilot activity";
-      }
-      if (code === "ABORT_ERR") {
-        return "the request timed out";
-      }
-      const short = typeof errorRecord.message === "string" ? errorRecord.message : null;
-      if (short) {
-        return short;
-      }
+    if (errorRecord?.code === "ABORT_ERR" || errorRecord?.name === "AbortError") {
+      return "the request timed out";
     }
-    return "Augmeter couldn't read local GitHub Copilot counters.";
+    return "the request failed; check Output > Augmeter";
   }
 }

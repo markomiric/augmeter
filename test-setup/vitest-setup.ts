@@ -3,6 +3,26 @@
  */
 import { vi } from "vitest";
 
+// Windows ICU ignores LANG and assertions use en-US literals, so default the locale to en-US.
+function pinDefaultLocale<T extends object>(
+  proto: T,
+  method: "toLocaleString" | "toLocaleDateString" | "toLocaleTimeString"
+): void {
+  const target = proto as Record<string, unknown>;
+  const original = target[method] as (
+    this: unknown,
+    locales?: Intl.LocalesArgument,
+    options?: object
+  ) => string;
+  target[method] = function (this: unknown, locales?: Intl.LocalesArgument, options?: object) {
+    return original.call(this, locales === undefined ? "en-US" : locales, options);
+  };
+}
+pinDefaultLocale(Number.prototype, "toLocaleString");
+pinDefaultLocale(Date.prototype, "toLocaleString");
+pinDefaultLocale(Date.prototype, "toLocaleDateString");
+pinDefaultLocale(Date.prototype, "toLocaleTimeString");
+
 // Simple in-memory clipboard and command registry for unit tests
 const globalClipboard = { value: "" };
 const globalCommands = new Map<string, (...args: any[]) => any>();
@@ -13,6 +33,9 @@ const vscode = {
   workspace: {
     getConfiguration: vi.fn(() => ({
       get: vi.fn((key: string, defaultValue?: any) => defaultValue),
+    })),
+    onDidChangeConfiguration: vi.fn((_listener: (event: unknown) => void) => ({
+      dispose: vi.fn(),
     })),
   },
   window: {
@@ -58,6 +81,11 @@ const vscode = {
   },
   ProgressLocation: {
     Notification: 15,
+  },
+  ConfigurationTarget: {
+    Global: 1,
+    Workspace: 2,
+    WorkspaceFolder: 3,
   },
   ThemeColor: class {},
   EventEmitter: class<T> {
