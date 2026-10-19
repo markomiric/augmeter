@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Codex refreshes no longer reopen every session file. Files older than 7 days are skipped, and subagent checks are cached.
 - GitHub Copilot API tracking now reads GitHub's documented billing usage response instead of reporting that it couldn't read the data.
 - Lines appended to a session log during a refresh are counted once, on the next refresh.
+- Connecting Augment while a refresh is still running now loads credits right away instead of reusing the refresh that started before you connected.
 
 ### Changed
 

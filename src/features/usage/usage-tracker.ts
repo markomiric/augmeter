@@ -572,7 +572,14 @@ export class UsageTracker implements vscode.Disposable {
     return await this.storageManager.getTodayUsage();
   }
 
-  async refreshNow(): Promise<boolean> {
+  /**
+   * Manual refreshes share an in-flight refresh. Pass `afterInFlight` when state changed
+   * after that refresh began (a new sign-in), so the result reflects the new state.
+   */
+  async refreshNow(options: { afterInFlight?: boolean } = {}): Promise<boolean> {
+    if (options.afterInFlight && this.inFlightFetch) {
+      await this.inFlightFetch;
+    }
     this.nextFetchSource = "manual";
     return this.fetchRealUsageData();
   }

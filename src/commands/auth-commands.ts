@@ -103,7 +103,7 @@ export class AuthCommands {
       void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
       progress.report({ message: "Loading Augment credits..." });
       this.statusBarManager.showLoading();
-      const refreshSucceeded = await this.usageTracker.refreshNow();
+      const refreshSucceeded = await this.usageTracker.refreshNow({ afterInFlight: true });
       await this.statusBarManager.updateDisplay();
       await this.showSessionResult("Augment connected", refreshSucceeded);
     });
@@ -115,7 +115,7 @@ export class AuthCommands {
     }
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
-    const refreshSucceeded = await this.usageTracker.refreshNow();
+    const refreshSucceeded = await this.usageTracker.refreshNow({ afterInFlight: true });
     await this.statusBarManager.updateDisplay();
     await this.showSessionResult(successMessage, refreshSucceeded);
   }

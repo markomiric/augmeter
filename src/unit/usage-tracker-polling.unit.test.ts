@@ -153,4 +153,29 @@ describe("UsageTracker focus-aware polling", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     tracker.dispose();
   });
+
+  it("runs a fresh refresh after the in-flight one when asked (after sign-in)", async () => {
+    const tracker = new UsageTracker(storageManager, configManager, () => 0);
+    let finish!: (value: boolean) => void;
+    const fetcher = vi.fn(
+      () =>
+        new Promise<boolean>(resolve => {
+          finish = resolve;
+        })
+    );
+    tracker.setRealDataFetcher(fetcher);
+    const poll = (
+      tracker as unknown as { fetchRealUsageData(): Promise<boolean> }
+    ).fetchRealUsageData();
+    const afterSignIn = tracker.refreshNow({ afterInFlight: true });
+    await Promise.resolve();
+    expect(fetcher).toHaveBeenCalledOnce();
+
+    finish(false);
+    expect(await poll).toBe(false);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    finish(true);
+    expect(await afterSignIn).toBe(true);
+    tracker.dispose();
+  });
 });
