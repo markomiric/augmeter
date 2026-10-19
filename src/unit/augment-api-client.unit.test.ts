@@ -69,4 +69,31 @@ describe("AugmentApiClient", () => {
 
     expect(urls).toEqual(["https://app.augmentcode.com/api/credits"]);
   });
+
+  it("sends no retry or fallback request once the caller says to stop", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const urls: string[] = [];
+      let keepGoing = true;
+      const fetcher = vi.fn(async (input: string | URL | Request) => {
+        urls.push(String(input));
+        keepGoing = false; // e.g. Augment credit tracking was turned off meanwhile
+        return new Response(JSON.stringify({ error: "busy" }), {
+          status: 429,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+      const client = new AugmentApiClient(undefined, () => "https://tenant.example/api", fetcher);
+      client.setSessionCookie("A".repeat(64));
+
+      const pending = client.getUsageData(() => keepGoing);
+      await vi.advanceTimersByTimeAsync(5_000);
+      const result = await pending;
+
+      expect(result.success).toBe(false);
+      expect(urls).toEqual(["https://tenant.example/api/credits"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

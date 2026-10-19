@@ -37,6 +37,7 @@ export interface UsageBundleInput {
   enabledProviders: readonly string[];
   copilotApiConfig: CopilotApiConfig;
   copilotTokenPresent: boolean;
+  augmentEnabled: boolean;
 }
 
 export interface DiagnosticsInput {
@@ -74,6 +75,7 @@ export interface DiagnosticsInput {
     claudeProjectsPath: string;
     codexSessionsPath: string;
     copilotApi: CopilotApiConfig & { tokenPresent: boolean };
+    augmentEnabled: boolean;
     logLevel: string;
   };
   providerHealth: ProviderHealthSnapshot[];
@@ -202,6 +204,7 @@ export function buildUsageBundle(input: UsageBundleInput): {
       username: string;
       tokenPresent: boolean;
     };
+    augmentEnabled: boolean;
   };
 } {
   return {
@@ -234,6 +237,7 @@ export function buildUsageBundle(input: UsageBundleInput): {
         username: input.copilotApiConfig.username,
         tokenPresent: input.copilotTokenPresent,
       },
+      augmentEnabled: input.augmentEnabled,
     },
   };
 }
@@ -315,6 +319,7 @@ export function buildDiagnosticsPayload(input: DiagnosticsInput): {
         username: redactUsername(input.config.copilotApi.username),
         tokenPresent: input.config.copilotApi.tokenPresent,
       },
+      augmentEnabled: input.config.augmentEnabled,
       logLevel: input.config.logLevel,
     },
     providers: {

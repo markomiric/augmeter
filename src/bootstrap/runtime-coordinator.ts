@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { SecureSecretsManager } from "../core/auth/secure-secrets-manager";
 import { type ConfigManager } from "../core/config/config-manager";
 import { ErrorHandler } from "../core/errors/augmeter-error";
 import { SecureLogger } from "../core/logging/secure-logger";
@@ -41,6 +42,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
 
   async initialize(): Promise<void> {
     await this.initializeAuthState();
+    await this.migrateAugmentLegacyOptIn();
     this.attachRealDataFetcher();
     this.registerConfigurationListener();
     this.registerFocusListener();
@@ -61,6 +63,72 @@ export class RuntimeCoordinator implements vscode.Disposable {
       }
     } catch (error) {
       SecureLogger.error("Auth state initialization failed", error);
+    }
+  }
+
+  /**
+   * One-time migration: Augment became an opt-in legacy option, so existing Augment
+   * users (stored credit data or a stored session cookie) are switched on. Explicit
+   * values are never overwritten. The done flag is written only after every read and
+   * any required write succeeded, so a failure is retried on the next activation.
+   */
+  private async migrateAugmentLegacyOptIn(): Promise<void> {
+    try {
+      if (this.storageManager.isAugmentLegacyMigrationDone()) {
+        return;
+      }
+      if (!this.configManager.hasExplicitAugmentEnabled() && (await this.isExistingAugmentUser())) {
+        await this.configManager.setAugmentEnabled(true);
+        SecureLogger.info("Kept Augment credit tracking (legacy) on for an existing user");
+      }
+      await this.storageManager.setAugmentLegacyMigrationDone();
+    } catch (error) {
+      SecureLogger.warn(
+        "Augment legacy opt-in migration failed; will retry next activation",
+        error
+      );
+    }
+  }
+
+  /**
+   * Local evidence (stored credit data, or the cookie initializeAuthState already loaded)
+   * is checked first, so a failing SecretStorage read cannot hide it. The secret is read
+   * only when nothing else answers; a failure there is retried on the next activation.
+   */
+  private async isExistingAugmentUser(): Promise<boolean> {
+    const [creditSnapshots, augmentSnapshots] = await Promise.all([
+      this.storageManager.getUsageSnapshots(),
+      this.storageManager.getProviderUsageSnapshots("augment"),
+    ]);
+    if (creditSnapshots.length > 0 || augmentSnapshots.length > 0 || this.apiClient.hasCookie()) {
+      return true;
+    }
+    const cookie = await new SecureSecretsManager(this.context).getSessionCookie();
+    return Boolean(cookie?.trim());
+  }
+
+  /** Records the Augment-off state: no credit data, no connected state. */
+  private async applyAugmentDisabledState(source: string): Promise<void> {
+    this.usageTracker.clearRealDataFlag();
+    await this.storageManager.setProviderHealth({
+      providerId: "augment",
+      status: "disabled",
+      checkedAt: new Date().toISOString(),
+      canCollectInCurrentWorkspace: true,
+      message: "Augment credit tracking (legacy) is off.",
+      errorCode: "AUGMENT_LEGACY_OFF",
+    });
+    // DECISION: leave augmeter.isSignedIn alone. Every Augment command's when-clause
+    // already requires the option, and the cookie path never sets the key back to true,
+    // so clearing it here would leave the palette wrong after the option is turned on.
+    SecureLogger.info(`Skipped Augment credit fetch; legacy option is off (source=${source})`);
+  }
+
+  /** Drops the stored "legacy option is off" health once the option is on again. */
+  private async clearAugmentOffHealth(): Promise<void> {
+    const health = await this.storageManager.getProviderHealth("augment");
+    if (health?.errorCode === "AUGMENT_LEGACY_OFF") {
+      await this.storageManager.removeProviderHealth("augment");
     }
   }
 
@@ -94,6 +162,11 @@ export class RuntimeCoordinator implements vscode.Disposable {
 
     const fetchGeneration = this.auggieCliSource.getFetchGeneration();
     const result = await this.auggieCliSource.fetchUsage();
+    if (!this.configManager.isAugmentEnabled()) {
+      // Turned off while the request was pending: discard the obsolete result.
+      await this.applyAugmentDisabledState(source);
+      return { handled: true, succeeded: true };
+    }
 
     if (!this.auggieCliSource.isFetchGenerationCurrent(fetchGeneration)) {
       if (this.configManager.getDataSource() !== "auggie-cli") {
@@ -120,6 +193,10 @@ export class RuntimeCoordinator implements vscode.Disposable {
         subscriptionType: result.data.subscriptionType,
         renewalDate: result.data.renewalDate,
       });
+      if (!this.configManager.isAugmentEnabled()) {
+        await this.applyAugmentDisabledState(source);
+        return { handled: true, succeeded: true };
+      }
       await this.storageManager.setProviderHealth({
         providerId: "augment",
         status: "connected",
@@ -166,6 +243,127 @@ export class RuntimeCoordinator implements vscode.Disposable {
     return { handled: true, succeeded: false };
   }
 
+  /**
+   * Refreshes Augment credits, or records the off state. Resolves false when the refresh
+   * did not produce current data. It runs outside the fetcher's try/finally so these
+   * early returns cannot hide a provider-collection failure reported by that finally.
+   */
+  private async refreshAugmentCredits(source: string): Promise<boolean> {
+    let refreshSucceeded = true;
+    if (!this.configManager.isAugmentEnabled()) {
+      await this.applyAugmentDisabledState(source);
+      return refreshSucceeded;
+    }
+    await this.clearAugmentOffHealth();
+
+    const cliFetch = await this.tryCliFetch(source);
+    if (!this.configManager.isEnabled()) {
+      SecureLogger.info(`Skipped refresh while extension is disabled (source=${source})`);
+      return false;
+    }
+    if (cliFetch.handled) {
+      refreshSucceeded = cliFetch.succeeded;
+    } else if (!this.apiClient.hasCookie()) {
+      // Augment is optional; a signed-out refresh can still succeed for
+      // enabled local assistant providers.
+      refreshSucceeded =
+        this.configManager.isProviderTrackingEnabled() &&
+        this.configManager.getEnabledProviderIds().length > 0;
+      this.usageTracker.clearRealDataFlag();
+      await this.storageManager.setProviderHealth({
+        providerId: "augment",
+        status: "disabled",
+        checkedAt: new Date().toISOString(),
+        canCollectInCurrentWorkspace: true,
+        sourceKind: "api",
+        message: "Not signed in to Augment.",
+        errorCode: "AUGMENT_SIGNED_OUT",
+      });
+      void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
+      SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
+    } else {
+      SecureLogger.info(`Fetching Augment credit data (source=${source})`);
+      const requestGeneration = this.apiClient.getRequestGeneration();
+      const response = await this.apiClient.getUsageData(() =>
+        this.configManager.isAugmentEnabled()
+      );
+      if (!this.configManager.isAugmentEnabled()) {
+        await this.applyAugmentDisabledState(source);
+        return refreshSucceeded;
+      }
+      if (!this.apiClient.isRequestGenerationCurrent(requestGeneration)) {
+        refreshSucceeded = false;
+        SecureLogger.info(`Discarded stale Augment refresh (source=${source})`);
+      } else if (response.success) {
+        const responseData =
+          typeof response.data === "object" && response.data !== null ? response.data : null;
+        SecureLogger.info(`API response received (source=${source})`, {
+          hasData: responseData !== null,
+          dataKeys: responseData ? Object.keys(responseData) : [],
+        });
+        const parsed = await this.apiClient.parseUsageResponse(response);
+        if (!this.configManager.isAugmentEnabled()) {
+          await this.applyAugmentDisabledState(source);
+          return refreshSucceeded;
+        }
+        if (
+          !this.configManager.isEnabled() ||
+          !this.apiClient.isRequestGenerationCurrent(requestGeneration)
+        ) {
+          refreshSucceeded = false;
+          SecureLogger.info(`Discarded stale Augment refresh (source=${source})`);
+        } else if (parsed) {
+          SecureLogger.info(`Parsed usage data (source=${source})`, {
+            totalUsage: parsed.totalUsage,
+            usageLimit: parsed.usageLimit,
+            hasTotal: parsed.totalUsage !== undefined,
+            hasLimit: parsed.usageLimit !== undefined,
+          });
+          await this.usageTracker.updateWithRealData({
+            totalUsage: parsed.totalUsage ?? 0,
+            usageLimit: parsed.usageLimit,
+            remainingCredits: parsed.remainingCredits,
+            monthlyAllowance: parsed.monthlyAllowance,
+            usageKnown: parsed.usageKnown,
+            sourceKind: "api",
+            dailyUsage: parsed.dailyUsage,
+            lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
+            subscriptionType: parsed.subscriptionType,
+            renewalDate: parsed.renewalDate,
+          });
+          if (!this.configManager.isAugmentEnabled()) {
+            await this.applyAugmentDisabledState(source);
+            return refreshSucceeded;
+          }
+
+          SecureLogger.info(`Augment credit data updated successfully (source=${source})`);
+        } else {
+          refreshSucceeded = false;
+          await this.markAugmentRefreshFailure("api");
+          SecureLogger.warn(`Failed to parse Augment credit response (source=${source})`);
+        }
+      } else if (response.code === "UNAUTHENTICATED") {
+        refreshSucceeded = false;
+        this.usageTracker.clearRealDataFlag();
+        await this.storageManager.setProviderHealth({
+          providerId: "augment",
+          status: "unavailable",
+          checkedAt: new Date().toISOString(),
+          canCollectInCurrentWorkspace: true,
+          sourceKind: "api",
+          message: "Augment authentication expired or invalid.",
+          errorCode: "AUGMENT_UNAUTHENTICATED",
+        });
+        SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
+      } else {
+        refreshSucceeded = false;
+        await this.markAugmentRefreshFailure("api");
+        SecureLogger.warn(`Failed to fetch Augment credit data (source=${source})`, response.error);
+      }
+    }
+    return refreshSucceeded;
+  }
+
   private attachRealDataFetcher(): void {
     const realFetcher = async (): Promise<boolean> => {
       const source = this.usageTracker.getFetchSource();
@@ -174,101 +372,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
       const cliGeneration = this.auggieCliSource.getFetchGeneration();
       let refreshSucceeded = true;
       try {
-        const cliFetch = await this.tryCliFetch(source);
-        if (!this.configManager.isEnabled()) {
-          refreshSucceeded = false;
-          SecureLogger.info(`Skipped refresh while extension is disabled (source=${source})`);
-          return refreshSucceeded;
-        }
-        if (cliFetch.handled) {
-          refreshSucceeded = cliFetch.succeeded;
-        } else if (!this.apiClient.hasCookie()) {
-          // Augment is optional; a signed-out refresh can still succeed for
-          // enabled local assistant providers.
-          refreshSucceeded =
-            this.configManager.isProviderTrackingEnabled() &&
-            this.configManager.getEnabledProviderIds().length > 0;
-          this.usageTracker.clearRealDataFlag();
-          await this.storageManager.setProviderHealth({
-            providerId: "augment",
-            status: "disabled",
-            checkedAt: new Date().toISOString(),
-            canCollectInCurrentWorkspace: true,
-            sourceKind: "api",
-            message: "Not signed in to Augment.",
-            errorCode: "AUGMENT_SIGNED_OUT",
-          });
-          void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
-          SecureLogger.info(`Skipped fetch while signed out (source=${source})`);
-        } else {
-          SecureLogger.info(`Fetching Augment credit data (source=${source})`);
-          const requestGeneration = this.apiClient.getRequestGeneration();
-          const response = await this.apiClient.getUsageData();
-          if (!this.apiClient.isRequestGenerationCurrent(requestGeneration)) {
-            refreshSucceeded = false;
-            SecureLogger.info(`Discarded stale Augment refresh (source=${source})`);
-          } else if (response.success) {
-            const responseData =
-              typeof response.data === "object" && response.data !== null ? response.data : null;
-            SecureLogger.info(`API response received (source=${source})`, {
-              hasData: responseData !== null,
-              dataKeys: responseData ? Object.keys(responseData) : [],
-            });
-            const parsed = await this.apiClient.parseUsageResponse(response);
-            if (
-              !this.configManager.isEnabled() ||
-              !this.apiClient.isRequestGenerationCurrent(requestGeneration)
-            ) {
-              refreshSucceeded = false;
-              SecureLogger.info(`Discarded stale Augment refresh (source=${source})`);
-            } else if (parsed) {
-              SecureLogger.info(`Parsed usage data (source=${source})`, {
-                totalUsage: parsed.totalUsage,
-                usageLimit: parsed.usageLimit,
-                hasTotal: parsed.totalUsage !== undefined,
-                hasLimit: parsed.usageLimit !== undefined,
-              });
-              await this.usageTracker.updateWithRealData({
-                totalUsage: parsed.totalUsage ?? 0,
-                usageLimit: parsed.usageLimit,
-                remainingCredits: parsed.remainingCredits,
-                monthlyAllowance: parsed.monthlyAllowance,
-                usageKnown: parsed.usageKnown,
-                sourceKind: "api",
-                dailyUsage: parsed.dailyUsage,
-                lastUpdate: parsed.lastUpdate ?? new Date().toISOString(),
-                subscriptionType: parsed.subscriptionType,
-                renewalDate: parsed.renewalDate,
-              });
-
-              SecureLogger.info(`Augment credit data updated successfully (source=${source})`);
-            } else {
-              refreshSucceeded = false;
-              await this.markAugmentRefreshFailure("api");
-              SecureLogger.warn(`Failed to parse Augment credit response (source=${source})`);
-            }
-          } else if (response.code === "UNAUTHENTICATED") {
-            refreshSucceeded = false;
-            this.usageTracker.clearRealDataFlag();
-            await this.storageManager.setProviderHealth({
-              providerId: "augment",
-              status: "unavailable",
-              checkedAt: new Date().toISOString(),
-              canCollectInCurrentWorkspace: true,
-              sourceKind: "api",
-              message: "Augment authentication expired or invalid.",
-              errorCode: "AUGMENT_UNAUTHENTICATED",
-            });
-            SecureLogger.info(`Cleared data due to unauthenticated response (source=${source})`);
-          } else {
-            refreshSucceeded = false;
-            await this.markAugmentRefreshFailure("api");
-            SecureLogger.warn(
-              `Failed to fetch Augment credit data (source=${source})`,
-              response.error
-            );
-          }
-        }
+        refreshSucceeded = await this.refreshAugmentCredits(source);
       } catch (error) {
         refreshSucceeded = false;
         if (
@@ -384,6 +488,7 @@ export class RuntimeCoordinator implements vscode.Disposable {
           event.affectsConfiguration("augmeter.alerts.runOutDays") ||
           event.affectsConfiguration("augmeter.history.retentionDays") ||
           event.affectsConfiguration("augmeter.providers") ||
+          event.affectsConfiguration("augmeter.augment") ||
           event.affectsConfiguration("augmeter.dataSource") ||
           event.affectsConfiguration("augmeter.apiBaseUrl") ||
           event.affectsConfiguration("augmeter.auggieCli.path")

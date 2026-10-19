@@ -62,6 +62,7 @@ export class StorageManager {
   private readonly PROVIDER_SNAPSHOTS_SCHEMA_VERSION = 2;
   private readonly PROVIDER_HEALTH_KEY = "providerHealthSnapshotsV1";
   private readonly CLI_AUTH_DISABLED_KEY = "augmeterCliAuthDisabled";
+  private readonly AUGMENT_LEGACY_MIGRATION_KEY = "augmeterAugmentLegacyMigrationV1";
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -74,6 +75,15 @@ export class StorageManager {
 
   async setCliAuthDisabled(disabled: boolean): Promise<void> {
     await this.context.globalState.update(this.CLI_AUTH_DISABLED_KEY, disabled);
+  }
+
+  /** True once the one-time Augment legacy opt-in migration has completed. */
+  isAugmentLegacyMigrationDone(): boolean {
+    return this.context.globalState.get<boolean>(this.AUGMENT_LEGACY_MIGRATION_KEY, false);
+  }
+
+  async setAugmentLegacyMigrationDone(): Promise<void> {
+    await this.context.globalState.update(this.AUGMENT_LEGACY_MIGRATION_KEY, true);
   }
 
   async getUsageData(): Promise<UsageData> {
@@ -390,6 +400,16 @@ export class StorageManager {
 
   async clearProviderHealth(): Promise<void> {
     await this.context.globalState.update(this.PROVIDER_HEALTH_KEY, {});
+  }
+
+  async removeProviderHealth(providerId: ProviderId): Promise<void> {
+    const healthMap = await this.getProviderHealthMap();
+    const key = this.normalizeProviderId(providerId);
+    if (!Object.hasOwn(healthMap, key)) {
+      return;
+    }
+    delete healthMap[key];
+    await this.context.globalState.update(this.PROVIDER_HEALTH_KEY, healthMap);
   }
 
   private async getAlertState(): Promise<{

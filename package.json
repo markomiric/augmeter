@@ -71,7 +71,7 @@
     "commands": [
       {
         "command": "augmeter.manualRefresh",
-        "title": "Refresh Assistant Activity and Augment Credits",
+        "title": "Refresh Assistant Usage",
         "category": "Augmeter"
       },
       {
@@ -81,17 +81,17 @@
       },
       {
         "command": "augmeter.signIn",
-        "title": "Connect Augment",
+        "title": "Connect Augment (Legacy)",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.signOut",
-        "title": "Disconnect Augment",
+        "title": "Disconnect Augment (Legacy)",
         "category": "Augmeter"
       },
       {
         "command": "augmeter.copyUsageSummary",
-        "title": "Copy Augment Credit Summary",
+        "title": "Copy Augment Credit Summary (Legacy)",
         "category": "Augmeter"
       },
       {
@@ -101,7 +101,7 @@
       },
       {
         "command": "augmeter.exportUsageHistoryCsv",
-        "title": "Export Augment Credit History (CSV)",
+        "title": "Export Augment Credit History (CSV) (Legacy)",
         "category": "Augmeter"
       },
       {
@@ -119,7 +119,7 @@
       "commandPalette": [
         {
           "command": "augmeter.signIn",
-          "when": "!augmeter.isSignedIn"
+          "when": "config.augmeter.augment.enabled && !augmeter.isSignedIn"
         },
         {
           "command": "augmeter.signOut",
@@ -127,14 +127,14 @@
         },
         {
           "command": "augmeter.copyUsageSummary",
-          "when": "augmeter.isSignedIn"
+          "when": "config.augmeter.augment.enabled && augmeter.isSignedIn"
         },
         {
           "command": "augmeter.openUsageDashboard"
         },
         {
           "command": "augmeter.exportUsageHistoryCsv",
-          "when": "augmeter.isSignedIn"
+          "when": "config.augmeter.augment.enabled && augmeter.isSignedIn"
         },
         {
           "command": "augmeter.exportUsageBundleJson"
@@ -193,8 +193,14 @@
         }
       },
       {
-        "title": "Augmeter: Augment credits",
+        "title": "Augmeter: Augment credits (legacy)",
         "properties": {
+          "augmeter.augment.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Track Augment credits (legacy). Off by default; turned on automatically for people who already used Augment in Augmeter. Augment changed how it bills usage, so credit data may be incomplete or stop updating. When off, Augmeter runs no Auggie CLI command and makes no Augment request.",
+            "scope": "application"
+          },
           "augmeter.dataSource": {
             "type": "string",
             "enum": [

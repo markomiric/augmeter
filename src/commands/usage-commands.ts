@@ -10,6 +10,7 @@ import { ErrorHandler } from "../core/errors/augmeter-error";
 import { type ConfigManager } from "../core/config/config-manager";
 import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentApiClient } from "../services/augment-api-client";
+import { ensureAugmentEnabled } from "./auth-commands";
 import {
   buildDiagnosticsText,
   buildUsageBundle,
@@ -117,11 +118,16 @@ export class UsageCommands {
     }
     const result = await ErrorHandler.withErrorHandling(async () => {
       SecureLogger.info("Manual refresh requested");
+      const augmentEnabled = this.configManager.isAugmentEnabled();
 
       const refreshSucceeded = await UserNotificationService.withProgress(
         "Augmeter",
         async progress => {
-          progress.report({ message: "Refreshing assistant activity and Augment credits..." });
+          progress.report({
+            message: augmentEnabled
+              ? "Refreshing assistant activity and Augment credits..."
+              : "Refreshing assistant activity...",
+          });
 
           // Trigger data refresh and then update status bar
           const succeeded = await this.usageTracker.refreshNow?.();
@@ -143,16 +149,21 @@ export class UsageCommands {
       }
 
       UserNotificationService.showSuccess(
-        "Enabled assistant activity and credit sources refreshed"
+        augmentEnabled
+          ? "Enabled assistant activity and credit sources refreshed"
+          : "Assistant activity refreshed"
       );
       SecureLogger.info("Manual refresh completed");
       return true;
-    }, "refresh assistant activity and Augment credits");
+    }, "refresh assistant usage");
     return result === true;
   }
 
   private async handleCopyUsageSummary(): Promise<void> {
     try {
+      if (!(await ensureAugmentEnabled(this.configManager))) {
+        return;
+      }
       const usage = this.usageTracker.getCurrentUsage();
       const limit = this.usageTracker.getCurrentLimit();
       const hasRealData = this.usageTracker.hasRealUsageData();
@@ -272,6 +283,7 @@ export class UsageCommands {
     const usageRate = await this.usageTracker.getUsageRate();
     const projectedDays = await this.usageTracker.getProjectedDaysRemaining();
     const projectedDate = await this.usageTracker.getProjectedDepletionDate();
+    const augmentEnabled = this.configManager.isAugmentEnabled();
     const data = {
       generatedAt: new Date(),
       enabled: this.configManager.isEnabled(),
@@ -296,6 +308,7 @@ export class UsageCommands {
       snapshots,
       providerSnapshots,
       providerHealth,
+      augmentEnabled,
     };
     const contentSignature = JSON.stringify({ ...data, generatedAt: undefined });
     if (skipIfUnchanged && contentSignature === this.dashboardContentSignature) return;
@@ -412,6 +425,7 @@ export class UsageCommands {
             enabledProviders: this.configManager.getEnabledProviderIds(),
             copilotApiConfig,
             copilotTokenPresent: Boolean(process.env.GITHUB_TOKEN),
+            augmentEnabled: this.configManager.isAugmentEnabled(),
           }),
           null,
           2
@@ -479,6 +493,7 @@ export class UsageCommands {
               ...copilotApiSettings,
               tokenPresent: Boolean(process.env.GITHUB_TOKEN),
             },
+            augmentEnabled: this.configManager.isAugmentEnabled(),
             logLevel: this.configManager.getLogLevel(),
           },
           providerHealth,

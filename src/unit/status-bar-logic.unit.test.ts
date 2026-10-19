@@ -46,7 +46,7 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     expect(tooltip).toContain("- Codex (local prompts): 5h 8 • 7d 42");
     expect(tooltip).toContain("**Assistant usage**");
     expect(tooltip.indexOf("**Assistant activity:**")).toBeLessThan(
-      tooltip.indexOf("**Augment credits**")
+      tooltip.indexOf("**Augment credits (legacy)**")
     );
     expect(tooltip).toContain("[Open assistant usage](command:augmeter.openUsageDashboard)");
   });
@@ -63,7 +63,7 @@ describe("StatusBar Logic (unit) Test Suite", () => {
     });
 
     expect(tooltip).toContain("**Assistant usage**");
-    expect(tooltip).toContain("**Augment credits:** Not connected");
+    expect(tooltip).toContain("**Augment credits (legacy):** Not connected");
     expect(tooltip).toContain(
       "Run **Augmeter: Connect Augment** to include your credit balance and metrics reported by the connected source."
     );

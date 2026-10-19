@@ -139,6 +139,11 @@ async function restoreStatusBarSettings(
   await config.updateConfig("clickAction", settings.clickAction);
 }
 
+// These suites exercise Augment credit presentation, which is a legacy opt-in.
+async function setAugmentEnabled(value: boolean | undefined): Promise<void> {
+  await new ConfigManager().updateConfig("augment.enabled", value);
+}
+
 suite("StatusBar tooltip Test Suite", () => {
   let config: ConfigManager;
   let manager: StatusBarManager;
@@ -147,6 +152,14 @@ suite("StatusBar tooltip Test Suite", () => {
   setup(() => {
     config = new ConfigManager();
     initialSettings = readStatusBarSettings(config);
+  });
+
+  suiteSetup(async () => {
+    await setAugmentEnabled(true);
+  });
+
+  suiteTeardown(async () => {
+    await setAugmentEnabled(undefined);
   });
 
   teardown(async () => {
@@ -202,7 +215,7 @@ suite("StatusBar tooltip Test Suite", () => {
     const rawTooltip = (manager as any).statusBarItem.tooltip;
     const tooltip = typeof rawTooltip === "string" ? rawTooltip : (rawTooltip?.value ?? "");
     assert.ok(
-      tooltip.includes("**Augment credits:** Not connected"),
+      tooltip.includes("**Augment credits (legacy):** Not connected"),
       `Tooltip should explain the disconnected Augment state, got: ${tooltip}`
     );
     assert.ok(
@@ -234,6 +247,14 @@ suite("StatusBar tooltip Test Suite", () => {
 });
 
 suite("StatusBar fixed presentation", () => {
+  suiteSetup(async () => {
+    await setAugmentEnabled(true);
+  });
+
+  suiteTeardown(async () => {
+    await setAugmentEnabled(undefined);
+  });
+
   let initialSettings: StatusBarSettings;
 
   setup(() => {

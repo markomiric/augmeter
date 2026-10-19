@@ -110,7 +110,8 @@ describe("UsageTracker snapshot storage", () => {
     const tracker = new UsageTracker(storage, {
       getAlertThresholds: () => ({ warning: 75, high: 90, critical: 95 }),
       getRunOutAlertDays: () => 3,
-    } as ConfigManager);
+      isAugmentEnabled: () => true,
+    } as unknown as ConfigManager);
     vi.spyOn(tracker, "getProjectedDaysRemaining").mockResolvedValue(2 / 24);
     const warning = vi.spyOn(UserNotificationService, "showWarning").mockResolvedValue(undefined);
     await (
@@ -140,6 +141,7 @@ describe("UsageTracker snapshot storage", () => {
       getHistoryRetentionDays: () => 35,
       getAlertThresholds: () => ({ warning: 75, high: 90, critical: 95 }),
       getRunOutAlertDays: () => 3,
+      isAugmentEnabled: () => true,
     } as unknown as ConfigManager;
     const tracker = new UsageTracker(storage, config);
 

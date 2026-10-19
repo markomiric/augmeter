@@ -46,6 +46,7 @@ describe("RuntimeCoordinator refresh result", () => {
       isCliAuthDisabled: () => false,
       setProviderHealth: vi.fn(async () => {}),
       getAllProviderHealth: vi.fn(async () => options.providerHealth ?? []),
+      getProviderHealth: vi.fn(async () => null),
     } as unknown as StorageManager;
     const providerUsageService = {
       collectUsage: vi.fn(async () => {}),
@@ -58,6 +59,7 @@ describe("RuntimeCoordinator refresh result", () => {
         isEnabled: () => options.extensionEnabled ?? true,
         isProviderTrackingEnabled: () => options.providerTrackingEnabled ?? false,
         getEnabledProviderIds: () => options.enabledProviderIds ?? [],
+        isAugmentEnabled: () => true,
       } as unknown as ConfigManager,
       {
         hasCookie: () => options.hasCookie ?? true,

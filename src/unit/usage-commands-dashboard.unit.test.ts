@@ -80,7 +80,7 @@ describe("UsageCommands dashboard", () => {
     const commands = new UsageCommands(
       usageTracker as never,
       {} as never,
-      { isEnabled: () => true } as never,
+      { isEnabled: () => true, isAugmentEnabled: () => true } as never,
       { hasCookie: () => false } as never
     );
     const disposables = commands.registerCommands();
@@ -180,7 +180,7 @@ describe("UsageCommands dashboard", () => {
     const commands = new UsageCommands(
       usageTracker as never,
       statusBarManager as never,
-      { isEnabled: () => true } as never,
+      { isEnabled: () => true, isAugmentEnabled: () => true } as never,
       {} as never
     );
     const disposables = commands.registerCommands();

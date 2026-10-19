@@ -144,7 +144,8 @@ export class AugmentApiClient {
   private async makeRequestWithBase(
     baseUrl: string,
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    shouldContinue?: () => boolean
   ): Promise<AugmentApiResponse> {
     const requestGeneration = this.requestGeneration;
     const method = typeof options.method === "string" ? options.method : "GET";
@@ -157,7 +158,11 @@ export class AugmentApiClient {
     if (options.body !== undefined) {
       requestOptions.body = options.body;
     }
-    const response = await this.requestWithRetry(`${baseUrl}${endpoint}`, requestOptions);
+    const response = await this.requestWithRetry(
+      `${baseUrl}${endpoint}`,
+      requestOptions,
+      shouldContinue
+    );
 
     if (requestGeneration !== this.requestGeneration) {
       return {
@@ -194,9 +199,11 @@ export class AugmentApiClient {
     return { success: true, data: response.data, status: response.status };
   }
 
+  /** `shouldContinue` is checked before each retry; once false, no further request is sent. */
   private async requestWithRetry(
     url: string,
-    options: RequestInit
+    options: RequestInit,
+    shouldContinue: () => boolean = () => true
   ): Promise<{ success: boolean; status?: number; data?: unknown; error?: string }> {
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -217,6 +224,9 @@ export class AugmentApiClient {
         const retriable = response.status === 429 || response.status >= 500;
         if (!response.ok && retriable && attempt < maxAttempts) {
           await this.waitBeforeRetry(attempt);
+          if (!shouldContinue()) {
+            return result;
+          }
           continue;
         }
         return result;
@@ -232,6 +242,9 @@ export class AugmentApiClient {
         }
         if (attempt < maxAttempts) {
           await this.waitBeforeRetry(attempt);
+          if (!shouldContinue()) {
+            return { success: false, error: "Request cancelled" };
+          }
           continue;
         }
         throw AugmeterError.network(
@@ -274,18 +287,21 @@ export class AugmentApiClient {
   private async fetchWithSingleFlight(
     endpoint: string,
     baseUrl: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    shouldContinue?: () => boolean
   ): Promise<AugmentApiResponse> {
     const method = (options.method || "GET").toString();
     const key = this.getRequestKey(baseUrl, endpoint, method);
     const existing = this.inFlightRequests.get(key);
     if (existing) return existing;
 
-    const promise = this.makeRequestWithBase(baseUrl, endpoint, options).finally(() => {
-      if (this.inFlightRequests.get(key) === promise) {
-        this.inFlightRequests.delete(key);
+    const promise = this.makeRequestWithBase(baseUrl, endpoint, options, shouldContinue).finally(
+      () => {
+        if (this.inFlightRequests.get(key) === promise) {
+          this.inFlightRequests.delete(key);
+        }
       }
-    });
+    );
 
     this.inFlightRequests.set(key, promise);
     return promise;
@@ -326,7 +342,11 @@ export class AugmentApiClient {
     return await this.makeRequest("/user");
   }
 
-  async getUsageData(): Promise<AugmentApiResponse> {
+  /**
+   * `shouldContinue` lets the caller stop retries and the shared-base fallback, for
+   * example when Augment credit tracking is turned off while the request is pending.
+   */
+  async getUsageData(shouldContinue?: () => boolean): Promise<AugmentApiResponse> {
     if (!this.hasCookie()) {
       return { success: false, error: "Not authenticated", code: "UNAUTHENTICATED" };
     }
@@ -334,7 +354,7 @@ export class AugmentApiClient {
     const apiBaseUrl = this.getApiBaseUrl();
 
     // Try tenant base first (single-flight)
-    const tenantResp = await this.fetchWithSingleFlight("/credits", apiBaseUrl);
+    const tenantResp = await this.fetchWithSingleFlight("/credits", apiBaseUrl, {}, shouldContinue);
     if (!this.hasCookie() && tenantResp.code !== "UNAUTHENTICATED") {
       return {
         success: false,
@@ -357,13 +377,22 @@ export class AugmentApiClient {
     // the tenant base already IS the shared base (no different base to try).
     const status = tenantResp.status;
     const isUpstreamOutage = typeof status === "number" && status >= 500 && status <= 599;
-    if (isUpstreamOutage || apiBaseUrl === this.DEFAULT_API_BASE_URL) {
+    if (
+      isUpstreamOutage ||
+      apiBaseUrl === this.DEFAULT_API_BASE_URL ||
+      shouldContinue?.() === false
+    ) {
       return tenantResp;
     }
 
     // If not available on tenant (routing miss), try shared app base with the
     // same cookie (single-flight).
-    const fallbackResp = await this.fetchWithSingleFlight("/credits", this.DEFAULT_API_BASE_URL);
+    const fallbackResp = await this.fetchWithSingleFlight(
+      "/credits",
+      this.DEFAULT_API_BASE_URL,
+      {},
+      shouldContinue
+    );
     if (!this.hasCookie() && fallbackResp.code !== "UNAUTHENTICATED") {
       return {
         success: false,

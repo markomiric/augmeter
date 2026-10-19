@@ -132,4 +132,16 @@ describe("StorageManager provider storage", () => {
     await storage.clearProviderHealth();
     expect(await storage.getAllProviderHealth()).toHaveLength(0);
   });
+
+  it("removes one provider's health and keeps the others", async () => {
+    const storage = new StorageManager(createMockContext());
+    await storage.setProviderHealth(makeProviderHealth("augment"));
+    await storage.setProviderHealth(makeProviderHealth("claude"));
+
+    await storage.removeProviderHealth("augment");
+    await storage.removeProviderHealth("augment");
+
+    expect(await storage.getProviderHealth("augment")).toBeNull();
+    expect((await storage.getProviderHealth("claude"))?.status).toBe("connected");
+  });
 });

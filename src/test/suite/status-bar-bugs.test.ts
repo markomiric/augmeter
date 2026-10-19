@@ -125,6 +125,8 @@ suite("Status Bar Bugs Test Suite", () => {
     };
     await config.updateConfig("enabled", true);
     await config.updateConfig("showInStatusBar", true);
+    // These tests exercise Augment connection states, which are a legacy opt-in.
+    await config.updateConfig("augment.enabled", true);
     mockUsageTracker = new MockUsageTracker();
     mockApiClient = new MockApiClient();
   });
@@ -136,6 +138,7 @@ suite("Status Bar Bugs Test Suite", () => {
     await config.updateConfig("enabled", initialSettings.enabled);
     await config.updateConfig("showInStatusBar", initialSettings.showInStatusBar);
     await config.updateConfig("clickAction", initialSettings.clickAction);
+    await config.updateConfig("augment.enabled", undefined);
   });
 
   test("Sign out state always shows icon and Augmeter branding", async () => {

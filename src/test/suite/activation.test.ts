@@ -98,7 +98,7 @@ suite("Extension Activation Test Suite", () => {
       contributes.configuration.map((group: { title: string }) => group.title),
       [
         "Augmeter: Assistant activity",
-        "Augmeter: Augment credits",
+        "Augmeter: Augment credits (legacy)",
         "Augmeter: Status bar",
         "Augmeter: General",
       ]

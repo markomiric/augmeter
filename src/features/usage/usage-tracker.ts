@@ -448,7 +448,7 @@ export class UsageTracker implements vscode.Disposable {
         this.assertRealDataUpdateCurrent(acceptedBeforeReset);
 
         // Check threshold notifications
-        if (usageKnown && this.currentLimit > 0) {
+        if (usageKnown && this.currentLimit > 0 && this.configManager.isAugmentEnabled()) {
           const percentage = Math.round((this.currentUsage / this.currentLimit) * 100);
           await this.checkThresholdNotifications(percentage);
         }
@@ -495,9 +495,16 @@ export class UsageTracker implements vscode.Disposable {
 
   private async checkThresholdNotifications(percentage: number): Promise<void> {
     try {
+      // Augment credit alerts are part of the legacy opt-in; never alert while it is off.
+      if (!this.configManager.isAugmentEnabled()) {
+        return;
+      }
       const { warning, high, critical } = this.configManager.getAlertThresholds();
       const cycleId = this.getAlertCycleId();
       const lastNotified = await this.storageManager.getNotifiedThresholdForCycle(cycleId);
+      if (!this.configManager.isAugmentEnabled()) {
+        return;
+      }
 
       const threshold = selectTriggeredThreshold(
         percentage,
@@ -529,6 +536,9 @@ export class UsageTracker implements vscode.Disposable {
       const runOutDays = this.configManager.getRunOutAlertDays();
       const projectedDays = await this.getProjectedDaysRemaining();
       const runOutAlreadyAlerted = await this.storageManager.isRunOutAlertedForCycle(cycleId);
+      if (!this.configManager.isAugmentEnabled()) {
+        return;
+      }
       if (shouldNotifyProjectedRunOut(projectedDays, runOutDays, runOutAlreadyAlerted)) {
         const projectedDaysValue = projectedDays ?? 0;
         const amount = Math.max(

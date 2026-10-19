@@ -53,6 +53,7 @@ describe("Smart Sign In (unit)", () => {
       getSmartSignInQuickWatchMs: () => options?.quickWatchMs ?? 0,
       getSmartSignInWebsiteWatchMs: () => options?.websiteWatchMs ?? 500,
       getDataSource: () => options?.dataSource ?? "cookie",
+      isAugmentEnabled: () => true,
     } as any;
 
     const auggieCliSource = {

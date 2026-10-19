@@ -35,6 +35,8 @@ export interface UsageDashboardData {
   snapshots: UsageSnapshot[];
   providerSnapshots?: ProviderUsageSnapshot[] | undefined;
   providerHealth?: ProviderHealthSnapshot[] | undefined;
+  /** False hides every Augment section (legacy option off). Defaults to true. */
+  augmentEnabled?: boolean | undefined;
 }
 
 function escapeHtml(value: string): string {
@@ -312,13 +314,19 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
           })
           .join("\n")
       : `<p class="metric-subtle">No assistant activity recorded yet. Choose assistants in Settings, use one, then refresh.</p>`;
-  const unavailableDataNotice = !data.hasRealData
-    ? `<section class="notice-card" aria-labelledby="connect-heading">
+  const augmentEnabled = data.augmentEnabled !== false;
+  const legacyNoticeText =
+    "Augment changed how it bills usage, so credit data may be incomplete or stop updating.";
+  // One legacy notice: inside the "not connected" card, or in the Augment section's description.
+  const unavailableDataNotice =
+    augmentEnabled && !data.hasRealData
+      ? `<section class="notice-card" aria-labelledby="connect-heading">
         <h2 id="connect-heading">${creditProblem ? "Augment credits unavailable" : data.augmentConnected ? "Waiting for Augment credits" : "Augment credits aren&#39;t connected"}</h2>
         <p class="metric-subtle">${creditProblem ? escapeHtml(augmentHealth.message ?? "Couldn’t refresh Augment credits. Try again.") : data.augmentConnected ? "Refresh to load your credit balance." : "Connect Augment to see your credit balance alongside local activity."}</p>
+        <p class="metric-subtle">${legacyNoticeText}</p>
         ${!data.augmentConnected || augmentHealth?.errorCode === "AUGMENT_UNAUTHENTICATED" ? '<button id="connect-augment" data-command="augmeter.signIn">Connect Augment</button>' : ""}
       </section>`
-    : "";
+      : "";
   const planLine = data.subscriptionType
     ? `<p class="metric-subtle">Plan: ${escapeHtml(data.subscriptionType)}</p>`
     : "";
@@ -384,10 +392,12 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
           ${planLine}
           ${creditFreshnessLine}
         </div>`;
-  const augmentMarkup = data.hasRealData
-    ? `<div class="section">
-        <h2>Augment credits</h2>
+  const augmentMarkup =
+    augmentEnabled && data.hasRealData
+      ? `<div class="section">
+        <h2>Augment credits (legacy)</h2>
         <p class="metric-subtle section-description">Official balance and cycle data from Augment.</p>
+        <p class="metric-subtle section-description">${legacyNoticeText}</p>
         ${creditProblem ? `<p class="metric-state" role="status">${escapeHtml(augmentHealth.message ?? "Couldn’t refresh Augment credits. Last recorded values shown.")}</p>` : ""}
         <div class="grid">
           ${currentCycleCard}
@@ -396,12 +406,12 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
           ${usageKnown ? renderTargetCard(data.monthlyTarget, data.targetDelta, data.targetProgressPercent) : ""}
         </div>
       </div>`
-    : "";
+      : "";
   const trendValues = [used24h, used7d, used30d];
   const trendsMarkup =
-    data.hasRealData && usageKnown
+    augmentEnabled && data.hasRealData && usageKnown
       ? `<div class="section">
-        <h2>Augment credit trends</h2>
+        <h2>Augment credit trends (legacy)</h2>
         <p class="metric-subtle section-description">Changes between saved readings within each window. Partial history may cover less time.</p>
         ${
           trendValues.some(value => value !== null)
@@ -593,10 +603,10 @@ export function renderUsageDashboard(data: UsageDashboardData): string {
       <summary id="more-actions-toggle">Exports and support</summary>
       <div class="actions">
         <button id="export-json" data-command="augmeter.exportUsageBundleJson">Export all usage (JSON)</button>
-        ${data.snapshots.length ? '<button id="export-csv" data-command="augmeter.exportUsageHistoryCsv">Export credit history (CSV)</button>' : ""}
-        ${data.hasRealData ? '<button id="copy-summary" data-command="augmeter.copyUsageSummary">Copy credit summary</button>' : ""}
+        ${augmentEnabled && data.snapshots.length ? '<button id="export-csv" data-command="augmeter.exportUsageHistoryCsv">Export credit history (CSV)</button>' : ""}
+        ${augmentEnabled && data.hasRealData ? '<button id="copy-summary" data-command="augmeter.copyUsageSummary">Copy credit summary</button>' : ""}
         <button id="diagnostics" data-command="augmeter.runDiagnostics">Copy diagnostics</button>
-        ${data.hasRealData || data.augmentConnected ? '<button id="disconnect" data-command="augmeter.signOut">Disconnect Augment</button>' : ""}
+        ${augmentEnabled && (data.hasRealData || data.augmentConnected) ? '<button id="disconnect" data-command="augmeter.signOut">Disconnect Augment</button>' : ""}
       </div>
     </details>
     </div>

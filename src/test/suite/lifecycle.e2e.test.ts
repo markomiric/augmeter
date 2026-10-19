@@ -15,6 +15,7 @@ interface UsageFixture {
 const COOKIE_VALUE = "augmeter-e2e-session-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const SETTINGS = [
   "enabled",
+  "augment.enabled",
   "dataSource",
   "apiBaseUrl",
   "providers.enabled",
@@ -33,6 +34,7 @@ suite("Augment connection lifecycle E2E Test Suite", () => {
     try {
       await vscode.commands.executeCommand("augmeter.signOut");
       await config.update("enabled", true, vscode.ConfigurationTarget.Global);
+      await config.update("augment.enabled", true, vscode.ConfigurationTarget.Global);
       await config.update("dataSource", "cookie", vscode.ConfigurationTarget.Global);
       await config.update("apiBaseUrl", fixture.baseUrl, vscode.ConfigurationTarget.Global);
       await config.update("providers.enabled", false, vscode.ConfigurationTarget.Global);

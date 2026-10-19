@@ -206,13 +206,14 @@ export function buildMarkdownTooltip(params: {
   projectedDepletionDate?: Date | null | undefined;
   providerUsageLines?: string[] | undefined;
   augmentHealth?: ProviderHealthSnapshot | undefined;
+  /** False omits every Augment line (legacy option off). */
+  augmentEnabled?: boolean | undefined;
 }): string {
   const {
     used,
     remaining,
     limit,
     percentage,
-    hasRealData,
     usageKnown = true,
     monthlyAllowance,
     clickAction,
@@ -227,7 +228,9 @@ export function buildMarkdownTooltip(params: {
     projectedDepletionDate,
     providerUsageLines,
     augmentHealth,
+    augmentEnabled = true,
   } = params;
+  const hasRealData = augmentEnabled && params.hasRealData;
 
   const lines: string[] = [];
   const augmentHealthMessage = getAugmentHealthMessage(augmentHealth);
@@ -241,18 +244,18 @@ export function buildMarkdownTooltip(params: {
   }
 
   if (hasRealData) {
-    lines.push("**Augment credits**");
+    lines.push("**Augment credits (legacy)**");
     if (subscriptionType) {
       lines.push(`Plan: ${subscriptionType}`);
     }
     if (augmentHealthMessage) {
       lines.push(augmentHealthMessage);
     }
-  } else {
+  } else if (augmentEnabled) {
     if (augmentHealthMessage) {
-      lines.push(`**Augment credits:** ${augmentHealthMessage}`);
+      lines.push(`**Augment credits (legacy):** ${augmentHealthMessage}`);
     } else {
-      lines.push("**Augment credits:** Not connected");
+      lines.push("**Augment credits (legacy):** Not connected");
       lines.push(
         "Run **Augmeter: Connect Augment** to include your credit balance and metrics reported by the connected source."
       );

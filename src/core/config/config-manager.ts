@@ -162,6 +162,27 @@ export class ConfigManager {
     return (this.config.get<string>("providers.codex.path", "") ?? "").trim();
   }
 
+  /** Augment credit tracking is a legacy opt-in (off by default). */
+  isAugmentEnabled(): boolean {
+    return this.config.get<boolean>("augment.enabled", false) === true;
+  }
+
+  /** True when the user set `augmeter.augment.enabled` in any scope. */
+  hasExplicitAugmentEnabled(): boolean {
+    const inspected = this.config.inspect?.<boolean>("augment.enabled");
+    return Boolean(
+      inspected &&
+        [inspected.globalValue, inspected.workspaceValue, inspected.workspaceFolderValue].some(
+          value => value !== undefined
+        )
+    );
+  }
+
+  async setAugmentEnabled(value: boolean): Promise<void> {
+    await this.config.update("augment.enabled", value, vscode.ConfigurationTarget.Global);
+    this.reloadConfig();
+  }
+
   getCopilotApiConfig(): CopilotApiConfig {
     return {
       enabled: this.config.get<boolean>("providers.copilot.api.enabled", false) === true,

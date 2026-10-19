@@ -22,6 +22,12 @@ import {
 } from "./status-bar-logic";
 
 /**
+ * Tooltips link only to the dashboard. Allowing just that command keeps provider text
+ * (for example an Augment plan name) from adding a runnable command link.
+ */
+const TOOLTIP_TRUST = { enabledCommands: ["augmeter.openUsageDashboard"] };
+
+/**
  * Manages the VS Code status bar item for displaying Augmeter usage data.
  *
  * This class handles:
@@ -175,7 +181,7 @@ export class StatusBarManager implements vscode.Disposable {
       return false;
     }
     const md = new vscode.MarkdownString(tooltipContent);
-    md.isTrusted = true;
+    md.isTrusted = TOOLTIP_TRUST;
     this.statusBarItem.tooltip = md;
     return true;
   }
@@ -208,7 +214,7 @@ export class StatusBarManager implements vscode.Disposable {
 
   private createTooltipMarkdown(lines: string[]): vscode.MarkdownString {
     const markdown = new vscode.MarkdownString(lines.join("\n\n"));
-    markdown.isTrusted = true;
+    markdown.isTrusted = TOOLTIP_TRUST;
     return markdown;
   }
 
@@ -216,6 +222,11 @@ export class StatusBarManager implements vscode.Disposable {
     const revision = ++this.displayRevision;
     if (!this.configManager.isEnabled() || !this.configManager.shouldShowInStatusBar()) {
       this.statusBarItem.hide();
+      return;
+    }
+
+    if (!this.configManager.isAugmentEnabled()) {
+      await this.updateLogoutStatus(revision, false);
       return;
     }
 
@@ -289,10 +300,15 @@ export class StatusBarManager implements vscode.Disposable {
     try {
       this.displayRevision++;
       this.statusBarItem.text = `$(sync~spin) Augmeter`;
-      this.statusBarItem.tooltip = `Augmeter\n\nRefreshing assistant activity and Augment credits...`;
+      const augmentEnabled = this.configManager.isAugmentEnabled();
+      this.statusBarItem.tooltip = augmentEnabled
+        ? `Augmeter\n\nRefreshing assistant activity and Augment credits...`
+        : `Augmeter\n\nRefreshing assistant activity...`;
       this.statusBarItem.command = "augmeter.manualRefresh";
       this.statusBarItem.accessibilityInformation = {
-        label: "Augmeter: Refreshing assistant activity and Augment credits",
+        label: augmentEnabled
+          ? "Augmeter: Refreshing assistant activity and Augment credits"
+          : "Augmeter: Refreshing assistant activity",
       };
       this.statusBarItem.backgroundColor = undefined;
       this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
@@ -349,7 +365,10 @@ export class StatusBarManager implements vscode.Disposable {
         ["**Assistant activity:**", ...providerUsageLines.map(line => `- ${line}`)].join("\n")
       );
     }
-    lines.push("**Augment credits**", augmentHealthMessage ?? "Loading Augment credits...");
+    lines.push(
+      "**Augment credits (legacy)**",
+      augmentHealthMessage ?? "Loading Augment credits..."
+    );
     lines.push("Click to refresh · [Open assistant usage](command:augmeter.openUsageDashboard)");
     this.statusBarItem.tooltip = this.createTooltipMarkdown(lines);
     this.statusBarItem.command = "augmeter.manualRefresh";
@@ -363,7 +382,10 @@ export class StatusBarManager implements vscode.Disposable {
     this.statusBarItem.show();
   }
 
-  async updateLogoutStatus(revision: number = ++this.displayRevision): Promise<void> {
+  async updateLogoutStatus(
+    revision: number = ++this.displayRevision,
+    augmentEnabled: boolean = true
+  ): Promise<void> {
     if (!this.configManager.shouldShowInStatusBar()) {
       this.statusBarItem.hide();
       return;
@@ -383,15 +405,18 @@ export class StatusBarManager implements vscode.Disposable {
       hasRealData: false,
       clickAction: "refresh",
       providerUsageLines,
+      augmentEnabled,
     });
     const markdown = new vscode.MarkdownString(tooltip);
-    markdown.isTrusted = true;
+    markdown.isTrusted = TOOLTIP_TRUST;
     this.statusBarItem.tooltip = markdown;
     this.statusBarItem.command = "augmeter.openUsageDashboard";
     this.statusBarItem.backgroundColor = undefined;
     this.statusBarItem.color = new vscode.ThemeColor("statusBarItem.prominentForeground");
     this.statusBarItem.accessibilityInformation = {
-      label: "Augmeter: Assistant usage; Augment credits not connected",
+      label: augmentEnabled
+        ? "Augmeter: Assistant usage; Augment credits not connected"
+        : "Augmeter: Assistant usage",
     };
     this.statusBarItem.show();
   }

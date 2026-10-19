@@ -14,6 +14,26 @@ import { type AuggieCliSource } from "../services/auggie-cli-source";
 import { type AugmentApiClient } from "../services/augment-api-client";
 import { type ProviderHealthSnapshot } from "../core/types/provider-usage";
 
+/**
+ * Shared opt-in guard for every Augment connect path. While the legacy option is off,
+ * offers to turn it on and does nothing else; "Turn On" enables it (Global) and lets
+ * the caller continue its existing flow.
+ */
+export async function ensureAugmentEnabled(configManager: ConfigManager): Promise<boolean> {
+  if (configManager.isAugmentEnabled()) {
+    return true;
+  }
+  const choice = await vscode.window.showInformationMessage(
+    "Augment credit tracking is a legacy option and is turned off.",
+    "Turn On"
+  );
+  if (choice !== "Turn On") {
+    return false;
+  }
+  await configManager.setAugmentEnabled(true);
+  return true;
+}
+
 export class AuthCommands {
   private signInInProgress = false;
 
@@ -39,8 +59,16 @@ export class AuthCommands {
     }
   }
 
+  /** True when Augment was turned off after a connect flow started; the flow then stops quietly. */
+  private augmentTurnedOff(): boolean {
+    return !this.configManager.isAugmentEnabled();
+  }
+
   private async runSignInWithCookie(cookie: string): Promise<void> {
     const apiClient = this.apiClient;
+    if (this.augmentTurnedOff()) {
+      return;
+    }
 
     try {
       const normalized = SecureCookieUtils.normalizeCookieInput(cookie);
@@ -54,7 +82,15 @@ export class AuthCommands {
 
     await UserNotificationService.withProgress("Connecting Augment", async progress => {
       progress.report({ message: "Checking your Augment connection..." });
+      if (this.augmentTurnedOff()) {
+        await apiClient.clearSessionCookie();
+        return;
+      }
       const result = await apiClient.testConnection();
+      if (this.augmentTurnedOff()) {
+        await apiClient.clearSessionCookie();
+        return;
+      }
       if (!result.success) {
         await apiClient.clearSessionCookie();
         void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", false);
@@ -74,6 +110,9 @@ export class AuthCommands {
   }
 
   private async finalizeAuthenticatedSession(successMessage = "Augment connected"): Promise<void> {
+    if (this.augmentTurnedOff()) {
+      return;
+    }
     void vscode.commands.executeCommand("setContext", "augmeter.isSignedIn", true);
     this.statusBarManager.showLoading();
     const refreshSucceeded = await this.usageTracker.refreshNow();
@@ -158,6 +197,9 @@ export class AuthCommands {
     }
 
     await this.storageManager.setCliAuthDisabled(false);
+    if (this.augmentTurnedOff()) {
+      return true;
+    }
     const result = await this.auggieCliSource.fetchUsage();
 
     if (result.status === "ok") {
@@ -180,6 +222,9 @@ export class AuthCommands {
         placeHolder: "Choose how Augmeter should read your Augment credits",
         ignoreFocusOut: true,
       });
+      if (this.augmentTurnedOff()) {
+        return true;
+      }
 
       if (choice === cookieItem) {
         return false;
@@ -189,6 +234,9 @@ export class AuthCommands {
       }
 
       const signedIn = await this.runAuggieLoginFlow(binary);
+      if (this.augmentTurnedOff()) {
+        return true;
+      }
       if (signedIn) {
         await this.finalizeAuthenticatedSession("Augment connected through Auggie CLI");
       } else if (mode !== "auggie-cli") {
@@ -235,6 +283,9 @@ export class AuthCommands {
           // Poll slower than the source's result cache so each check is fresh.
           const pollMs = 5_500;
           while (Date.now() < deadline && !token.isCancellationRequested) {
+            if (this.augmentTurnedOff()) {
+              return false;
+            }
             const result = await this.auggieCliSource.fetchUsage();
             if (result.status === "ok") {
               return true;
@@ -252,7 +303,13 @@ export class AuthCommands {
   private async tryExistingCookieAndFinalize(apiClient: AugmentApiClient): Promise<boolean> {
     return await UserNotificationService.withProgress("Connecting Augment", async progress => {
       progress.report({ message: "Checking your Augment connection..." });
+      if (this.augmentTurnedOff()) {
+        return true; // handled: stop the connect flow quietly
+      }
       const result = await apiClient.testConnection();
+      if (this.augmentTurnedOff()) {
+        return true;
+      }
       if (result.success) {
         progress.report({ message: "Loading Augment credits..." });
         await this.finalizeAuthenticatedSession();
@@ -281,7 +338,7 @@ export class AuthCommands {
 
   private async watchClipboardBeforeWebsite(): Promise<string | null> {
     const quickWatchMs = this.configManager.getSmartSignInQuickWatchMs();
-    if (quickWatchMs <= 0) {
+    if (quickWatchMs <= 0 || this.augmentTurnedOff()) {
       return null;
     }
 
@@ -300,6 +357,10 @@ export class AuthCommands {
    * Returns the first valid cookie from either manual input or clipboard detection
    */
   private async runConsistentSignInFlow(apiClient: AugmentApiClient): Promise<string | null> {
+    if (this.augmentTurnedOff()) {
+      return null;
+    }
+
     // Clear any existing authentication state before signing in
     await apiClient.clearSessionCookie();
 
@@ -320,8 +381,19 @@ export class AuthCommands {
 
       const inputCts = new vscode.CancellationTokenSource();
       const watcherCts = new vscode.CancellationTokenSource();
+      // Turning Augment off closes the cookie prompt and stops the clipboard watcher.
+      const configListener = vscode.workspace.onDidChangeConfiguration(event => {
+        if (!event.affectsConfiguration("augmeter.augment")) {
+          return;
+        }
+        this.configManager.reloadConfig();
+        if (this.augmentTurnedOff()) {
+          resolveOnce(null);
+        }
+      });
 
       const cleanup = () => {
+        configListener.dispose();
         inputCts.dispose();
         watcherCts.dispose();
       };
@@ -394,6 +466,9 @@ export class AuthCommands {
     // Sign in using cookie input
     disposables.push(
       vscode.commands.registerCommand("augmeter.signIn", async () => {
+        if (!(await ensureAugmentEnabled(this.configManager))) {
+          return;
+        }
         await ErrorHandler.withErrorHandling(async () => {
           await this.withSignInLock(async () => {
             const apiClient = this.apiClient;
@@ -422,6 +497,9 @@ export class AuthCommands {
     // Open Augment website and then show cookie sign-in prompt
     disposables.push(
       vscode.commands.registerCommand("augmeter.openWebsiteAndSignIn", async () => {
+        if (!(await ensureAugmentEnabled(this.configManager))) {
+          return;
+        }
         try {
           await this.withSignInLock(async () => {
             const apiClient = this.apiClient;
@@ -446,6 +524,9 @@ export class AuthCommands {
     // Consistent sign-in flow: check stored cookie, then run deterministic flow
     disposables.push(
       vscode.commands.registerCommand("augmeter.smartSignIn", async () => {
+        if (!(await ensureAugmentEnabled(this.configManager))) {
+          return;
+        }
         await ErrorHandler.withErrorHandling(async () => {
           await this.withSignInLock(async () => {
             const apiClient = this.apiClient;
@@ -480,6 +561,9 @@ export class AuthCommands {
     );
 
     // Sign out (clear cookie)
+    // DECISION: no ensureAugmentEnabled() guard. Disconnecting only clears local state and
+    // makes no request, so it stays available while Augment is off; otherwise removing a
+    // stored cookie would require turning Augment on, which sends that cookie.
     disposables.push(
       vscode.commands.registerCommand("augmeter.signOut", async () => {
         await this.handleSignOut();
