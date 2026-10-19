@@ -4,7 +4,7 @@ Augmeter combines local coding-assistant activity with usage reported by connect
 
 ![Assistant Usage dashboard with illustrative local and provider-reported data](../images/tooltip.png)
 
-_Rendered from an earlier version of the dashboard with illustrative values. It still shows Augment credits without the legacy label, and Copilot premium requests instead of AI Credits. No local history, account data, or credentials are shown._
+_Rendered with illustrative values and Augment credit tracking (legacy) off, the default. No local history, account data, or credentials are shown._
 
 ## Reading the dashboard
 
@@ -16,6 +16,20 @@ _Rendered from an earlier version of the dashboard with illustrative values. It 
 Claude Code and Codex counts are approximate signals built from undocumented local log formats. They are not provider quotas, and a future log format change can shift them.
 
 Use **Refresh** to collect the latest enabled sources, **Settings** to choose sources, and **Exports and support** for occasional actions. If a refresh fails, the source status appears beside any retained values. Missing data is never treated as zero usage or an invented quota.
+
+With `augmeter.augment.enabled` on, the Augment sections appear below assistant activity:
+
+![Assistant Usage dashboard with Augment credit tracking (legacy) on, illustrative values](images/dashboard-augment-legacy.png)
+
+_Rendered with illustrative values. No account data or credentials are shown._
+
+## When a source can't be read
+
+Augmeter keeps the last good reading and marks the source as degraded instead of replacing it with zero:
+
+- **Claude Code and Codex:** if a session file can't be read (for example, another program has it locked), the saved counts stay and the card says the activity couldn't be read. A file deleted since the last refresh simply stops counting.
+- **GitHub Copilot:** a timeout, server error, or unreadable response from GitHub keeps the last reading. An empty AI Credits response counts as zero only when GitHub confirms there is no premium-request usage either; if that check fails, the failure is reported instead.
+- **Augment (legacy):** turning the option off stops any connection check or credit request that is retrying, so no further request is sent.
 
 ## What each number means
 

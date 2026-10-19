@@ -28,7 +28,7 @@ Claude Code counts leave out tool results, metadata, subagent sessions, backgrou
 
 ![Augmeter Assistant Usage dashboard with illustrative provider data](images/tooltip.png)
 
-This screenshot was rendered from an earlier version of the dashboard with illustrative values. It still shows Augment credits without the legacy label, and Copilot premium requests instead of AI Credits. It contains no local history, provider account data, or credentials.
+This screenshot shows the dashboard with illustrative values and Augment credit tracking (legacy) off, the default. It contains no local history, provider account data, or credentials.
 
 See [Understanding assistant usage data](docs/usage-data.md) for the exact source and limitations of every number.
 
